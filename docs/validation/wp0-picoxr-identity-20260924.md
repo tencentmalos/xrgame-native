@@ -3,7 +3,7 @@
 - 日期：2026-09-24
 - 规格：[docs/specs/xrgame-native-v1.md](../specs/xrgame-native-v1.md) WP0、C1、C4
 - 分支：`feature/malos/wp0-picoxr`，基于 `malos/main` @ `bbb40faa`
-- 状态：**部分通过**。本地构建与静态检查通过；CI 与设备两项待做，见 §4。
+- 状态：**通过**，仅剩一项：upstream 同步演练只做了空操作，因为上游还没有新提交。设备项在 AYN Thor 上完成，Swan 在 WP1 验收时补测。见 §4。
 
 ## 1. 改动
 
@@ -23,7 +23,7 @@
 |---|---|
 | 主机 | Windows 11 Pro 10.0.26200 |
 | 工具链 | JDK 17.0.12（Oracle），Gradle 8.12.1（wrapper），AGP 8.8.0，build-tools 36.0.0 |
-| 源码 | `bbb40faa` + 本记录 §1 的未提交改动（提交后在此补 commit SHA） |
+| 源码 | `2df02789`（`feature/malos/wp0-picoxr`）。构建时 APK 的全部输入与该提交一致；构建之后只改了文档、`AGENTS.md`、CI workflow 和测试资源 `testPicoXr/robolectric.properties` |
 | 命令 | `./gradlew --console=plain :app:assemblePicoXrDebug`，`BUILD SUCCESSFUL in 6m 15s` |
 | 本地前提 | 仓库根目录的 `local.properties` 只含 `sdk.dir`，没有任何 secret（原因见 §5-1） |
 | APK | `app/build/outputs/apk/picoXr/debug/app-picoXr-debug.apk`，236,485,280 字节 |
@@ -109,12 +109,30 @@ APK 中 16 个 `application-label*` 条目（默认 + 15 个 locale 限定）全
 | 判据 | 结果 | 证据 |
 |---|---|---|
 | 干净 checkout、无 secret 时 `assemblePicoXrDebug` 成功 | **本地通过**。前提是存在一个只含 `sdk.dir` 的 `local.properties`（§5-1） | §2 |
-| picoXr 单元测试 | 见 §4.1 | — |
-| 本 fork CI 通过 | **待做**：workflow 已写好，需要推送后在 GitHub 上运行 | `.github/workflows/xrgame-picoxr.yml` |
-| 可与上游 GameNative 同时安装，名称与图标可区分 | **静态通过**（§2、§3）。**设备待做**：需要在 Swan 上同时安装两个包并截图 | — |
+| picoXr 单元测试 | 见 §4.2 | — |
+| 本 fork CI 通过 | **通过**：run [35974807751](https://github.com/tencentmalos/xrgame-native/actions/runs/35974807751)，commit `2df02789`，ubuntu-latest。`assemblePicoXrDebug` `BUILD SUCCESSFUL in 8m 28s`；`testPicoXrDebugUnitTest` `BUILD SUCCESSFUL in 16m 21s`，日志中有 1360 条 STARTED、0 条 FAILED。本机挂起的 GOG 测试在 CI 上也正常完成。该 run 的 APK SHA 只写进了 job summary，没有写到日志；WP1 的 workflow 已改为同时输出到日志 | `.github/workflows/xrgame-picoxr.yml` |
+| 可与上游 GameNative 同时安装，名称与图标可区分 | **通过（AYN Thor）**：两个包都 `adb install` 成功，并在启动器上同时显示。Swan 待 WP1 验收时补测 | §2、§3、§4.1 |
 | `upstream/master` 首次同步演练并记录冲突点 | **流程已演练，但还没遇到真实冲突**：2026-09-24 fetch 时 `upstream/master` 仍是 `ebde76e9`，merge 是空操作。冲突热点已按上游 90 天改动量列出 | [docs/upstream-sync.md](../upstream-sync.md) |
 
-### 4.1 单元测试（本机 Windows 11；完整结果以 Linux CI 为准）
+### 4.1 设备：与上游共存（AYN Thor）
+
+用户同意先在 AYN Thor 上做（2026-09-24）。
+
+| 项 | 值 |
+|---|---|
+| 设备 | AYN Thor（`ro.product.device=kalama`），Android 13 / SDK 33，arm64-v8a，页大小 4096 |
+| build | `qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys` |
+| boot_id | `8bb14501-5800-4b9b-a9ab-7173603812f7`（测试时已开机 11 天 19 小时） |
+| 测前状态 | `pm list packages` 中没有 `gamenative`、`xrgame`、`tencentmalos` 相关的包 |
+| 安装包 1 | `app-picoXr-debug.apk`，SHA-256 `3201fe92f6935049ec0a496b584cadefd16d9e526a3b75ac206170b165333e8e`（即 §2 的 APK）→ `Success`，`com.tencentmalos.xrgamenative`，首次安装于 16:24:58 |
+| 安装包 2 | 本机从同一源码构建的上游 flavor `:app:assembleModernDebug` → `app-modern-debug.apk`，SHA-256 `3b7385152b1a4f00e55c705ba5c6309ade484756b5ed2e9b838ba6993a683971` → `Success`，`app.gamenative`，首次安装于 16:25:00 |
+| 结果 | 两个包并存，`dumpsys package` 中 codePath 各自独立。主屏同时显示 "XRGame Native"（橙底头显图标）和 "GameNative"（上游图标） |
+
+![Thor 启动器：XRGame Native 与 GameNative 并存](img/wp0-thor-launcher-coexist.png)
+
+截图从整屏截图（1920x1080，SHA-256 `7ff878d5…`）裁出，只保留这两个图标，因为整屏截图里还有设备上其他 app。整屏截图与本 WP 的构建、测试日志保存在仓库外的 `C:\workspace\xrgame-native-evidence\wp0-20260924\`，附 `SHA256SUMS`。两个 app 都没有启动，也没有卸载，仍留在设备上。
+
+### 4.2 单元测试（本机 Windows 11；完整结果以 Linux CI 为准）
 
 | 轮次 | 命令 | 结果 |
 |---|---|---|
@@ -123,12 +141,14 @@ APK 中 16 个 `application-label*` 条目（默认 + 15 个 locale 限定）全
 | 2（挂起） | `:app:testPicoXrDebugUnitTest`（补 `sdk=34` 后） | Robolectric 测试真正开始运行，但在 `GOGDownloadManagerTest > gen2_download_includes_game_and_support_files` 处空转：test worker 5 秒墙钟用了约 5.7 CPU 秒，`jstack` 显示停在 `GOGDownloadManagerTest.setUp` 与 `FrontendSyncManager` 协程中反复调用 `PrefManager.getPref`（`PrefManager.kt:130`）。约 13 分钟后手动停止 |
 | 3（全量对照，看门狗 180 秒无输出即停） | `:app:testModernDebugUnitTest`，然后 `:app:testPicoXrDebugUnitTest` | **两个 flavor 结果完全相同**：都启动 690 个测试、失败 51 个，STARTED 集合与 FAILED 集合逐条 `diff` 无差异，都挂在同一个 GOG 测试上。失败分布：`SteamAutoCloudTest` 37（`FileNotFoundException`）、`PathTypeTest` 9、`GOGConstantsTest` 2、`RegistryKeyFixTest` 2、`EpicCloudSavesTest` 1 |
 
-结论：picoXr 相对 modern **没有引入测试回归**。本机的 51 个失败和那次挂起在 modern 上同样出现，都在涉及文件路径的测试类中。其中 3 个已确认是路径分隔符问题；其余 48 个与挂起的具体原因本机没有继续深挖。因为挂起，本机只跑了 910 个中的 690 个，完整结果以 CI（ubuntu-latest）为准。
+结论：picoXr 相对 modern **没有引入测试回归**。本机的 51 个失败和那次挂起在 modern 上同样出现，都在涉及文件路径的测试类中。其中 3 个已确认是路径分隔符问题；其余 48 个与挂起的具体原因本机没有继续深挖。CI（ubuntu-latest）上完整跑过，没有失败，也没有挂起（§4 表格），因此这些问题只出现在 Windows 主机上。
 
 ## 5. 失败与偏差记录
 
 1. **第一次构建失败**（保留）：`./gradlew :app:assemblePicoXrDebug` 在配置阶段失败，`BUILD FAILED in 1m 14s`，报错 `Failed to notify project evaluation listener. > The file 'C:\workspace\xrgame-native\local.properties' could not be found`。原因是 `com.google.android.libraries.mapsplatform.secrets-gradle-plugin` 2.0.1（`gradle/libs.versions.toml:133`，应用于 `app/build.gradle.kts:12`）要求文件存在。所有 manifest 占位符只有 `${applicationId}`、`${icon}`、`${screenOrientation}`，没有依赖这个插件注入的值。处理：本机新建只含 `sdk.dir` 的 `local.properties`（已被 `.gitignore:15` 忽略），CI 用 `touch local.properties`。上游 CI 也是写这个文件（`.github/workflows/pluvia-pr-check.yml`，写入 dummy PostHog 值）。
-2. **禁用上游 workflow（用户已同意，未能执行）**：对 `app-release-signed.yml`、`tagged-release.yml`、`adhoc-signed-build.yml`、`issues-contributors-only.yml`、`pluvia-pr-check.yml` 执行 `gh workflow disable`，全部返回 `HTTP 404: workflow ... not found on the default branch`，而 `GET /repos/tencentmalos/xrgame-native/actions/workflows` 返回空列表。`GET .../actions/permissions` 返回 `enabled: true, allowed_actions: all`。推断：fork 的 workflow 在仓库 Actions 页点击启用之前不会注册，所以上游 workflow 现在不会运行，本仓的 `xrgame-picoxr.yml` 也可能不会运行。推送后按 CI 是否产生 run 来验证。在 Actions 页启用后，立即禁用上述 5 个。
+2. **禁用上游 workflow（用户已同意，未能执行）**：对 `app-release-signed.yml`、`tagged-release.yml`、`adhoc-signed-build.yml`、`issues-contributors-only.yml`、`pluvia-pr-check.yml` 执行 `gh workflow disable`，全部返回 `HTTP 404: workflow ... not found on the default branch`，而 `GET /repos/tencentmalos/xrgame-native/actions/workflows` 返回空列表。`GET .../actions/permissions` 返回 `enabled: true, allowed_actions: all`。
+   - 当时的推断是"fork 的 workflow 要在 Actions 页点启用后才会注册，所以 `xrgame-picoxr.yml` 也不会运行"。**这个推断被推翻**：推送 `feature/malos/wp0-picoxr` 后立即产生了 run `35974807751`（`picoXr build check`，push 触发），workflow 列表也从 0 个变成 1 个（只有我们的）。
+   - 修正后的结论：本 fork 中的 workflow 被事件触发后才注册。上游 5 个从未被触发，所以没有注册，也就无法提前 disable。它们只会因以下事件触发：push 到 fork 的 `master`、推送 `v*` tag、向 `master` 开 PR、新建 issue（本 fork 的 issues 已关闭，`has_issues: false`）。我们不做这些操作。一旦出现注册，就立即禁用。
 
 ## 6. 遗留清单（不属于 WP0 出口判据）
 
