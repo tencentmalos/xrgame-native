@@ -57,7 +57,9 @@
 ## Building
 
 - JDK 17, Android SDK platform 36, Gradle wrapper 8.12.1, about 8 GB heap. JavaSteam is a SNAPSHOT dependency, so builds need network access and are not reproducible yet (spec WP1).
-- Debug builds of the upstream flavors: `./gradlew :app:assembleLegacyDebug`, `assembleModernDebug`, `assembleLegacyXrDebug`, `assembleModernXrDebug`. The `picoXr` flavor does not exist yet (created in spec WP0, XR-adapted in WP5).
+- Our flavor: `./gradlew :app:assemblePicoXrDebug` (applicationId `com.tencentmalos.xrgamenative`; sources in `app/src/picoXr`, otherwise the same inputs as `modern` until spec WP5). CI: `.github/workflows/xrgame-picoxr.yml`. Release signing reads only the gitignored `app/keystores/xrgame.properties`.
+- A `local.properties` must exist at the repo root, because the secrets-gradle-plugin fails configuration without it. `sdk.dir` alone is enough; no secret is needed.
+- Debug builds of the upstream flavors: `./gradlew :app:assembleLegacyDebug`, `assembleModernDebug`, `assembleLegacyXrDebug`, `assembleModernXrDebug`.
 - Every `externalNativeBuild` block in `app/build.gradle.kts` is commented out. Native libraries ship as prebuilt `.so` files in `jniLibs`. Restoring source builds is spec WP3 (`libgndownload` comes first, in WP1).
 
 ## Devices and host

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- XRGame Native identity (spec C1). Every locale that defines app_name in src/main is overridden here. -->
+<resources>
+    <string name="app_name">XRGame Native</string>
+</resources>

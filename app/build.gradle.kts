@@ -20,6 +20,16 @@ val keystoreProperties: Properties? = if (keystorePropertiesFile.exists()) {
     }
 } else null
 
+// XRGame Native (picoXr) release signing. Read only from this gitignored file, never from the
+// repo-root `keystore` or the upstream "pluvia" config. Without it, picoXr release builds fail
+// at signing instead of falling back to another key; debug builds use the local debug keystore.
+val xrgameKeystorePropertiesFile = rootProject.file("app/keystores/xrgame.properties")
+val xrgameKeystoreProperties: Properties? = if (xrgameKeystorePropertiesFile.exists()) {
+    Properties().apply {
+        load(FileInputStream(xrgameKeystorePropertiesFile))
+    }
+} else null
+
 // Add PostHog API key and host as build-time variables
 val posthogApiKey: String = project.findProperty("POSTHOG_API_KEY") as String? ?: System.getenv("POSTHOG_API_KEY") ?: ""
 val posthogHost: String = project.findProperty("POSTHOG_HOST") as String? ?: System.getenv("POSTHOG_HOST") ?: "https://us.i.posthog.com"
@@ -51,6 +61,14 @@ android {
                 storePassword = keystoreProperties["storePassword"].toString()
                 keyAlias = keystoreProperties["keyAlias"].toString()
                 keyPassword = keystoreProperties["keyPassword"].toString()
+            }
+        }
+        create("xrgame") {
+            if (xrgameKeystoreProperties != null) {
+                storeFile = file(xrgameKeystoreProperties["storeFile"].toString())
+                storePassword = xrgameKeystoreProperties["storePassword"].toString()
+                keyAlias = xrgameKeystoreProperties["keyAlias"].toString()
+                keyPassword = xrgameKeystoreProperties["keyPassword"].toString()
             }
         }
     }
@@ -158,6 +176,17 @@ android {
             buildConfigField("String", "META_APP_ID", "\"$metaAppId\"")
             buildConfigField("String", "PRODUCT_SKU", "\"$productSku\"")
             manifestPlaceholders["screenOrientation"] = "landscape"
+        }
+        // XRGame Native for Pico headsets (docs/specs/xrgame-native-v1.md). Starts as a copy of
+        // `modern` with its own identity; XR adaptation comes in spec WP5.
+        create("picoXr") {
+            dimension = "androidApi"
+            applicationId = "com.tencentmalos.xrgamenative"
+            minSdk = 29
+            targetSdk = 36
+            ndk.abiFilters += listOf("arm64-v8a")
+            buildConfigField("boolean", "MODERN_ANDROID", "true")
+            buildConfigField("String", "PRELOAD_BIONIC_SO", "\"libredirect-bionic-wx.so\"")
         }
     }
 
@@ -276,6 +305,16 @@ android {
             }
             jniLibs {
                 setSrcDirs(listOf("src/modern/jniLibs", "src/modernXr/jniLibs"))
+            }
+        }
+        // Same inputs as `modern`; src/picoXr only adds the manifest and identity resources.
+        getByName("picoXr") {
+            java.srcDir("src/nonXr/java")
+            assets {
+                srcDirs("src/modern/assets", "src/main/assets")
+            }
+            jniLibs {
+                srcDirs("src/modern/jniLibs")
             }
         }
         getByName("debug") {
@@ -411,6 +450,21 @@ android {
     //         exclude(group = "junit", module = "junit")
     //     }
     // }
+}
+
+androidComponents {
+    // picoXr ships as debug + release only: release-signed uses the upstream "pluvia" key and
+    // release-gold is the upstream store build with its own icon and application id suffix.
+    beforeVariants(selector().withFlavor("androidApi" to "picoXr")) { variant ->
+        if (variant.buildType == "release-signed" || variant.buildType == "release-gold") {
+            variant.enable = false
+        }
+    }
+    // The release build type signs with the debug key for every flavor; picoXr signs with its
+    // own key instead (see xrgameKeystorePropertiesFile above).
+    onVariants(selector().withFlavor("androidApi" to "picoXr").withBuildType("release")) { variant ->
+        variant.signingConfig.setConfig(android.signingConfigs.getByName("xrgame"))
+    }
 }
 
 dependencies {

@@ -25,6 +25,9 @@ android {
         create("modernXr") {
             dimension = "androidApi"
         }
+        create("picoXr") {
+            dimension = "androidApi"
+        }
     }
 
     buildTypes {
@@ -43,6 +46,15 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+}
+
+// Mirrors the picoXr variant filter in app/build.gradle.kts.
+androidComponents {
+    beforeVariants(selector().withFlavor("androidApi" to "picoXr")) { variant ->
+        if (variant.buildType == "release-signed" || variant.buildType == "release-gold") {
+            variant.enable = false
+        }
     }
 }
 
