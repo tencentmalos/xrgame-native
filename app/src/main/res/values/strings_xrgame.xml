@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- XRGame Native (picoXr) only; see app.gamenative.xrgame.XrGameStorage. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="xrgame_notice_title">Unofficial Steam client</string>
+    <string name="xrgame_notice_message">XRGame Native is not an official Valve client. Sign in only with a dedicated test account, never your main Steam account.\n\nGames are installed to %1$s so they survive reinstalling the app. The next screen asks for All files access for that folder.</string>
+    <string name="xrgame_notice_accept">Continue</string>
+</resources>

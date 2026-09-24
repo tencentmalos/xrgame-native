@@ -56,7 +56,10 @@
 
 ## Building
 
-- JDK 17, Android SDK platform 36, Gradle wrapper 8.12.1, about 8 GB heap. JavaSteam is a SNAPSHOT dependency, so builds need network access and are not reproducible yet (spec WP1).
+- JDK 17, Android SDK platform 36, NDK 27.3.13750724, Gradle wrapper 8.12.1, about 8 GB heap.
+- JavaSteam is built from `references/JavaSteam` (spec WP1-1). Run `tools/build-javasteam.sh` (or `.ps1`) once per gitlink change, before building the app. It publishes `1.8.0.1-26-xrg.<gitlink>` to `build/javasteam-maven`, and `settings.gradle.kts` resolves `io.github.joshuatam` only from there. The Sonatype snapshots repository is gone.
+- picoXr builds `libgndownload.so` from `app/src/main/cpp/gn-download/rust` with cargo-ndk (task `buildGnDownload<Variant>`, spec WP1-2). This needs Rust 1.98.1 with the `aarch64-linux-android` target and cargo-ndk 4.1.2. The upstream flavors still package the prebuilt copy.
+- Validation APKs must be packaged from scratch: delete `app/build/outputs/apk/<flavor>/<type>/*.apk` first. Incremental debug packaging leaves holes in the zip, so the APK SHA-256 depends on build history.
 - Our flavor: `./gradlew :app:assemblePicoXrDebug` (applicationId `com.tencentmalos.xrgamenative`; sources in `app/src/picoXr`, otherwise the same inputs as `modern` until spec WP5). CI: `.github/workflows/xrgame-picoxr.yml`. Release signing reads only the gitignored `app/keystores/xrgame.properties`.
 - A `local.properties` must exist at the repo root, because the secrets-gradle-plugin fails configuration without it. `sdk.dir` alone is enough; no secret is needed.
 - Debug builds of the upstream flavors: `./gradlew :app:assembleLegacyDebug`, `assembleModernDebug`, `assembleLegacyXrDebug`, `assembleModernXrDebug`.

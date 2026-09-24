@@ -77,6 +77,9 @@ class PluviaApp : SplitCompatApplication() {
             Timber.plant(ReleaseTree())
         }
 
+        // XRGame Native (picoXr): egress allowlist and install-root setup; no-op in other flavors.
+        app.gamenative.xrgame.XrGame.install(this)
+
         NetworkMonitor.init(this)
 
         // Init our custom crash handler.

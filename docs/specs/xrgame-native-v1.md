@@ -120,7 +120,7 @@ v1.2 相对 v1.1 的变更：§9 待决策项已由用户确认（2026-09-24）�
 |---|---|---|
 | 协议库 | JavaSteam fork `io.github.joshuatam:javasteam` / `javasteam-depotdownloader` `1.8.0.1-26-SNAPSHOT`，来自 Sonatype snapshots，**不可复现**。对应源码为 `joshuatam/JavaSteam` `gamenative-latest` @ `433f2ad1`（已作为 `references/JavaSteam`）。gradle 里留有本地构建开关 `localBuild`，默认路径 `../../JavaSteam` | `gradle/libs.versions.toml:15, 80-81`，`app/build.gradle.kts:422-435` |
 | 客户端服务 | `SteamService`，5403 行前台服务：CM 连接、密码 / QR 登录、license、PICS、DLC / depot 解析、安装、成就、云存档。源自 Pluvia | `SteamService.kt`（登录 `3251-3490`，depot `1398-1716`，安装 `1718-2042`） |
-| depot 下载 | Rust crate `gn-download` → `libgndownload.so`，**源码在仓内**（GPL-3.0-or-later），由 `tools/build-gn-download.sh` 手工构建：AES-256 解密、VZip/LZMA 解压、SHA-1 校验、断点续传。JavaSteam 的 DepotDownloader 只用于 Workshop | `app/src/main/cpp/gn-download/rust/`，`service/download/NativeSteamDownload.kt` |
+| depot 下载 | Rust crate `gn-download` → `libgndownload.so`，**源码在仓内**（GPL-3.0-or-later），由 `tools/build-gn-download.sh` 手工构建：AES-256 解密、VZip/LZMA 等解压、按大小 + Steam Adler32 校验 chunk（SHA-1 只用于拼 CDN URL；此处 v1.2 之前误写为"SHA-1 校验"，见 WP1 验收记录）、断点续传。JavaSteam 的 DepotDownloader 只用于 Workshop | `app/src/main/cpp/gn-download/rust/`，`service/download/NativeSteamDownload.kt` |
 | 安装位置 | 内部：`<app data>/Steam/steamapps/common`（改 applicationId 或卸载后丢失）；外部：`<externalStoragePath>/Steam/steamapps/common`，外加所有挂载卷 | `SteamService.kt:555-620` |
 | 导入 | 支持导入本地目录（`isImported` / `customInstallPath`），并可按 Steam 游戏识别（`importCustomGameAsSteamGame`） | `SteamService.kt:1748-1756`，`LibraryViewModel.kt:692`，`PrefManager.kt:1386` |
 | 存储权限 | `legacy` 系声明 `MANAGE_EXTERNAL_STORAGE`；`modern` / `modernXr` 移除了旧存储权限 | `app/src/legacy/AndroidManifest.xml:5-14`，`app/src/modernXr/AndroidManifest.xml:8-9` |

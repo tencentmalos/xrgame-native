@@ -1,0 +1,24 @@
+// Init script for building references/JavaSteam without modifying the checkout (spec WP1-1).
+// Used by tools/build-javasteam.{sh,ps1}. It:
+//   - replaces the hard-coded "-SNAPSHOT" version with a fixed one (-Dxrgame.javasteam.version);
+//   - adds a Maven repository named "xrgame" (-Dxrgame.javasteam.repo), so the
+//     publish<Publication>ToXrgameRepository tasks write into this repo's build/javasteam-maven.
+def fixedVersion = System.getProperty("xrgame.javasteam.version")
+def repoDir = System.getProperty("xrgame.javasteam.repo")
+if (!fixedVersion || !repoDir) {
+    throw new GradleException("xrgame.javasteam.version and xrgame.javasteam.repo must be set")
+}
+
+allprojects {
+    // JavaSteam sets the version in the root build script's allprojects block, which runs
+    // before this hook; afterEvaluate overrides it for every project.
+    afterEvaluate { p ->
+        p.version = fixedVersion
+        p.plugins.withId("maven-publish") {
+            p.extensions.getByName("publishing").repositories.maven {
+                name = "xrgame"
+                url = p.uri(repoDir)
+            }
+        }
+    }
+}

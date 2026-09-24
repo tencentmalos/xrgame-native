@@ -20,16 +20,20 @@ These are the upstream-owned files that our changes touch. Churn is the number o
 
 | File | Our change | Upstream commits, last 90 d | Upstream commits, all time |
 |---|---|---|---|
-| `app/build.gradle.kts` | WP0: `picoXr` flavor, source set, `xrgame` signing config, `androidComponents` block | 23 | 182 |
+| `app/build.gradle.kts` | WP0: `picoXr` flavor, source set, `xrgame` signing config. WP1: `XRGAME` BuildConfig field. The picoXr variant filter, release signing and the cargo-ndk `libgndownload` task sit in one block at the end of the file | 23 | 182 |
 | `ubuntufs/build.gradle.kts` | WP0: `picoXr` flavor and variant filter | 0 | 6 |
 | `.gitmodules` | Setup: `references/*` entries appended at the end | 0 | 2 |
-| `gradle/libs.versions.toml` | Expected in WP1 (JavaSteam source build) | 6 | 78 |
-| `settings.gradle.kts` | Expected in WP1 (drop the Sonatype snapshots repository) | 0 | 8 |
+| `gradle/libs.versions.toml` | WP1: `javasteam` = `1.8.0.1-26-xrg.<gitlink>`. When upstream bumps its SNAPSHOT, advance `references/JavaSteam` to the matching commit and keep our fixed-version form | 6 | 78 |
+| `settings.gradle.kts` | WP1: Sonatype snapshots replaced by the `build/javasteam-maven` exclusive repository | 0 | 8 |
+| `app/src/main/java/app/gamenative/PluviaApp.kt` | WP1: one call, `XrGame.install(this)`, before `NetworkMonitor.init` | 9 | 39 |
+| `app/src/main/java/app/gamenative/ui/screen/library/appscreen/SteamAppScreen.kt` | WP1: the storage-permission shortcut `MODERN_ANDROID -> true` excludes `XRGAME` | 6 | 67 |
 | `app/src/main/AndroidManifest.xml` | None so far; picoXr manifest entries go in `src/picoXr/AndroidManifest.xml` | 10 | 47 |
-| `app/src/main/java/app/gamenative/service/SteamService.kt` | None so far. If WP1 has to touch it, prefer a small hook over inline edits | 27 | 221 |
+| `app/src/main/java/app/gamenative/service/SteamService.kt` | None so far. If a WP has to touch it, prefer a small hook over inline edits | 27 | 221 |
 | `app/src/main/java/app/gamenative/PrefManager.kt` | None so far. Same rule as `SteamService.kt` | 30 | 114 |
 
-Our new files (`src/picoXr/**`, `.github/workflows/xrgame-picoxr.yml`, `docs/**`, `references/**`, `AGENTS.md`, `CLAUDE.md`) do not exist upstream and cannot conflict.
+Churn for the two WP1 files was measured the same way on 2026-09-24.
+
+Our new files do not exist upstream and cannot conflict: `src/picoXr/**`, `src/testPicoXr/**`, `src/main/java/app/gamenative/xrgame/**`, `src/main/res/values*/strings_xrgame.xml`, `tools/build-javasteam.*`, `tools/javasteam/**`, `.github/workflows/xrgame-picoxr.yml`, `docs/**`, `references/**`, `AGENTS.md` and `CLAUDE.md`.
 
 ## Log
 

@@ -1071,7 +1071,8 @@ class SteamAppScreen : BaseAppScreen() {
         // Legacy keeps its existing MANAGE_EXTERNAL_STORAGE / runtime perm flow.
         val initialStoragePermissionGranted = remember {
             when {
-                BuildConfig.MODERN_ANDROID -> true
+                // picoXr installs to shared storage (XrGameStorage) and needs All files access.
+                BuildConfig.MODERN_ANDROID && !BuildConfig.XRGAME -> true
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
                 else -> {
                     val writePermissionGranted = ContextCompat.checkSelfPermission(

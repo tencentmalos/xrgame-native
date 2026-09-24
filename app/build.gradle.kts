@@ -81,6 +81,8 @@ android {
         manifestPlaceholders["screenOrientation"] = "unspecified"
         buildConfigField("boolean", "XR_BUILD", "false")
         buildConfigField("boolean", "MODERN_XR", "false")
+        // XRGame Native (picoXr) behavior switch; see app.gamenative.xrgame.
+        buildConfigField("boolean", "XRGAME", "false")
 
         versionCode = 23
         versionName = "1.2.1"
@@ -187,6 +189,7 @@ android {
             ndk.abiFilters += listOf("arm64-v8a")
             buildConfigField("boolean", "MODERN_ANDROID", "true")
             buildConfigField("String", "PRELOAD_BIONIC_SO", "\"libredirect-bionic-wx.so\"")
+            buildConfigField("boolean", "XRGAME", "true")
         }
     }
 
@@ -452,21 +455,6 @@ android {
     // }
 }
 
-androidComponents {
-    // picoXr ships as debug + release only: release-signed uses the upstream "pluvia" key and
-    // release-gold is the upstream store build with its own icon and application id suffix.
-    beforeVariants(selector().withFlavor("androidApi" to "picoXr")) { variant ->
-        if (variant.buildType == "release-signed" || variant.buildType == "release-gold") {
-            variant.enable = false
-        }
-    }
-    // The release build type signs with the debug key for every flavor; picoXr signs with its
-    // own key instead (see xrgameKeystorePropertiesFile above).
-    onVariants(selector().withFlavor("androidApi" to "picoXr").withBuildType("release")) { variant ->
-        variant.signingConfig.setConfig(android.signingConfigs.getByName("xrgame"))
-    }
-}
-
 dependencies {
     implementation(libs.material)
 
@@ -566,4 +554,117 @@ dependencies {
 
     "modernXrImplementation"("com.meta.horizon.platform.sdk:core-kotlin:0.2.2")
     "modernXrImplementation"("com.meta.horizon.platform.sdk:iap-kotlin:0.2.2")
+}
+
+// ---- XRGame Native (picoXr) --------------------------------------------------------------
+// Kept together at the end of the file so upstream merges rarely touch it.
+
+androidComponents {
+    // picoXr ships as debug + release only: release-signed uses the upstream "pluvia" key and
+    // release-gold is the upstream store build with its own icon and application id suffix.
+    beforeVariants(selector().withFlavor("androidApi" to "picoXr")) { variant ->
+        if (variant.buildType == "release-signed" || variant.buildType == "release-gold") {
+            variant.enable = false
+        }
+    }
+    // The release build type signs with the debug key for every flavor; picoXr signs with its
+    // own key instead (see xrgameKeystorePropertiesFile above).
+    onVariants(selector().withFlavor("androidApi" to "picoXr").withBuildType("release")) { variant ->
+        variant.signingConfig.setConfig(android.signingConfigs.getByName("xrgame"))
+    }
+}
+
+/**
+ * Builds libgndownload.so from the in-repo Rust crate with cargo-ndk (spec WP1-2) instead of
+ * packaging the prebuilt copy in src/main/jniLibs. The crate's .cargo/config.toml keeps its
+ * soname and 16 KB max-page-size flags; `--config` appends a GNU build-id so validation records
+ * can identify the exact binary (spec C5).
+ */
+abstract class CargoNdkBuildTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val crateSources: ConfigurableFileCollection
+
+    @get:Internal
+    abstract val crateDir: DirectoryProperty
+
+    @get:Input
+    abstract val ndkDir: Property<String>
+
+    @get:Input
+    abstract val cargo: Property<String>
+
+    @get:Internal
+    abstract val cargoTargetDir: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:OutputFile
+    abstract val buildInfo: RegularFileProperty
+
+    @get:javax.inject.Inject
+    abstract val execOps: ExecOperations
+
+    @TaskAction
+    fun build() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        val cargoBin = cargo.get()
+        // Toolchain identity for the validation record; exec closes its output stream, so each
+        // command writes its own temporary file.
+        val info = buildInfo.get().asFile
+        info.parentFile.mkdirs()
+        info.writeText("")
+        for (args in listOf(listOf("--version"), listOf("ndk", "--version"))) {
+            val tmp = File(temporaryDir, "version.txt")
+            tmp.outputStream().use { os ->
+                execOps.exec {
+                    commandLine(listOf(cargoBin) + args)
+                    standardOutput = os
+                }
+            }
+            info.appendText(tmp.readText())
+        }
+        info.appendText("ndk: " + ndkDir.get() + "\n")
+        execOps.exec {
+            workingDir = crateDir.get().asFile
+            environment("ANDROID_NDK_HOME", ndkDir.get())
+            environment("CARGO_TARGET_DIR", cargoTargetDir.get().asFile.absolutePath)
+            commandLine(
+                cargoBin, "ndk",
+                "-t", "arm64-v8a",
+                "-P", "26", // same API level as the crate's .cargo/config.toml linker
+                "-o", out.absolutePath,
+                "build", "--release", "--locked",
+                // TOML literal strings (single quotes): Windows process creation drops embedded double quotes.
+                "--config", "target.aarch64-linux-android.rustflags=['-C','link-arg=-Wl,--build-id=sha1']",
+            )
+        }
+    }
+}
+
+val gnDownloadCrate = layout.projectDirectory.dir("src/main/cpp/gn-download/rust")
+
+// Prefer an explicit CARGO, then rustup's default location, then whatever is on PATH.
+val cargoExecutable: String = System.getenv("CARGO")
+    ?: File(System.getProperty("user.home"), ".cargo/bin/cargo" + if (System.getProperty("os.name").startsWith("Windows")) ".exe" else "")
+        .takeIf { it.isFile }?.absolutePath
+    ?: "cargo"
+
+// One task per picoXr variant, because AGP assigns each generated source directory itself. They
+// share CARGO_TARGET_DIR, so after the first build the others only relink/copy.
+androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->
+    val task = tasks.register<CargoNdkBuildTask>("buildGnDownload${variant.name.replaceFirstChar { it.uppercase() }}") {
+        group = "xrgame"
+        description = "Builds libgndownload.so (arm64-v8a) for ${variant.name} from src/main/cpp/gn-download/rust with cargo-ndk."
+        crateDir.set(gnDownloadCrate)
+        crateSources.from(fileTree(gnDownloadCrate) { exclude("target/**") })
+        ndkDir.set(androidComponents.sdkComponents.ndkDirectory.map { it.asFile.absolutePath })
+        cargo.set(cargoExecutable)
+        cargoTargetDir.set(layout.buildDirectory.dir("cargo/gn-download"))
+        buildInfo.set(layout.buildDirectory.file("outputs/gndownload/${variant.name}/BUILD_INFO.txt"))
+    }
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(task, CargoNdkBuildTask::outputDir)
 }

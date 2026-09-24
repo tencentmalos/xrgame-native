@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- XRGame Native (picoXr) only; see app.gamenative.xrgame.XrGameStorage. -->
+<resources>
+    <string name="xrgame_notice_title">非官方 Steam 客户端</string>
+    <string name="xrgame_notice_message">XRGame Native 不是 Valve 的官方客户端。请只用专用测试账号登录，不要使用你的 Steam 主账号。\n\n游戏安装在 %1$s，重装应用后仍会保留。下一步会请求该目录的“所有文件访问权限”。</string>
+    <string name="xrgame_notice_accept">继续</string>
+</resources>

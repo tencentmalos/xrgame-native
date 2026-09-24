@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Same as src/modern/AndroidManifest.xml for now; picoXr-specific entries come in spec WP1/WP5. -->
+<!-- Starts from src/modern/AndroidManifest.xml; XR entries come in spec WP5. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+
+    <!-- Spec WP1-3: games install to /sdcard/XRGameNative so they survive uninstall and
+         re-signing. Internal distribution only (spec §9-2), so All files access is acceptable.
+         Requested at runtime by app.gamenative.xrgame.XrGameStorage. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
 </manifest>
