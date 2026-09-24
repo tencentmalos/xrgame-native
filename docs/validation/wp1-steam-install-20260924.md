@@ -3,7 +3,7 @@
 - 日期：2026-09-24（进行中）
 - 规格：[docs/specs/xrgame-native-v1.md](../specs/xrgame-native-v1.md) WP1、C3、C5
 - 分支：`feature/malos/wp1-steam-install`（基于 WP0）
-- 状态：**构建部分完成；设备验收未开始**。设备验收需要用户提供的 Steam 测试账号与游戏清单（§9-4）。
+- 状态：**构建部分完成；设备验收未开始**。设备验收需要用户提供的 Steam 测试账号与游戏清单（§9-4）。用户 2026-09-24 决定：设备验收**先在 AYN Thor 上做**，Swan 之后补测。
 
 ## 1. 改动
 
@@ -60,6 +60,19 @@
 5. **与 spec WP1-1 措辞的偏差**：spec 写的是"把 `app/build.gradle.kts` 的本地构建开关 `localBuild` 改指 `references/JavaSteam`"。没有采用：该开关直接引用 jar 文件，不带传递依赖（JavaSteam 需要的 ktor-client-websockets 等不在 app 的 `javasteam-dev` bundle 里），而且路径指向仓库外的 `../../JavaSteam`。改为发布到本地 Maven 仓：依赖元数据（`.module` / `.pom`）与原 SNAPSHOT 的解析方式一致，`localBuild` 开关原样保留、不启用。
 6. **增量打包导致 APK 膨胀**：WP1 第一次成功构建的 APK 为 245,990,947 字节。条目逐项对比只多了约 16 KB（压缩后），多出的约 9.5 MB 是 zip 中未被条目占用的空隙：AGP 增量打包在原 APK 上反复更新留下的。删掉 APK 重新打包后为 236,499,739 字节。因此验收用的 APK 一律从头打包（已写入 `AGENTS.md`）。
 
+### 3.1 WP1 首次 CI 失败（保留）
+
+Run [35984631826](https://github.com/tencentmalos/xrgame-native/actions/runs/35984631826)（commit `8e07ab41`，ubuntu-latest）：JavaSteam 源码构建、cargo-ndk、assemble 都成功。APK SHA-256 `bebb2673f226fddcaae748237a52b327140739b3fc3a24f1515e087989ffaf66`；`libgndownload.so` Build ID `1ec3be11d1b6f31b64b929dd26cd3ea97524349a`，与本机 Windows 构建的 `b4dc542e…` 不同。同一主机上重复构建结果一致，但跨主机不是逐位可复现。
+
+`testPicoXrDebugUnitTest`：1365 个完成，3 个失败，5 个跳过（WP0 的两次 CI 没有这些失败）：
+
+| 测试 | 原因 | 处理 |
+|---|---|---|
+| `ManifestIdCorrelationTest.manifestIdsMatchInstalledIds` | 本机复现的报错为 `Driver install failed for Turnip Gen8 V34: Download failed: Failed to connect to /127.0.0.1:9`：测试会逐项下载上游 manifest 中的组件，被 `XrGameEgress` 拦下。这也说明 Robolectric 会执行 `PluviaApp.onCreate`，白名单在单元测试中生效 | 在 `app/build.gradle.kts` 末尾的 picoXr 分块中，对 picoXr 的单元测试任务排除这个测试（它与 C3 冲突），不改上游测试文件 |
+| `ContainerFilesDownloaderTest.testObsoleteArchiveCleanupKeepsCurrentAndUnrelatedFiles`、`testBlockingWrapperFunction`（本机是 `testCachedComponentReuse`） | 测试刚写入的缓存文件被删掉。`PluviaApp.onCreate` 在后台启动 `preloadAllContainerFiles`，下载失败时执行 `destFile.delete()`（`ContainerFilesDownloader.kt:106-108`），路径与测试文件相同。picoXr 下下载被白名单立即拦下，这次删除就与测试的执行重叠了 | picoXr 启动时不再预下载容器文件（这些文件来自 `downloads.gamenative.app`，C3 禁止使用；WP3 改由本仓 manifest 提供）。对设备的影响：有效的缓存文件会先被复用，失败路径只删除未下完的目标文件，所以此前在设备上不会误删有效缓存 |
+
+**以上两处修复已提交，但还没有在本地测试通过**：本地复测被中断，以推送后的 CI 结果为准。
+
 ## 4. 许可发现（转 WP2）
 
 `app/src/main/cpp/gn-download/rust/src/store_dl/steam/base64.rs` 与 `crypto.rs` 与 `references/WinNative/app/src/main/cpp/wn-steam-client/rust/src/` 下的同名文件逐字节相同（SHA-256 比较）。`gn-download` 目录内没有 WinNative / wnsteam 的署名；`THIRD_PARTY_NOTICES` 只在第 378 行、Winlator 的上下文里提到 WinNative。两边都是 GPL-3.0（WinNative 的 `Cargo.toml` 为 GPL-3.0-or-later），许可兼容，但需要补署名。列入 WP2 的 `THIRD_PARTY_NOTICES` 补全。除这两个文件外的"整体分叉"关系只是推断（模块命名与依赖相近），没有逐文件核实。
@@ -77,7 +90,30 @@
 | adb push 的已安装游戏被导入并识别为 Steam 游戏 | Swan | 待做（方案见 §6） |
 | 卸载重装 APK 后已装游戏仍被识别 | Swan | 待做 |
 | DNS / 连接记录中除 Valve 外无其他远端 | Swan | 待做（root 下按 UID 抓取连接） |
-| AYN Thor 冒烟 | Thor | 待做 |
+| AYN Thor 冒烟（不登录） | Thor | **部分完成**，见 §5.1。登录、下载部分等测试账号 |
+
+### 5.1 AYN Thor 冒烟（2026-09-24，不登录 Steam）
+
+用户同意在 Thor 上覆盖安装并授予权限。设备：AYN Thor，Android 13 / SDK 33，build `TKQ1.231222.001/eng.Thor.20260206.163241`，boot_id `8bb14501-5800-4b9b-a9ab-7173603812f7`（与 WP0 测试时相同，未重启）。
+
+| 步骤 | 结果 | 证据 |
+|---|---|---|
+| 覆盖安装 APK `f3495a5842287681ea5a2328e048095ec997b07338f06bae45d2bc8f6b26981a`（即 §2.3） | `Success`，lastUpdateTime 18:00:38；安装前 `/sdcard/XRGameNative` 不存在，`MANAGE_EXTERNAL_STORAGE` 为 default | adb 输出 |
+| 冷启动 | `am start -W`：COLD，TotalTime 934 ms，PID 20157 | adb 输出 |
+| 出网白名单 | 18:00:50.331 `XrGameEgress: installed`；同一秒拦下 `downloads.gamenative.app`、`pub-9fcd5294bd0d4b85a9d73615bf98f3b5.r2.dev`（推断来自启动时的容器文件预下载 `ContainerFilesDownloader.preloadAllContainerFiles`：时间点吻合，且该调用在 `PluviaApp.onCreate` 中；日志本身不记录调用方）；进入游戏库后 18:02:19 拦下 `api.gamenative.app` | PID 20157 的 logcat |
+| 登录页 | 显示 Steam QR 码，说明到 Valve CM 的连接与 QR 会话正常（CM 走 JavaSteam 的 WebSocket，不经 ProxySelector） | 截图 |
+| 非官方客户端提示 | 中文文案，路径显示 `/storage/emulated/0/XRGameNative` | 截图 |
+| 所有文件访问权限 | 点"继续"后直接打开本应用的"所有文件访问权限"页（图标与名称为 XRGame Native），打开开关后 `appops`：`MANAGE_EXTERNAL_STORAGE: allow` | 截图、adb 输出 |
+| 安装根 | 返回后 18:01:46 日志 `install root set to /storage/emulated/0/XRGameNative`；`/sdcard/XRGameNative/Steam/steamapps/common` 已创建（`u0_a109:media_rw`，`drwxrws---`） | adb `ls -la` |
+| 跳过登录 → 游戏库、"发现"页 | 游戏库空白但稳定；"发现"页先弹出上游的"游戏推荐"同意框（内容是向 GOG 分享游玩记录），点"暂不"后回到"全部"页。整个 PID 的 logcat（1249 行）中没有 `FATAL EXCEPTION` | 截图、logcat |
+
+**发现的问题**
+
+1. **提示框叠了两层（已修复，待设备复测）**：通知权限框弹出前后，MainActivity 各 resume 了一次，每次都显示一个提示框。点掉上面一层后，下面一层仍在。修复：`XrGameStorage` 记住当前对话框及其所属 activity，同一 activity 已在显示就不再弹；activity 销毁时关闭对话框；dismiss 回调只清除它自己那一个。修复后的 APK `03238d6935b881a9e5a9f32c854563b9e1346f018d638cbb5d4ac5346ed85425`（236,500,943 字节）已编译通过。需要一次全新安装才能复测，计划在 Swan 首次安装时进行，Thor 上不清数据。
+2. **界面品牌**：登录页标题仍显示 "GameNative"（WP0 记录 §6 已列入 WP2）。
+3. **上游"游戏推荐"功能**会向第三方（GOG）分享游玩记录，picoXr 应整体关闭，列入 WP2。
+
+截图、PID 20157 的 logcat 保存在仓库外的 `C:\workspace\xrgame-native-evidence\wp1-20260924\`，附 `SHA256SUMS`。截图里有当时有效的 Steam 登录 QR，因此不提交到公开仓库。
 
 ## 6. 导入方案（待设备验证）
 

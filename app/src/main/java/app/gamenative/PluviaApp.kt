@@ -105,9 +105,12 @@ class PluviaApp : SplitCompatApplication() {
             )
         }
 
-        // Preload all container files in the background
-        appScope.launch {
-            ContainerFilesDownloader.preloadAllContainerFiles(applicationContext)
+        // Preload all container files in the background.
+        // picoXr skips it: the files come from downloads.gamenative.app, which it must not use (spec C3).
+        if (!app.gamenative.xrgame.XrGame.enabled) {
+            appScope.launch {
+                ContainerFilesDownloader.preloadAllContainerFiles(applicationContext)
+            }
         }
 
         // Clear any stale temporary config overrides from previous app sessions

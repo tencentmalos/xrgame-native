@@ -567,6 +567,13 @@ androidComponents {
             variant.enable = false
         }
     }
+    // ManifestIdCorrelationTest downloads every entry of the upstream component manifest from
+    // upstream servers. picoXr must not contact them (spec C3), and XrGameEgress blocks the
+    // download inside Robolectric too, so the test cannot pass for this flavor.
+    onVariants(selector().withFlavor("androidApi" to "picoXr")) { variant ->
+        tasks.withType<Test>().matching { it.name == "test${variant.name.replaceFirstChar { c -> c.uppercase() }}UnitTest" }
+            .configureEach { filter.excludeTestsMatching("app.gamenative.utils.ManifestIdCorrelationTest") }
+    }
     // The release build type signs with the debug key for every flavor; picoXr signs with its
     // own key instead (see xrgameKeystorePropertiesFile above).
     onVariants(selector().withFlavor("androidApi" to "picoXr").withBuildType("release")) { variant ->

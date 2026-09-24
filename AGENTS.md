@@ -4,7 +4,11 @@
 
 - `xrgame-native` is a fork of [GameNative](https://github.com/utkarshdalal/GameNative) (GPL-3.0). It targets **Windows / Steam games on a Pico XR headset** (internal device "Swan": Android 16, ARM64, 4 KiB pages, Adreno 840v2 / KGSL): a 2D theater mode plus PCVR through an OpenXR bridge.
 - The current requirements are in [docs/specs/xrgame-native-v1.md](docs/specs/xrgame-native-v1.md). The route analysis behind it is in [docs/background/](docs/background/).
-- **State (2026-09-24): fork created, references added, spec v1.2 drafted with the §9 decisions recorded. No v1 work package has been implemented.** The app is still upstream GameNative @ `ebde76e9`. Specifications are requirements, not evidence of implementation.
+- **State (2026-09-24):**
+  - **WP0 is done** and merged to `malos/main`. See `docs/validation/wp0-picoxr-identity-20260924.md`.
+  - **WP1 is in progress** on `feature/malos/wp1-steam-install`. The build part is done: JavaSteam and `libgndownload` are built from source, the install root is `/sdcard/XRGameNative`, and non-Valve egress is blocked. An AYN Thor smoke test without login has been run.
+  - Still open for WP1: device acceptance (the user chose AYN Thor first) with the user's Steam test account, and the DepotDownloader cross-check. `docs/validation/wp1-steam-install-20260924.md` tracks both.
+  - The app is otherwise upstream GameNative @ `ebde76e9`. Specifications are requirements, not evidence of implementation.
 - **Order of work:**
   - WP0: repo governance plus minimal identity (applicationId/name/signing).
   - **WP1: install Steam games first.** Build JavaSteam from `references/JavaSteam` to drop the SNAPSHOT dependency, and `libgndownload` from its in-repo Rust source. Use an external-storage install root, support directory import, and cross-check files against DepotDownloader.

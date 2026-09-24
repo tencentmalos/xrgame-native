@@ -43,6 +43,11 @@ object XrGameStorage {
 
     private var accessRequestedThisProcess = false
 
+    // MainActivity resumes more than once before the notice is accepted (e.g. around the
+    // notification permission prompt); keep one dialog per activity instead of stacking them.
+    private var noticeDialog: AlertDialog? = null
+    private var noticeOwner: Activity? = null
+
     fun install(app: Application) {
         if (!XrGame.enabled) return
         app.registerActivityLifecycleCallbacks(
@@ -56,7 +61,13 @@ object XrGameStorage {
                 override fun onActivityPaused(activity: Activity) = Unit
                 override fun onActivityStopped(activity: Activity) = Unit
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-                override fun onActivityDestroyed(activity: Activity) = Unit
+                override fun onActivityDestroyed(activity: Activity) {
+                    if (noticeOwner === activity) {
+                        noticeDialog?.dismiss()
+                        noticeDialog = null
+                        noticeOwner = null
+                    }
+                }
             },
         )
     }
@@ -74,11 +85,21 @@ object XrGameStorage {
     }
 
     private fun showNotice(activity: Activity, onAccept: () -> Unit) {
-        AlertDialog.Builder(activity)
+        if (noticeOwner === activity && noticeDialog?.isShowing == true) return
+        noticeDialog?.dismiss()
+        noticeOwner = activity
+        noticeDialog = AlertDialog.Builder(activity)
             .setTitle(R.string.xrgame_notice_title)
             .setMessage(activity.getString(R.string.xrgame_notice_message, installRoot?.absolutePath))
             .setCancelable(false)
             .setPositiveButton(R.string.xrgame_notice_accept) { _, _ -> onAccept() }
+            .setOnDismissListener { dismissed ->
+                // Dismiss callbacks are posted, so an older dialog's may run after a newer one exists.
+                if (noticeDialog === dismissed) {
+                    noticeDialog = null
+                    noticeOwner = null
+                }
+            }
             .show()
     }
 
