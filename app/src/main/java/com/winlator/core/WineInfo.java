@@ -154,7 +154,10 @@ public class WineInfo implements Parcelable {
         ContentProfile wineProfile = contentsManager.getProfileByEntryName(identifier);
 
         if (wineProfile != null && (wineProfile.type == ContentProfile.ContentType.CONTENT_TYPE_WINE || wineProfile.type == ContentProfile.ContentType.CONTENT_TYPE_PROTON)) {
-            identifier = identifier.substring(0, identifier.length() - 2).toLowerCase();
+            // Callers may use the version name, type-version, or full entry name.
+            // The profile is authoritative; chopping a suffix corrupts ARM64EC
+            // names and version codes with more than one digit.
+            identifier = wineProfile.verName.toLowerCase(java.util.Locale.ROOT);
         }
 
         Matcher matcher = pattern.matcher(identifier);
@@ -171,7 +174,7 @@ public class WineInfo implements Parcelable {
             if (wineProfile != null && (wineProfile.type == ContentProfile.ContentType.CONTENT_TYPE_WINE || wineProfile.type == ContentProfile.ContentType.CONTENT_TYPE_PROTON))
                 path = contentsManager.getInstallDir(context, wineProfile).getPath();
 
-            return new WineInfo(matcher.group(1), matcher.group(2), matcher.group(4), path);
+            return new WineInfo(matcher.group(1), matcher.group(2), matcher.group(3), matcher.group(4), path);
         }
         else return new WineInfo(MAIN_WINE_VERSION.type, MAIN_WINE_VERSION.version, MAIN_WINE_VERSION.arch, null);
     }

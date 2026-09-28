@@ -1,0 +1,39 @@
+--- a/FEXCore/Source/Interface/Core/JIT/JITClass.h
++++ b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+@@ -82,6 +82,7 @@
+   // In the rare case when those assumptions are broken, FEX needs to safely restart the JIT.
+   RestartOptions RestartControl {};
+   bool RequiresFarARM64Jumps {};
++  bool CurrentBlockChecksTF {};
+   // Default to 6 instructions per SSA node.
+   uint32_t SSANodeMultiplier {24};
+ 
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -926,6 +926,7 @@
+ 
+   PendingTargetLabel = nullptr;
+   PendingCallReturnTargetLabel = nullptr;
++  CurrentBlockChecksTF = CheckTF;
+ 
+   for (auto [BlockNode, BlockHeader] : IR->GetBlocks()) {
+     auto BlockIROp = BlockHeader->CW<FEXCore::IR::IROp_CodeBlock>();
+--- a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+@@ -189,6 +189,16 @@
+     ARMEmitter::ForwardLabel SkipFullLookup;
+     auto RipReg = GetReg(Op->NewRIP);
+ 
++    if (Op->Hint == IR::BranchHint::Return && CurrentBlockChecksTF) {
++      // A cached return target was compiled without the trap check. Keep the
++      // shadow stack pop (including its guard-page check), but dispatch through TF.
++      ldp<ARMEmitter::IndexType::POST>(TMP1, TMP2, REG_CALLRET_SP, 0x10);
++      str(RipReg.X(), STATE_PTR(CpuStateFrame, State.rip));
++      ldr(TMP2, STATE_PTR(CpuStateFrame, Pointers.DispatcherLoopTop));
++      br(TMP2);
++      return;
++    }
++
+     if (Op->Hint == IR::BranchHint::Return) {
+       // First try to pop from the call-ret stack, otherwise follow the normal path (but ending in a ret)
+       ldp<ARMEmitter::IndexType::POST>(TMP1, TMP2, REG_CALLRET_SP, 0x10);

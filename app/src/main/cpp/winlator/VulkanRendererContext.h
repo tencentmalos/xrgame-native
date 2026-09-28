@@ -163,6 +163,9 @@ public:
     void setTransform(float ox, float oy, float sx, float sy);
     void updatePointerPosition(short x, short y);
     void updateWindowContent(int64_t id, void* pixels, short w, short h, short stride, int x, int y);
+    bool copyWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame);
+    bool sampleWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame);
+    bool retireSampledWindow(int64_t id);
     void updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short w, short h, int x, int y);
     void updateCursorImage(void* pixels, short w, short h, short hotX, short hotY);
     void setCursorVisible(bool visible);
@@ -188,6 +191,7 @@ public:
 
     bool verboseLog = true;
     void setVerboseLog(bool v) { verboseLog = v; }
+    void setForeignAhbOwnership(bool enabled);
     void dumpRendererInfo();
 
     std::string adrenoDriverPath;
@@ -209,6 +213,7 @@ public:
 
 private:
     struct WinTex {
+        VkFormat             format         = VK_FORMAT_B8G8R8A8_UNORM;
         VkImage              img            = VK_NULL_HANDLE;
         VkDeviceMemory       mem            = VK_NULL_HANDLE;
         VkImageView          view           = VK_NULL_HANDLE;
@@ -248,6 +253,7 @@ private:
     float activeGamma = 1.0f;
     float maxAnisotropy           = 1.0f;
     bool  cubicSupported          = false;
+    bool foreignAhbSupported = false, foreignAhbOwnership = false;
     VkPhysicalDeviceMemoryProperties memProperties{};
     VkPresentModeKHR requestedPresentMode = VK_PRESENT_MODE_FIFO_KHR;
     uint32_t graphicsQueueFamilyIndex = 0;
@@ -257,6 +263,17 @@ private:
 
     std::unordered_map<AHardwareBuffer*, WinTex>              ahbImportCache;
     std::unordered_map<int64_t, std::vector<AHardwareBuffer*>> windowAhbs;
+
+    // Host wall-clock timings, not GPU timestamps. Updated under renderMutex.
+    struct AhbCopyTiming {
+        uint64_t count = 0, totalNs = 0, lockNs = 0, fenceNs = 0, maxNs = 0, lastNs = 0;
+    };
+    std::unordered_map<int64_t, AhbCopyTiming> ahbCopyTimings;
+    struct SampledAhb { AHardwareBuffer* buffer; uint64_t frame; };
+    std::unordered_map<int64_t, SampledAhb> sampledAhbs;
+    std::atomic<bool> ahbSamplingFailed{false};
+    bool submitAhbBarriers(VkImage previous, VkImage next);
+    void traceSampleRetired(int64_t id, uint64_t frame);
 
     std::vector<WinTex>    deleteQueue;
     std::vector<RenderEntry> renderList;
@@ -423,8 +440,11 @@ private:
     void createSyncObjects();
     void cleanupSwapchain();
 
-    bool  createWinTexResources(WinTex& wt, int w, int h);
-    bool  importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb);
+    bool  createWinTexResources(WinTex& wt, int w, int h, bool staging = true,
+                               VkFormat format = VK_FORMAT_B8G8R8A8_UNORM);
+    void ahbBarrier(VkCommandBuffer cb, VkImage image, bool acquire, VkImageLayout hostLayout,
+                    VkAccessFlags hostAccess, VkPipelineStageFlags hostStage);
+    bool  importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb, bool forCopy = false);
     void  cleanupAllAHBCache();
     void  flushDeleteQueue();
     void  destroyWinTex(WinTex& wt);

@@ -118,6 +118,13 @@ Java_com_winlator_renderer_GPUImage_createHardwareBuffer(JNIEnv *env, jclass obj
     return (jlong)buffer;
 }
 
+JNIEXPORT jshort JNICALL
+Java_com_winlator_renderer_GPUImage_hardwareBufferStride(JNIEnv *env, jclass obj, jlong ptr) {
+    AHardwareBuffer_Desc desc;
+    AHardwareBuffer_describe((AHardwareBuffer*)ptr, &desc);
+    return (jshort)desc.stride;
+}
+
 // JNI method to create an EGL image
 JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_GPUImage_createImageKHR(JNIEnv *env, jclass obj, jlong hardwareBufferPtr, jint textureId) {

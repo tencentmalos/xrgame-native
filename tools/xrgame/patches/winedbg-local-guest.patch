@@ -1,0 +1,588 @@
+diff --git a/programs/winedbg/debugger.h b/programs/winedbg/debugger.h
+index f3b02e9..03caa04 100644
+--- a/programs/winedbg/debugger.h
++++ b/programs/winedbg/debugger.h
+@@ -487,6 +487,7 @@ extern enum dbg_start   dbg_active_auto(int argc, char* argv[]);
+ extern enum dbg_start   dbg_active_minidump(int argc, char* argv[]);
+ extern void             dbg_active_wait_for_first_exception(void);
+ extern BOOL             dbg_attach_debuggee(DWORD pid);
++extern BOOL             dbg_remote_breakin(HANDLE process);
+ extern void             fetch_module_name(void* name_addr, void* mod_addr, WCHAR* buffer, size_t bufsz);
+ 
+   /* tgt_minidump.c */
+diff --git a/programs/winedbg/gdbproxy.c b/programs/winedbg/gdbproxy.c
+index e937c4e..2b2514e 100644
+--- a/programs/winedbg/gdbproxy.c
++++ b/programs/winedbg/gdbproxy.c
+@@ -88,6 +88,7 @@ struct gdb_context
+     /* Unix environment */
+     ULONG_PTR                   wine_segs[3];   /* load addresses of the ELF wine exec segments (text, bss and data) */
+     BOOL                        no_ack_mode;
++    BOOL                        disconnected;
+     int                         qxfer_object_idx;
+     char                        qxfer_object_annex[QX_ANNEX_SIZE];
+     struct reply_buffer         qxfer_buffer;
+@@ -175,6 +176,64 @@ static struct gdb_xpoint *gdb_find_xpoint(struct gdb_context *gdbctx, struct dbg
+     return NULL;
+ }
+ 
++static BOOL gdb_remove_swbreak(struct gdb_context *gdbctx, struct gdb_xpoint *x)
++{
++    struct dbg_process *process = gdbctx->process;
++
++    if (!process->be_cpu->remove_Xpoint(process->handle, process->process_io,
++                                      NULL, be_xpoint_break, x->addr, x->value, 0) ||
++        !FlushInstructionCache(process->handle, x->addr, 1))
++        return FALSE;
++    list_remove(&x->entry);
++    free(x);
++    return TRUE;
++}
++
++static BOOL gdb_insert_swbreak(struct gdb_context *gdbctx, void *addr)
++{
++    struct dbg_process *process = gdbctx->process;
++    struct gdb_xpoint *x;
++
++    if (!GetEnvironmentVariableA("WINE_GDB_SOFTWARE_BREAKPOINTS", NULL, 0)) return FALSE;
++    if (gdb_find_xpoint(gdbctx, NULL, be_xpoint_break, addr, 0)) return TRUE;
++    if (!(x = calloc(1, sizeof(*x)))) return FALSE;
++    x->pid = process->pid;
++    x->type = be_xpoint_break;
++    x->addr = addr;
++    if (!process->be_cpu->insert_Xpoint(process->handle, process->process_io,
++                                      NULL, be_xpoint_break, addr, &x->value, 0))
++    {
++        free(x);
++        return FALSE;
++    }
++    list_add_head(&gdbctx->xpoint_list, &x->entry);
++    if (FlushInstructionCache(process->handle, addr, 1)) return TRUE;
++    if (!gdb_remove_swbreak(gdbctx, x))
++        ERR("Cannot roll back software breakpoint at %p\n", addr);
++    return FALSE;
++}
++
++static void gdb_adjust_swbreak_pc(struct gdb_context *gdbctx)
++{
++    struct dbg_process *process = gdbctx->process;
++    struct backend_cpu *cpu = process->be_cpu;
++    struct dbg_thread *thread;
++    void *addr = gdbctx->de.u.Exception.ExceptionRecord.ExceptionAddress;
++    ADDRESS64 pc;
++    dbg_ctx_t ctx;
++
++    if (!gdb_find_xpoint(gdbctx, NULL, be_xpoint_break, addr, 0)) return;
++    thread = dbg_get_thread(process, gdbctx->de.dwThreadId);
++    if (thread && cpu->get_context(thread->handle, &ctx) &&
++        cpu->get_addr(thread->handle, &ctx, be_cpu_addr_pc, &pc) &&
++        cpu->linearize(thread->handle, &pc) == (char *)addr + 1)
++    {
++        cpu->adjust_pc_for_break(&ctx, TRUE);
++        if (!cpu->set_context(thread->handle, &ctx))
++            ERR("Cannot restore software breakpoint PC for thread %04lx\n", thread->tid);
++    }
++}
++
+ static BOOL tgt_process_gdbproxy_read(HANDLE hProcess, const void* addr,
+                                       void* buffer, SIZE_T len, SIZE_T* rlen)
+ {
+@@ -417,7 +476,7 @@ static struct dbg_thread* dbg_thread_from_tid(struct gdb_context* gdbctx, int ti
+ static void dbg_thread_set_single_step(struct dbg_thread *thread, BOOL enable)
+ {
+     struct backend_cpu *backend;
+-    dbg_ctx_t ctx;
++    dbg_ctx_t ctx = {0}, original;
+ 
+     if (!thread) return;
+     if (!thread->process) return;
+@@ -428,7 +487,17 @@ static void dbg_thread_set_single_step(struct dbg_thread *thread, BOOL enable)
+         ERR("get_context failed for thread %04lx:%04lx\n", thread->process->pid, thread->tid);
+         return;
+     }
++    original = ctx;
+     backend->single_step(&ctx, enable);
++    /* Continuing with TF already clear must not rewrite the whole ARM64EC context. */
++    if (!memcmp(&ctx, &original, sizeof(ctx)))
++    {
++        if (GetEnvironmentVariableA("WINE_GDB_CONTROL_TRACE", NULL, 0))
++            fprintf(stderr, "gdb context unchanged tid=%04lx step=%d\n", thread->tid, enable);
++        return;
++    }
++    if (GetEnvironmentVariableA("WINE_GDB_CONTROL_TRACE", NULL, 0))
++        fprintf(stderr, "gdb context write tid=%04lx step=%d\n", thread->tid, enable);
+     if (!backend->set_context(thread->handle, &ctx))
+         ERR("set_context failed for thread %04lx:%04lx\n", thread->process->pid, thread->tid);
+ }
+@@ -521,6 +590,17 @@ static BOOL handle_exception(struct gdb_context* gdbctx, EXCEPTION_DEBUG_INFO* e
+     }
+ }
+ 
++static BOOL continue_debug_event_traced(DWORD pid, DWORD tid, DWORD reply)
++{
++    BOOL result = ContinueDebugEvent(pid, tid, reply);
++    DWORD error = result ? 0 : GetLastError();
++    if (GetEnvironmentVariableA("WINE_GDB_CONTROL_TRACE", NULL, 0))
++        fprintf(stderr, "gdb event continue pid=%04lx tid=%04lx reply=%08lx ok=%d error=%lu\n",
++                pid, tid, reply, result, error);
++    if (!result) SetLastError(error);
++    return result;
++}
++
+ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load_unload)
+ {
+     DEBUG_EVENT *de = &gdbctx->de;
+@@ -530,9 +610,10 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
+         char                bufferA[256];
+         WCHAR               buffer[256];
+     } u;
+-    DWORD size;
++    DWORD size, instruction;
++    SIZE_T read;
+ 
+-    gdbctx->exec_tid = de->dwThreadId;
++    gdbctx->exec_tid = -1;
+     gdbctx->other_tid = de->dwThreadId;
+     gdbctx->de_reply = DBG_REPLY_LATER;
+ 
+@@ -599,8 +680,20 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
+         TRACE("%04lx:%04lx: exception code=0x%08lx\n", de->dwProcessId,
+               de->dwThreadId, de->u.Exception.ExceptionRecord.ExceptionCode);
+ 
++        if (de->u.Exception.dwFirstChance && GetEnvironmentVariableA("WINE_GDB_FEX_EXCEPTIONS", NULL, 0) &&
++            (de->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_ACCESS_VIOLATION ||
++             (de->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION &&
++              ReadProcessMemory(gdbctx->process->handle, de->u.Exception.ExceptionRecord.ExceptionAddress,
++                                &instruction, sizeof(instruction), &read) && read == sizeof(instruction) &&
++              (instruction == 0xd4395fc0 || instruction == 0xd4200000))))
++        {
++            gdbctx->de_reply = DBG_EXCEPTION_NOT_HANDLED;
++            return TRUE;
++        }
+         if (handle_exception(gdbctx, &de->u.Exception))
+             return TRUE;
++        if (de->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_BREAKPOINT)
++            gdb_adjust_swbreak_pc(gdbctx);
+         break;
+ 
+     case CREATE_THREAD_DEBUG_EVENT:
+@@ -648,7 +741,15 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
+ 
+     LIST_FOR_EACH_ENTRY(thread, &gdbctx->process->threads, struct dbg_thread, entry)
+     {
+-        if (!thread->suspended) SuspendThread(thread->handle);
++        if (!thread->suspended)
++        {
++            DWORD count = SuspendThread(thread->handle);
++            if (GetEnvironmentVariableA("WINE_GDB_CONTROL_TRACE", NULL, 0))
++                fprintf(stderr, "gdb suspend tid=%04lx count=%lu event=%lu code=%08lx first=%lu\n",
++                        thread->tid, count, de->dwDebugEventCode,
++                        de->u.Exception.ExceptionRecord.ExceptionCode, de->u.Exception.dwFirstChance);
++            if (count == (DWORD)-1) continue;
++        }
+         thread->suspended = TRUE;
+     }
+ 
+@@ -671,11 +772,16 @@ static void handle_step_or_continue(struct gdb_context* gdbctx, int tid, BOOL st
+             gdbctx->de_reply = (sig == -1 ? DBG_CONTINUE : DBG_EXCEPTION_NOT_HANDLED);
+ 
+         dbg_thread_set_single_step(thread, step);
+-        ResumeThread(thread->handle);
++        {
++            DWORD count = ResumeThread(thread->handle);
++            if (GetEnvironmentVariableA("WINE_GDB_CONTROL_TRACE", NULL, 0))
++                fprintf(stderr, "gdb resume tid=%04lx step=%d count=%lu reply=%08lx\n",
++                        thread->tid, step, count, gdbctx->de_reply);
++        }
+     }
+ }
+ 
+-static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
++static int	check_for_interrupt(struct gdb_context* gdbctx)
+ {
+ 	char pkt;
+         fd_set read_fds;
+@@ -688,7 +794,7 @@ static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
+         {
+             if (recv(gdbctx->sock, &pkt, 1, 0) != 1) {
+                 ERR("read failed\n");
+-                return FALSE;
++                return -1;
+             }
+             if (pkt != '\003') {
+                 ERR("Unexpected break packet %#02x\n", pkt);
+@@ -701,8 +807,9 @@ static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
+ 
+ static void    wait_for_debuggee(struct gdb_context* gdbctx)
+ {
++    int interrupt;
+     if (gdbctx->de.dwDebugEventCode)
+-        ContinueDebugEvent(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId, gdbctx->de_reply);
++        continue_debug_event_traced(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId, gdbctx->de_reply);
+ 
+     for (;;)
+     {
+@@ -710,8 +817,13 @@ static void    wait_for_debuggee(struct gdb_context* gdbctx)
+ 		{
+ 			if (GetLastError() == ERROR_SEM_TIMEOUT)
+ 			{
+-				if (check_for_interrupt(gdbctx)) {
+-					if (!DebugBreakProcess(gdbctx->process->handle)) {
++				interrupt = check_for_interrupt(gdbctx);
++				if (interrupt < 0) {
++					gdbctx->disconnected = TRUE;
++					return;
++				}
++				if (interrupt) {
++					if (!dbg_remote_breakin(gdbctx->process->handle)) {
+ 						ERR("Failed to break into debuggee\n");
+ 						break;
+ 					}
+@@ -725,21 +837,33 @@ static void    wait_for_debuggee(struct gdb_context* gdbctx)
+ 		}
+         if (!handle_debug_event(gdbctx, TRUE))
+             break;
+-        ContinueDebugEvent(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId, DBG_CONTINUE);
++        continue_debug_event_traced(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId,
++                           gdbctx->de_reply == DBG_EXCEPTION_NOT_HANDLED ? DBG_EXCEPTION_NOT_HANDLED : DBG_CONTINUE);
+     }
+ }
+ 
+-static void detach_debuggee(struct gdb_context* gdbctx, BOOL kill)
++static BOOL detach_debuggee(struct gdb_context* gdbctx, BOOL kill)
+ {
++    struct gdb_xpoint *x, *next;
++
++    if (!gdbctx->process) return TRUE;
++    LIST_FOR_EACH_ENTRY_SAFE(x, next, &gdbctx->xpoint_list, struct gdb_xpoint, entry)
++    {
++        if (x->type == be_xpoint_break && !gdb_remove_swbreak(gdbctx, x))
++        {
++            ERR("Cannot detach: software breakpoint restoration failed\n");
++            return FALSE;
++        }
++    }
+     handle_step_or_continue(gdbctx, -1, FALSE, -1);
+ 
+     if (gdbctx->de.dwDebugEventCode)
+-        ContinueDebugEvent(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId, DBG_CONTINUE);
++        continue_debug_event_traced(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId, DBG_CONTINUE);
+ 
+-    if (!kill)
+-        DebugActiveProcessStop(gdbctx->process->pid);
++    if (!kill && !DebugActiveProcessStop(gdbctx->process->pid)) return FALSE;
+     dbg_del_process(gdbctx->process);
+     gdbctx->process = NULL;
++    return TRUE;
+ }
+ 
+ static void get_process_info(struct gdb_context* gdbctx, char* buffer, size_t len)
+@@ -1029,6 +1153,11 @@ static enum packet_return packet_reply_status(struct gdb_context* gdbctx)
+     dbg_ctx_t ctx;
+     size_t i;
+ 
++    if (gdbctx->disconnected)
++    {
++        detach_debuggee(gdbctx, FALSE);
++        return packet_done | packet_last_f;
++    }
+     switch (gdbctx->de.dwDebugEventCode)
+     {
+     default:
+@@ -1191,7 +1320,13 @@ static enum packet_return packet_delete_breakpoint(struct gdb_context* gdbctx)
+         return packet_error;
+ 
+     if (type == '0')
+-        return packet_error;
++    {
++        if (size != 1 || (cpu->machine != IMAGE_FILE_MACHINE_AMD64 && cpu->machine != IMAGE_FILE_MACHINE_I386))
++            return packet_reply_error(gdbctx, HOST_EINVAL);
++        x = gdb_find_xpoint(gdbctx, NULL, be_xpoint_break, addr, 0);
++        if (x && !gdb_remove_swbreak(gdbctx, x)) return packet_reply_error(gdbctx, HOST_EFAULT);
++        return packet_ok;
++    }
+ 
+     LIST_FOR_EACH_ENTRY(thread, &process->threads, struct dbg_thread, entry)
+     {
+@@ -1239,7 +1374,11 @@ static enum packet_return packet_insert_breakpoint(struct gdb_context* gdbctx)
+         return packet_error;
+ 
+     if (type == '0')
+-        return packet_error;
++    {
++        if (size != 1 || (cpu->machine != IMAGE_FILE_MACHINE_AMD64 && cpu->machine != IMAGE_FILE_MACHINE_I386))
++            return packet_reply_error(gdbctx, HOST_EINVAL);
++        return gdb_insert_swbreak(gdbctx, addr) ? packet_ok : packet_reply_error(gdbctx, HOST_EFAULT);
++    }
+ 
+     LIST_FOR_EACH_ENTRY(thread, &process->threads, struct dbg_thread, entry)
+     {
+@@ -1259,7 +1398,7 @@ static enum packet_return packet_insert_breakpoint(struct gdb_context* gdbctx)
+ 
+ static enum packet_return packet_detach(struct gdb_context* gdbctx)
+ {
+-    detach_debuggee(gdbctx, FALSE);
++    if (!detach_debuggee(gdbctx, FALSE)) return packet_reply_error(gdbctx, HOST_EFAULT);
+     return packet_ok | packet_last_f;
+ }
+ 
+@@ -2109,7 +2248,7 @@ static enum packet_return packet_query(struct gdb_context* gdbctx)
+             size_t i;
+ 
+             packet_reply_open(gdbctx);
+-            packet_reply_add(gdbctx, "QStartNoAckMode+;");
++            packet_reply_add(gdbctx, "QStartNoAckMode+;vContSupported+;");
+             for (i = 0; i < ARRAY_SIZE(qxfer_handlers); i++)
+             {
+                 packet_reply_add(gdbctx, "qXfer:");
+@@ -2227,7 +2366,7 @@ static enum packet_return packet_step(struct gdb_context* gdbctx)
+     if (sscanf(gdbctx->in_packet, "%p", &addr) == 1)
+         FIXME("Continue at address %p not supported\n", addr);
+ 
+-    handle_step_or_continue(gdbctx, gdbctx->exec_tid, TRUE, -1);
++    handle_step_or_continue(gdbctx, gdbctx->exec_tid == -1 ? gdbctx->de.dwThreadId : gdbctx->exec_tid, TRUE, -1);
+ 
+     wait_for_debuggee(gdbctx);
+     return packet_reply_status(gdbctx);
+@@ -2287,6 +2426,21 @@ static BOOL extract_packets(struct gdb_context* gdbctx)
+     unsigned int cksum;
+     int i, len;
+ 
++    while (gdbctx->in_len && (*sum == '+' || *sum == '-' || *sum == '\003'))
++    {
++        if (*sum == '\003')
++        {
++            packet_reply_status(gdbctx);
++            send(gdbctx->sock, (char *)gdbctx->out_buf.base, gdbctx->out_buf.len, 0);
++            reply_buffer_clear(&gdbctx->out_buf);
++        }
++        sum++;
++        gdbctx->in_len--;
++    }
++    memmove(gdbctx->in_buf, sum, gdbctx->in_len);
++    sum = gdbctx->in_buf;
++    end = sum + gdbctx->in_len;
++
+     /* ptr points to the beginning ('$') of the current packet
+      * sum points to the beginning ('#') of the current packet checksum ("#xx")
+      * len is the length of the current packet data (sum - ptr - 1)
+@@ -2343,6 +2497,7 @@ static BOOL extract_packets(struct gdb_context* gdbctx)
+             else if (((ret = (packet_entries[i].handler)(gdbctx)) & ~packet_last_f) == packet_error)
+                 WARN("Failed: %s\n", debugstr_an(ptr + 1, len));
+ 
++            if (gdbctx->disconnected) return TRUE;
+             switch (ret & ~packet_last_f)
+             {
+             case packet_error:  packet_reply(gdbctx, ""); break;
+@@ -2458,7 +2613,7 @@ static BOOL gdb_startup(struct gdb_context* gdbctx, unsigned flags, unsigned por
+     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+ 
+     s_addrs.sin_family = AF_INET;
+-    s_addrs.sin_addr.S_un.S_addr = INADDR_ANY;
++    s_addrs.sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
+     s_addrs.sin_port = htons(port);
+     if (bind(sock, (struct sockaddr *)&s_addrs, sizeof(s_addrs)) == -1)
+         goto cleanup;
+@@ -2518,6 +2673,7 @@ static BOOL gdb_init_context(struct gdb_context* gdbctx, unsigned flags, unsigne
+     list_init(&gdbctx->xpoint_list);
+     gdbctx->process = NULL;
+     gdbctx->no_ack_mode = FALSE;
++    gdbctx->disconnected = FALSE;
+     for (i = 0; i < ARRAY_SIZE(gdbctx->wine_segs); i++)
+         gdbctx->wine_segs[i] = 0;
+ 
+@@ -2538,7 +2694,8 @@ static BOOL gdb_init_context(struct gdb_context* gdbctx, unsigned flags, unsigne
+         }
+         else if (!handle_debug_event(gdbctx, FALSE))
+             break;
+-        ContinueDebugEvent(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId, DBG_CONTINUE);
++        continue_debug_event_traced(gdbctx->de.dwProcessId, gdbctx->de.dwThreadId,
++                           gdbctx->de_reply == DBG_EXCEPTION_NOT_HANDLED ? DBG_EXCEPTION_NOT_HANDLED : DBG_CONTINUE);
+     }
+     return TRUE;
+ }
+@@ -2547,6 +2704,7 @@ static int gdb_remote(unsigned flags, unsigned port)
+ {
+     struct gdb_context  gdbctx;
+ 
++    DebugSetProcessKillOnExit(FALSE);
+     if (!gdb_init_context(&gdbctx, flags, port)) return 0;
+     /* don't handle ctrl-c, but let gdb do the job */
+     SetConsoleCtrlHandler(NULL, TRUE);
+@@ -2559,13 +2717,16 @@ static int gdb_remote(unsigned flags, unsigned port)
+         FD_SET( gdbctx.sock, &read_fds );
+         FD_SET( gdbctx.sock, &err_fds );
+ 
+-        if (select( 0, &read_fds, NULL, &err_fds, NULL ) == -1) break;
++        if (select( 0, &read_fds, NULL, &err_fds, NULL ) == -1)
++        {
++            detach_debuggee(&gdbctx, FALSE);
++            break;
++        }
+ 
+         if (FD_ISSET( gdbctx.sock, &err_fds ))
+         {
+             ERR("gdb hung up\n");
+-            /* kill also debuggee process - questionnable - */
+-            detach_debuggee(&gdbctx, TRUE);
++            detach_debuggee(&gdbctx, FALSE);
+             break;
+         }
+         if (FD_ISSET( gdbctx.sock, &read_fds ))
+@@ -2574,6 +2735,11 @@ static int gdb_remote(unsigned flags, unsigned port)
+             {
+                 if (extract_packets(&gdbctx)) break;
+             }
++            else
++            {
++                detach_debuggee(&gdbctx, FALSE);
++                break;
++            }
+         }
+     }
+     /* wait for gdb to terminate */
+diff --git a/programs/winedbg/tgt_active.c b/programs/winedbg/tgt_active.c
+index a8be58d..09edf70 100644
+--- a/programs/winedbg/tgt_active.c
++++ b/programs/winedbg/tgt_active.c
+@@ -61,6 +61,131 @@ static void dbg_init_current_thread(void* start)
+ 
+ static unsigned dbg_handle_debug_event(DEBUG_EVENT* de);
+ 
++static void *remote_breakin_address(HANDLE process)
++{
++    HMODULE modules[256];
++    DWORD needed, i, j, name_rva, function_rva;
++    WORD ordinal;
++    char name[64];
++    BYTE *base;
++    IMAGE_DOS_HEADER dos;
++    IMAGE_NT_HEADERS64 nt;
++    IMAGE_DATA_DIRECTORY dir;
++    IMAGE_EXPORT_DIRECTORY exports;
++    SIZE_T read;
++
++    if (!EnumProcessModulesEx(process, modules, sizeof(modules), &needed, LIST_MODULES_ALL) ||
++        needed > sizeof(modules)) return NULL;
++    for (i = 0; i < needed / sizeof(modules[0]); i++)
++    {
++        if (!GetModuleBaseNameA(process, modules[i], name, sizeof(name)) ||
++            stricmp(name, "ntdll.dll")) continue;
++        base = (BYTE *)modules[i];
++        if (!ReadProcessMemory(process, base, &dos, sizeof(dos), &read) || read != sizeof(dos) ||
++            dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < 0 || dos.e_lfanew > 0x100000 ||
++            !ReadProcessMemory(process, base + dos.e_lfanew, &nt, sizeof(nt), &read) || read != sizeof(nt) ||
++            nt.Signature != IMAGE_NT_SIGNATURE || nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
++            return NULL;
++        dir = nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
++        if (!dir.VirtualAddress || dir.Size < sizeof(exports) ||
++            (ULONGLONG)dir.VirtualAddress + dir.Size > nt.OptionalHeader.SizeOfImage ||
++            !ReadProcessMemory(process, base + dir.VirtualAddress, &exports, sizeof(exports), &read) ||
++            read != sizeof(exports) || exports.NumberOfNames > 65536 || exports.NumberOfFunctions > 65536 ||
++            (ULONGLONG)exports.AddressOfNames + exports.NumberOfNames * sizeof(DWORD) > nt.OptionalHeader.SizeOfImage ||
++            (ULONGLONG)exports.AddressOfNameOrdinals + exports.NumberOfNames * sizeof(WORD) > nt.OptionalHeader.SizeOfImage ||
++            (ULONGLONG)exports.AddressOfFunctions + exports.NumberOfFunctions * sizeof(DWORD) > nt.OptionalHeader.SizeOfImage)
++            return NULL;
++        for (j = 0; j < exports.NumberOfNames; j++)
++        {
++            if (!ReadProcessMemory(process, base + exports.AddressOfNames + j * sizeof(DWORD),
++                                   &name_rva, sizeof(name_rva), &read) || read != sizeof(name_rva) ||
++                (ULONGLONG)name_rva + sizeof(name) > nt.OptionalHeader.SizeOfImage ||
++                !ReadProcessMemory(process, base + name_rva, name, sizeof(name), &read) || read != sizeof(name))
++                return NULL;
++            if (memcmp(name, "DbgUiRemoteBreakin", sizeof("DbgUiRemoteBreakin"))) continue;
++            if (!ReadProcessMemory(process, base + exports.AddressOfNameOrdinals + j * sizeof(WORD),
++                                   &ordinal, sizeof(ordinal), &read) || read != sizeof(ordinal) ||
++                ordinal >= exports.NumberOfFunctions ||
++                !ReadProcessMemory(process, base + exports.AddressOfFunctions + ordinal * sizeof(DWORD),
++                                   &function_rva, sizeof(function_rva), &read) || read != sizeof(function_rva) ||
++                !function_rva || function_rva >= nt.OptionalHeader.SizeOfImage ||
++                (function_rva >= dir.VirtualAddress && function_rva < dir.VirtualAddress + dir.Size))
++                return NULL;
++            return base + function_rva;
++        }
++        return NULL;
++    }
++    return NULL;
++}
++
++BOOL dbg_remote_breakin(HANDLE process)
++{
++    HANDLE thread;
++    void *address;
++
++    if (!GetEnvironmentVariableA("WINE_GDB_REMOTE_NTDLL_BREAKIN", NULL, 0))
++        return DebugBreakProcess(process);
++    if (!(address = remote_breakin_address(process)))
++    {
++        SetLastError(ERROR_PROC_NOT_FOUND);
++        return FALSE;
++    }
++    thread = CreateRemoteThread(process, NULL, 0, (LPTHREAD_START_ROUTINE)address, NULL, 0, NULL);
++    if (!thread) return FALSE;
++    CloseHandle(thread);
++    return TRUE;
++}
++
++static BOOL attach_remote_debuggee(DWORD pid)
++{
++    HANDLE process;
++    NTSTATUS status;
++    BOOL result;
++    char expected_pid[32], *end;
++    DWORD expected, expected_length;
++    int unix_pid;
++
++    if (!GetEnvironmentVariableA("WINE_GDB_REMOTE_NTDLL_BREAKIN", NULL, 0))
++        return DebugActiveProcess(pid);
++    if ((status = DbgUiConnectToDbg()))
++    {
++        SetLastError(RtlNtStatusToDosError(status));
++        return FALSE;
++    }
++    if (!(process = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid))) return FALSE;
++    expected_length = GetEnvironmentVariableA("WINE_GDB_EXPECT_UNIX_PID", expected_pid, sizeof(expected_pid));
++    if (expected_length)
++    {
++        if (expected_length >= sizeof(expected_pid))
++        {
++            CloseHandle(process);
++            SetLastError(ERROR_INVALID_PARAMETER);
++            return FALSE;
++        }
++        expected = strtoul(expected_pid, &end, 10);
++        if (!expected || *end ||
++            NtQueryInformationProcess(process, ProcessWineUnixPid, &unix_pid, sizeof(unix_pid), NULL) ||
++            unix_pid != expected)
++        {
++            CloseHandle(process);
++            SetLastError(ERROR_INVALID_PARAMETER);
++            return FALSE;
++        }
++        fprintf(stderr, "Verified Wine pid %lu -> Unix pid %d\n", pid, unix_pid);
++    }
++    DebugSetProcessKillOnExit(FALSE);
++    status = NtDebugActiveProcess(process, DbgUiGetThreadDebugObject());
++    if (status)
++    {
++        SetLastError(RtlNtStatusToDosError(status));
++        result = FALSE;
++    }
++    else if (!(result = dbg_remote_breakin(process)))
++        DbgUiStopDebugging(process);
++    CloseHandle(process);
++    return result;
++}
++
+ /******************************************************************
+  *		dbg_attach_debuggee
+  *
+@@ -84,7 +209,7 @@ BOOL dbg_attach_debuggee(DWORD pid)
+     }
+     if (!(dbg_curr_process = dbg_add_process(&be_process_active_io, pid, 0))) return FALSE;
+ 
+-    if (!DebugActiveProcess(pid))
++    if (!attach_remote_debuggee(pid))
+     {
+         dbg_printf("Can't attach process %04lx: error %lu\n", pid, GetLastError());
+         dbg_del_process(dbg_curr_process);

@@ -1699,7 +1699,7 @@ fun PluviaMain(
                                     message = context.getString(R.string.main_recent_crash_message),
                                     confirmBtnText = context.getString(R.string.ok),
                                 )
-                            } else if (!(PrefManager.tipped || BuildConfig.GOLD) &&
+                            } else if (!BuildConfig.XRGAME && !(PrefManager.tipped || BuildConfig.GOLD) &&
                                 PrefManager.hasAttemptedGameLaunch &&
                                 !MainViewModel.gamePlayedThisSession &&
                                 System.currentTimeMillis() - PrefManager.lastLaunchPitchTime >= LAUNCH_PITCH_COOLDOWN_MS
@@ -1955,12 +1955,15 @@ fun preLaunchApp(
     bootToContainer: Boolean = false,
 ) {
     setLoadingDialogVisible(true)
+    app.gamenative.xrgame.XrGameProfiler.mark("launch.request");
     // TODO: add a way to cancel
     // TODO: add fail conditions
 
     val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
 
     CoroutineScope(Dispatchers.IO).launch {
+        val xrLaunchProfile = app.gamenative.xrgame.XrGameProfiler.region("launch.preparation")
+        try {
         if (LaunchReadiness.pending) {
             setLoadingDialogVisible(false)
             (context as? Activity)?.let { LaunchReadiness.resolve(it) }
@@ -2047,7 +2050,7 @@ fun preLaunchApp(
         // references but that aren't installed yet — all sources, including custom games
         try {
             val configJson = Json.parseToJsonElement(container.containerJson).jsonObject
-            val missingRequests = BestConfigService.resolveMissingManifestInstallRequests(
+            val missingRequests = if (BuildConfig.XRGAME) emptyList() else BestConfigService.resolveMissingManifestInstallRequests(
                 context, configJson, "exact_gpu_match",
             )
             for (request in missingRequests) {
@@ -2118,7 +2121,7 @@ fun preLaunchApp(
                 ).await()
             }
 
-            if (!container.isUseLegacyDRM && !container.isLaunchRealSteam &&
+            if (!BuildConfig.XRGAME && !container.isUseLegacyDRM && !container.isLaunchRealSteam &&
                 !SteamService.isFileInstallable(context, "experimental-drm-20260116.tzst")
             ) {
                 setLoadingMessage("Downloading extras")
@@ -2862,5 +2865,6 @@ fun preLaunchApp(
             SyncResult.Success,
             -> onSuccess(context, appId)
         }
+        } finally { xrLaunchProfile.close() }
     }
 }

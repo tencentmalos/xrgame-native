@@ -1334,7 +1334,7 @@ object PrefManager {
     // Show game recommendations in library
     private val SHOW_RECOMMENDATIONS = booleanPreferencesKey("show_recommendations")
     var showRecommendations: Boolean
-        get() = getPref(SHOW_RECOMMENDATIONS, true)
+        get() = !BuildConfig.XRGAME && getPref(SHOW_RECOMMENDATIONS, true)
         set(value) {
             setPref(SHOW_RECOMMENDATIONS, value)
         }

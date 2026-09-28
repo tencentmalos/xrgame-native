@@ -345,6 +345,7 @@ public class ContainerManager {
     }
 
     private boolean extractContainerPatternCommonArchive(File containerDir, OnExtractFileListener onExtractFileListener) {
+        if (app.gamenative.BuildConfig.XRGAME) return true;
         Log.d("Extraction", "extracting container_pattern_common.tzst");
         File componentFile = ContainerFilesDownloaderKt.ensureContainerFileAvailableBlocking(context, "container_pattern_common", new ProgressCallback() {
             @Override
@@ -363,6 +364,25 @@ public class ContainerManager {
     }
 
     public boolean extractContainerPatternFile(String wineVersion, ContentsManager contentsManager, File containerDir, OnExtractFileListener onExtractFileListener) {
+        if (app.gamenative.BuildConfig.XRGAME) {
+            // Wine populates its own system files on first boot. Seed valid
+            // registry headers before the app writes container preferences.
+            for (String path : new String[]{".wine/drive_c/windows/system32", ".wine/drive_c/windows/syswow64", ".wine/dosdevices"}) {
+                File directory = new File(containerDir, path);
+                if (!directory.isDirectory() && !directory.mkdirs()) return false;
+            }
+            try {
+                for (String name : new String[]{"system.reg", "user.reg", "userdef.reg"}) {
+                    File registry = new File(containerDir, ".wine/" + name);
+                    if (!registry.exists()) java.nio.file.Files.write(registry.toPath(),
+                            "WINE REGISTRY Version 2\n\n#arch=win64\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            } catch (java.io.IOException e) {
+                Log.e("ContainerManager", "Cannot initialize XRGame registry", e);
+                return false;
+            }
+            return true;
+        }
         WineInfo wineInfo = WineInfo.fromIdentifier(context, contentsManager, wineVersion);
         if (WineInfo.isMainWineVersion(wineVersion)) {
             Log.d("Extraction", "extracting container_pattern_gamenative.tzst");

@@ -39,12 +39,17 @@ jobs:
       NDK_VERSION: '27.3.13750724'
 
     steps:
-      # Only references/JavaSteam is needed (spec WP1-1); the other references and the app's
-      # native submodules are not built into the APK.
+      # Only the pinned submodules used by the APK are initialized here.
       - name: Check out
         uses: actions/checkout@v4
-      - name: Check out references/JavaSteam
-        run: git submodule update --init references/JavaSteam
+      - name: Check out source dependencies
+        run: |
+          git submodule update --init references/JavaSteam
+          git submodule update --init --recursive app/src/main/cpp/extras/adrenotools app/src/main/cpp/lsfg-vk-android
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslang-tools autoconf automake libtool autopoint intltool libltdl-dev zstd
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -56,8 +61,16 @@ jobs:
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target aarch64-linux-android
           rustup default "$RUST_TOOLCHAIN"
           cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked
-      - name: Install NDK
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+      - name: Install NDK and CMake
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" "cmake;3.22.1" > /dev/null
+      - name: Build Android PulseAudio from source
+        timeout-minutes: 20
+        run: |
+          runtime_root="$RUNNER_TEMP/xrgame-native"
+          mkdir -p "$runtime_root/toolchains" build/xrgame-runtime
+          ln -s "$ANDROID_HOME/ndk/$NDK_VERSION" "$runtime_root/toolchains/android-ndk-r27d"
+          XRGAME_BUILD_ROOT="$runtime_root" bash tools/xrgame/build-pulseaudio.sh
+          cp -a "$runtime_root/output/pulseaudio" build/xrgame-runtime/
       # The secrets-gradle-plugin (2.0.1) fails configuration when local.properties is missing.
       # Nothing in the build needs its values, so an empty file is enough; no secrets are written.
       - name: Create empty local.properties
@@ -72,6 +85,8 @@ jobs:
       - name: Assemble picoXr debug
         timeout-minutes: 45
         run: ./gradlew --console=plain :app:assemblePicoXrDebug
+      - name: Audit native libraries and assets
+        run: python3 tools/audit-apk app/build/outputs/apk/picoXr/debug/app-picoXr-debug.apk --output build/xrgame-apk-audit.json
       # Printed to the log as well, because job summaries are not readable through the API.
       - name: Record APK identity
         run: |

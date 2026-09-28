@@ -1,6 +1,7 @@
 package app.gamenative.steam.curated
 
 import androidx.annotation.VisibleForTesting
+import app.gamenative.BuildConfig
 import app.gamenative.utils.Net
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +32,7 @@ internal object CuratedListRemoteSource {
         val appIds: List<Int>,
     )
 
-    suspend fun fetch(): Set<Int>? = fetch(Net.http, listUrl)
+    suspend fun fetch(): Set<Int>? = if (BuildConfig.XRGAME) null else fetch(Net.http, listUrl)
 
     @VisibleForTesting
     internal suspend fun fetch(client: Call.Factory, url: HttpUrl): Set<Int>? =

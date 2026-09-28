@@ -1,0 +1,18 @@
+diff --git a/FEXCore/include/FEXCore/Utils/TypeDefines.h b/FEXCore/include/FEXCore/Utils/TypeDefines.h
+--- a/FEXCore/include/FEXCore/Utils/TypeDefines.h
++++ b/FEXCore/include/FEXCore/Utils/TypeDefines.h
+@@ -20,7 +20,14 @@ constexpr size_t FEX_PAGE_MASK = ~(FEX_PAGE_SIZE - 1);
+ // the JIT emits, and aligning to 65536 pushes it to exactly 65536 -- past the limit. A 64k-page
+ // host therefore needs the JIT store rewritten to a register-offset form, which is a separate
+ // change; SetHostPageSize rejects such a host at runtime instead of miscompiling silently.
++#ifdef _WIN32
++// XRGame v1 Wine modules target 4 KiB Android hosts. LLVM's Windows ABI limits
++// explicit alignment to 8192, so the Android embedder's 16 KiB struct cannot be
++// used here. Keep the native Android embedder's page support unchanged.
++constexpr size_t FEX_MAX_HOST_PAGE_SIZE = 4096;
++#else
+ constexpr size_t FEX_MAX_HOST_PAGE_SIZE = 16384;
++#endif
+ 
+ // The page size of the *host* kernel, which is distinct from FEX_PAGE_SIZE above.
+ //

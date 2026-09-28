@@ -77,13 +77,17 @@ static SDL_JoystickID vjoy_instances[MAX_GAMEPADS];
 static size_t g_shm_map_size = 0;
 static int g_is_wine = 0;
 
+#ifndef EVSHIM_DEFAULT_BASE_PATH
+#define EVSHIM_DEFAULT_BASE_PATH "/data/data/app.gamenative/files"
+#endif
+
 static void build_gamepad_dir(char *out, size_t size)
 {
     const char *base = getenv("EVSHIM_BASE_PATH");
 
     // fallback
     if (!base || !*base) {
-        base = "/data/data/app.gamenative/files";
+        base = EVSHIM_DEFAULT_BASE_PATH;
     }
 
     snprintf(out, size, "%s/gamepad_shm", base);
@@ -370,6 +374,9 @@ static void *vjoy_updater(void *arg)
 static void initialize_wine(int players)
 {
     sdl_handle = dlopen("libSDL2-2.0.so.0", RTLD_LAZY | RTLD_GLOBAL);
+    // Bionic Proton's winebus uses the unversioned Android SONAME. Share that
+    // same SDL instance; the glibc image keeps the versioned name above.
+    if (!sdl_handle) sdl_handle = dlopen("libSDL2-2.0.so", RTLD_LAZY | RTLD_GLOBAL);
     if (!sdl_handle) { LOGE("dlopen SDL failed: %s\n", dlerror()); return; }
 
     GETFUNCPTR(SDL_Init);  GETFUNCPTR(SDL_GetError);

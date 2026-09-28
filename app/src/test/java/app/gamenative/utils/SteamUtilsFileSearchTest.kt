@@ -57,7 +57,17 @@ class SteamUtilsFileSearchTest {
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
+        val application = ApplicationProvider.getApplicationContext<Context>()
+        // File-search tests need distinctive bytes, not executable DLLs in the APK.
+        val assets = io.mockk.mockk<android.content.res.AssetManager>()
+        every { assets.open(any()) } answers {
+            val name = firstArg<String>()
+            if (name.startsWith("steampipe/")) "test fixture: $name".byteInputStream()
+            else application.assets.open(name)
+        }
+        context = object : android.content.ContextWrapper(application) {
+            override fun getAssets() = assets
+        }
         tempDir = File.createTempFile("steam_utils_test_", null)
         tempDir.delete()
         tempDir.mkdirs()

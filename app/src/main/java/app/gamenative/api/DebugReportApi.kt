@@ -32,6 +32,7 @@ object DebugReportApi {
         perfFile: File? = null,
         logcatFile: File? = null,
     ): SubmitResult = withContext(Dispatchers.IO) {
+        if (app.gamenative.BuildConfig.XRGAME) return@withContext SubmitResult.Failure("Debug report upload is disabled in XRGame Native")
         try {
             val headerString = header.toString()
             val bodyBuilder = MultipartBody.Builder()

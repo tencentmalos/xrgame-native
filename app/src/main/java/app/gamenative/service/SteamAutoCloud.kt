@@ -2,6 +2,9 @@ package app.gamenative.service
 
 import androidx.room.withTransaction
 import app.gamenative.PrefManager
+import app.gamenative.BuildConfig
+import app.gamenative.xrgame.XrGameEgress
+import app.gamenative.xrgame.XrGameCloudFiles
 import app.gamenative.R
 import app.gamenative.data.PostSyncInfo
 import app.gamenative.data.SaveFilePattern
@@ -154,6 +157,8 @@ object SteamAutoCloud {
         overrideLocalChangeNumber: Long? = null,
         onProgress: ((message: String, progress: Float) -> Unit)? = null,
     ): Deferred<PostSyncInfo?> = parentScope.asyncIsolated {
+        val xrCloudProfile = app.gamenative.xrgame.XrGameProfiler.region("steam.cloud.sync")
+        try {
         val postSyncInfo: PostSyncInfo?
 
         Timber.i("Retrieving save files of ${appInfo.name}")
@@ -368,6 +373,7 @@ object SteamAutoCloud {
                     ).collect(Collectors.toList())
                     val files = buildList {
                         for (path in filePaths) {
+                            if (BuildConfig.XRGAME && XrGameCloudFiles.isStagingFile(path)) continue
                             val hashLookup = getCachedShaOrHash(
                                 appId = appInfo.id,
                                 path = path,
@@ -416,6 +422,7 @@ object SteamAutoCloud {
             ).collect(Collectors.toList())
             val files = buildList {
                 for (path in steamUserDataPaths) {
+                    if (BuildConfig.XRGAME && XrGameCloudFiles.isStagingFile(path)) continue
                     val hashLookup = getCachedShaOrHash(
                         appId = appInfo.id,
                         path = path,
@@ -697,7 +704,8 @@ object SteamAutoCloud {
                                 .addHeader("user-agent", "Valve/Steam HTTP Client 1.0")
                                 .build()
 
-                            val httpClient = steamInstance.steamClient!!.configuration.httpClient
+                            val baseClient = steamInstance.steamClient!!.configuration.httpClient
+                            val httpClient = if (BuildConfig.XRGAME) XrGameEgress.steamCloudClient(baseClient, httpUrl) else baseClient
 
                             Timber.i("Sending request to ${request.url} using\n$request")
 
@@ -1150,6 +1158,7 @@ object SteamAutoCloud {
         }
 
         postSyncInfo
+        } finally { xrCloudProfile.close() }
     }
 
     private suspend fun downloadSingleFile(
@@ -1209,7 +1218,8 @@ object SteamAutoCloud {
 
         val response = try {
             withTimeout(SteamService.requestTimeout) {
-                httpClient.newCall(request).execute()
+                val client = if (BuildConfig.XRGAME) XrGameEgress.steamCloudClient(httpClient, httpUrl) else httpClient
+                client.newCall(request).execute()
             }
         } catch (e: TimeoutCancellationException) {
             Timber.w(e, "Timed out downloading %s", actualFilePath)
@@ -1232,13 +1242,18 @@ object SteamAutoCloud {
             return null
         }
 
+        var stagedDownload: Path? = null
         try {
             val totalFileSize = fileDownloadInfo.rawFileSize.toLong()
+            val downloadPath = if (BuildConfig.XRGAME) {
+                Files.createDirectories(actualFilePath.parent)
+                Files.createTempFile(actualFilePath.parent, ".xrgame-cloud-", ".part").also { stagedDownload = it }
+            } else actualFilePath
 
             val copyToFile: (InputStream) -> Boolean = { input ->
                 Files.createDirectories(actualFilePath.parent)
 
-                FileOutputStream(actualFilePath.toString()).use { fs ->
+                FileOutputStream(downloadPath.toString()).use { fs ->
                     val totalBytesRead = input.copyTo(fs, 8 * 1024) { chunkBytes, _ ->
                         if (totalRawBytes > 0L) {
                             val currentPercent = (
@@ -1262,7 +1277,7 @@ object SteamAutoCloud {
                     try {
                         fileDownloadInfo.timestamp.let { timestamp ->
                             val fileTime = FileTime.fromMillis(timestamp.time)
-                            Files.setLastModifiedTime(actualFilePath, fileTime)
+                            Files.setLastModifiedTime(downloadPath, fileTime)
                         }
                     } catch (e: Exception) {
                         Timber.w("Failed to set lastModified for $actualFilePath: ${e.message}")
@@ -1291,6 +1306,7 @@ object SteamAutoCloud {
 
                             if (zipInput.nextEntry != null) {
                                 Timber.e("Downloaded user file $prefixedPath has more than one zip entry")
+                                if (BuildConfig.XRGAME) return@withTimeout false
                             }
                         }
                     } ?: return@withTimeout false
@@ -1304,6 +1320,10 @@ object SteamAutoCloud {
 
             if (!downloaded) {
                 return null
+            }
+
+            if (BuildConfig.XRGAME) {
+                XrGameCloudFiles.commit(downloadPath, actualFilePath, totalFileSize, file.shaFile)
             }
 
             val actualSize = Files.size(actualFilePath)
@@ -1346,6 +1366,10 @@ object SteamAutoCloud {
             return null
         } finally {
             response.close()
+            stagedDownload?.let { staged ->
+                runCatching { Files.deleteIfExists(staged) }
+                    .onFailure { Timber.w(it, "Could not remove incomplete Steam Cloud download") }
+            }
         }
     }
 

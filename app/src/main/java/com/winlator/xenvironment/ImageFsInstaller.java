@@ -72,6 +72,7 @@ public abstract class ImageFsInstaller {
     }
 
     public static void installWineFromDownloads(final Context context) {
+        if (BuildConfig.XRGAME) return; // Wine comes from the SHA-verified component catalog.
         String[] versions = context.getResources().getStringArray(R.array.bionic_wine_entries);
         File rootDir = ImageFs.find(context).getRootDir();
         ImageFs imageFs = ImageFs.find(context);
@@ -91,6 +92,7 @@ public abstract class ImageFsInstaller {
     // (src/modern/assets/) until it's folded into redirect.tzst. Copy it next to
     // the tarball-extracted variant so BionicProgramLauncherComponent can find it
     private static void ensureBionicLib(Context context, File imagefs) {
+        if (BuildConfig.XRGAME) return;
         if (BuildConfig.MODERN_ANDROID) {
             File wxDest = new File(imagefs, "usr/lib/libredirect-bionic-wx.so");
             if (!wxDest.exists()) {
@@ -122,6 +124,14 @@ public abstract class ImageFsInstaller {
         // final DownloadProgressDialog dialog = new DownloadProgressDialog(context);
         // dialog.show(R.string.installing_system_files);
         return Executors.newSingleThreadExecutor().submit(() -> {
+            // Validate a cached or sideloaded archive before clearing an existing runtime.
+            if (BuildConfig.XRGAME) {
+                if (!Container.BIONIC.equals(containerVariant)) {
+                    throw new IOException("XRGame requires the bionic runtime");
+                }
+                app.gamenative.xrgame.XrGameComponents.requireVerified(context, "imagefs_bionic.txz",
+                        new File(imageFs.getFilesDir(), "imagefs_bionic.txz"));
+            }
             clearRootDir(context, rootDir);
             ensureSharedHomeRoot(context, rootDir);
             ensureProtonVersionSymlink(context, rootDir, wineVersion);
@@ -192,6 +202,7 @@ public abstract class ImageFsInstaller {
     }
 
     private static void installGuestLibs(Context ctx) {
+        if (BuildConfig.XRGAME) return; // The XRGame base image contains its own runtime dependencies.
         final String ASSET_TAR = "redirect.tzst";          // ➊  add this to assets/
         File imagefs = new File(ctx.getFilesDir(), "imagefs");
         // ➋  Unpack straight into imagefs, preserving relative paths.

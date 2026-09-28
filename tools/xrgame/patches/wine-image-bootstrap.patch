@@ -1,0 +1,54 @@
+--- a/dlls/ntdll/loader.c
++++ b/dlls/ntdll/loader.c
+@@ -4628,6 +4628,36 @@
+  * Attach to all the loaded dlls.
+  * If this is the first time, perform the full process initialization.
+  */
++/* The internal XRGame client opts one exact image into an inherited bootstrap.
++ * Self-restarted instances need the same initialization before their entry point.
++ * Other executables (including Wine services) must not load the game's DLL.
++ */
++static NTSTATUS xrgame_bootstrap_image(void)
++{
++    UNICODE_STRING image = {0}, dll = {0};
++    UNICODE_STRING *current = &NtCurrentTeb()->Peb->ProcessParameters->ImagePathName;
++    HMODULE module;
++    NTSTATUS status = STATUS_SUCCESS;
++
++    if (get_env_var( L"XRGAME_BOOTSTRAP_IMAGE", 0, &image )) return STATUS_SUCCESS;
++    if (!RtlEqualUnicodeString( &image, current, TRUE )) goto done;
++    status = get_env_var( L"XRGAME_BOOTSTRAP_DLL", 0, &dll );
++    if (status) goto done;
++    /* Do not search the current directory or PATH for a bootstrap library. */
++    if (dll.Length < 4 * sizeof(WCHAR) || dll.Buffer[1] != ':' || dll.Buffer[2] != '\\' ||
++        !((dll.Buffer[0] >= 'A' && dll.Buffer[0] <= 'Z') ||
++          (dll.Buffer[0] >= 'a' && dll.Buffer[0] <= 'z')))
++        status = STATUS_INVALID_PARAMETER;
++    else
++        status = LdrLoadDll( NULL, 0, &dll, &module );
++    MESSAGE( "XRGame image bootstrap pid=%04lx status=%08lx\n",
++             HandleToULong( NtCurrentTeb()->ClientId.UniqueProcess ), status );
++done:
++    RtlFreeHeap( GetProcessHeap(), 0, image.Buffer );
++    RtlFreeHeap( GetProcessHeap(), 0, dll.Buffer );
++    return status;
++}
++
+ void loader_init( CONTEXT *context, void **entry )
+ {
+     static int attach_done;
+@@ -4788,6 +4818,14 @@
+         release_address_space();
+         if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, DLL_PROCESS_ATTACH );
+         if (wm->ldr.ActivationContext) RtlDeactivateActivationContext( 0, cookie );
++
++        /* Match a suspended-process LoadLibrary: normal loader/TLS startup is
++         * complete, but the application's entry point has not executed yet. */
++        if ((status = xrgame_bootstrap_image()))
++        {
++            ERR( "XRGame image bootstrap failed, status %lx\n", status );
++            NtTerminateProcess( GetCurrentProcess(), status );
++        }
+ 
+         NtQueryInformationProcess( GetCurrentProcess(), ProcessDebugPort, &port, sizeof(port), NULL );
+         if (port) process_breakpoint();

@@ -67,6 +67,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     private String box64Preset = Box86_64Preset.COMPATIBILITY;
     private String fexcorePreset = FEXCorePreset.INTERMEDIATE;
     private Callback<Integer> terminationCallback;
+    private long xrGameRunGeneration;
     private static final Object lock = new Object();
     private boolean wow64Mode = true;
     private final ContentsManager contentsManager;
@@ -89,6 +90,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     // back to the W^X-only minimal shim (still required to run Wine on a strict
     // W^X kernel) and legacy preloads nothing. Returns null to preload nothing.
     private String resolveLibredirectPreload(ImageFs imageFs) {
+        if (BuildConfig.XRGAME) return null;
         if (container != null && container.isDisableLibredirect()) {
             if (BuildConfig.MODERN_ANDROID) {
                 return imageFs.getLibDir() + "/libredirect-bionic-wx-minimal.so";
@@ -113,6 +115,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     public void setPreUnpack(Runnable r) { this.preUnpack = r; }
     @Override
     public void start() {
+        try (app.gamenative.xrgame.XrGameProfiler.Region profile = app.gamenative.xrgame.XrGameProfiler.region("wine.launch")) {
         synchronized (lock) {
             stop();
             if (wineInfo.isArm64EC())
@@ -126,9 +129,25 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         }
     }
 
+    }
+
     @Override
     public void stop() {
         synchronized (lock) {
+            if (BuildConfig.XRGAME) {
+                if (pid == -1) return;
+                ++xrGameRunGeneration;
+                try {
+                    ProcessHelper.hardKillStaleWineProcesses();
+                    pid = -1;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while stopping XRGame Wine", e);
+                } finally {
+                    SteamService.setKeepAlive(false);
+                }
+                return;
+            }
             if (pid != -1) {
                 Process.killProcess(pid);
                 Log.d("BionicProgramLauncherComponent", "Stopped process " + pid);
@@ -209,10 +228,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             String memPath;
             if (i == 0) {
                 // Player 1 uses the original, non-numbered path that is known to work.
-                memPath = "/data/data/app.gamenative/files/imagefs/tmp/gamepad.mem";
+                memPath = new File(environment.getContext().getFilesDir(), "imagefs/tmp/gamepad.mem").getPath();
             } else {
                 // Players 2, 3, 4 use a 1-based index.
-                memPath = "/data/data/app.gamenative/files/imagefs/tmp/gamepad" + i + ".mem";
+                memPath = new File(environment.getContext().getFilesDir(), "imagefs/tmp/gamepad" + i + ".mem").getPath();
             }
 
             File memFile = new File(memPath);
@@ -280,6 +299,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         String ldLibraryPath = rootDir.getPath() + "/usr/lib" + ":" + "/system/lib64";
         if (BuildConfig.MODERN_ANDROID) ldLibraryPath += ":" + imageFs.getWinePath() + "/lib";
         envVars.put("LD_LIBRARY_PATH", ldLibraryPath);
+        if (BuildConfig.XRGAME) {
+            envVars.put("WINEDLLPATH", imageFs.getLibDir() + "/wine");
+            envVars.put("EVSHIM_BASE_PATH", environment.getContext().getFilesDir().getAbsolutePath());
+        }
         envVars.put("ANDROID_SYSVSHM_SERVER", rootDir.getPath() + UnixSocketConfig.SYSVSHM_SERVER_PATH);
         envVars.put("FONTCONFIG_PATH", rootDir.getPath() + "/usr/etc/fonts");
 
@@ -380,7 +403,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             envVars.putAll(this.envVars);
         }
 
-        if (BuildConfig.XR_BUILD) {
+        if (BuildConfig.XR_BUILD && !BuildConfig.XRGAME) {
             String shimPath = context.getApplicationInfo().nativeLibraryDir + "/libkgslshim.so";
             if (new File(shimPath).exists()) {
                 String cur = envVars.get("LD_PRELOAD");
@@ -422,8 +445,11 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             FileUtils.chmod(box64File, 0755);
         }
 
+        final long runGeneration = ++xrGameRunGeneration;
+        app.gamenative.xrgame.XrGameProfiler.mark("wine.exec.request");
         return ProcessHelper.exec(command, envVars.toStringArray(), workingDir != null ? workingDir : rootDir, (status) -> {
             synchronized (lock) {
+                if (BuildConfig.XRGAME && runGeneration != xrGameRunGeneration) return;
                 pid = -1;
             }
             if (!environment.isWinetricksRunning()) {
@@ -478,6 +504,26 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
     private void extractEmulatorsDlls() {
         Context context = environment.getContext();
+        if (BuildConfig.XRGAME) {
+            ContentProfile profile = contentsManager.getProfileByEntryName(
+                    "fexcore-" + container.getFEXCoreVersion());
+            if (profile == null || !contentsManager.applyContent(profile)) {
+                throw new IllegalStateException("XRGame FEX component is missing or could not be installed");
+            }
+            // Proton's MemoryWineUnixFuncs attaches the unixlib only when the
+            // builtin PE is found through a Wine DLL directory. A system32-only
+            // copy runs without that association.
+            File builtins = new File(environment.getImageFs().getLibDir(), "wine/aarch64-windows");
+            if (!builtins.isDirectory() && !builtins.mkdirs()) {
+                throw new IllegalStateException("Cannot create XRGame FEX builtin directory");
+            }
+            for (String name : new String[]{"libarm64ecfex.dll", "libwow64fex.dll"}) {
+                if (!FileUtils.copy(new File(ContentsManager.getInstallDir(context, profile), name), new File(builtins, name))) {
+                    throw new IllegalStateException("Cannot install XRGame FEX builtin: " + name);
+                }
+            }
+            return;
+        }
         File rootDir = environment.getImageFs().getRootDir();
         File system32dir = new File(rootDir + "/home/xuser/.wine/drive_c/windows/system32");
         boolean containerDataChanged = false;
@@ -747,6 +793,17 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     }
 
     public void restartWineServer() {
+        if (BuildConfig.XRGAME) {
+            synchronized (lock) {
+                stop();
+                if (this.envVars == null) this.envVars = new EnvVars();
+                app.gamenative.xrgame.XrGameRuntime.INSTANCE.configureSync(
+                    new File(environment.getContext().getFilesDir(), "xrgame-sync"), this.envVars,
+                    !ProcessHelper.listRunningWineProcesses().isEmpty());
+                pid = execGuestProgram();
+            }
+            return;
+        }
         ProcessHelper.terminateAllWineProcesses();
         pid = execGuestProgram();
         Log.d("BionicProgramLauncherComponent", "Wine restarted successfully");

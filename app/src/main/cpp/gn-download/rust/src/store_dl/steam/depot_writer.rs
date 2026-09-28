@@ -389,6 +389,17 @@ pub fn plan_depot_write(
     target_dir: &str,
     max_workers: u32,
 ) -> Result<DepotWritePlan, DepotWriteResult> {
+    plan_depot_write_cancellable(manifest, depot_key, server_count, target_dir, max_workers, None)
+}
+
+fn plan_depot_write_cancellable(
+    manifest: &ContentManifest,
+    depot_key: &[u8],
+    server_count: usize,
+    target_dir: &str,
+    max_workers: u32,
+    cancel: Option<&AtomicBool>,
+) -> Result<DepotWritePlan, DepotWriteResult> {
     if manifest.metadata.filenames_encrypted {
         return Err(DepotWriteResult::fail(
             "write_depot: manifest filenames are still encrypted",
@@ -410,7 +421,11 @@ pub fn plan_depot_write(
         ..Default::default()
     };
 
+    let mut case_resolver = crate::store_dl::ExistingCaseResolver::default();
     for (file_idx, file) in manifest.files.iter().enumerate() {
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(DepotWriteResult::fail("cancelled", true));
+        }
         if !path_is_safe(&file.filename) {
             return Err(DepotWriteResult::fail(
                 format!("write_depot: unsafe path '{}'", file.filename),
@@ -419,7 +434,7 @@ pub fn plan_depot_write(
         }
         // Re-spell to the on-disk case so Directory/Symlink actions land in the dir an earlier
         // depot already created (`Game/`) instead of mkdir-ing a duplicate (`game/`).
-        let rel = crate::store_dl::resolve_existing_case(target_dir, &file.filename);
+        let rel = case_resolver.resolve(target_dir, &file.filename);
         let path = join_target_path(target_dir, &rel);
         if !file.linktarget.is_empty() {
             // Path-traversal guard: symlinks are created up front (before any file write),
@@ -1292,15 +1307,26 @@ pub fn normalize_manifest_case_paths(manifest: &mut ContentManifest) {
 }
 
 impl DepotFiles {
+    #[cfg(test)]
     fn prepare(manifest: &ContentManifest, target_dir: &str) -> Self {
+        Self::prepare_cancellable(manifest, target_dir, None).expect("uncancelled preparation")
+    }
+
+    fn prepare_cancellable(
+        manifest: &ContentManifest, target_dir: &str, cancel: Option<&AtomicBool>,
+    ) -> Result<Self, DepotWriteResult> {
         let mut slots = Vec::with_capacity(manifest.files.len());
         let mut already_present = 0u64;
+        let mut case_resolver = crate::store_dl::ExistingCaseResolver::default();
         for file in &manifest.files {
+            if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+                return Err(DepotWriteResult::fail("cancelled", true));
+            }
             let is_regular =
                 file.linktarget.is_empty() && (file.flags & DEPOT_FILE_FLAG_DIRECTORY) == 0;
             // Re-spell to the on-disk case so a resume finds files an older manifest (or a
             // sibling depot) wrote with different casing (`Game/` vs `game/`).
-            let rel = crate::store_dl::resolve_existing_case(target_dir, &file.filename);
+            let rel = case_resolver.resolve(target_dir, &file.filename);
             let path = join_target_path(target_dir, &rel);
             let preexisting = if is_regular {
                 fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
@@ -1328,10 +1354,10 @@ impl DepotFiles {
                 is_regular,
             });
         }
-        Self {
+        Ok(Self {
             slots,
             already_present_bytes: already_present,
-        }
+        })
     }
 
     /// A file needs its on-disk chunks verified only if something is already there (resume/verify).
@@ -1693,18 +1719,30 @@ pub fn write_depot_sequential(
     target_dir: &str,
     options: DepotWriteOptions<'_>,
 ) -> DepotWriteResult {
-    let plan = match plan_depot_write(
+    let preparation_started = Instant::now();
+    if let Some(log) = options.log {
+        log(&format!("prepare depot={} files={} stage=paths begin", manifest.metadata.depot_id, manifest.files.len()));
+    }
+    let plan = match plan_depot_write_cancellable(
         manifest,
         depot_key,
         servers.len(),
         target_dir,
         options.max_workers,
+        options.cancel,
     ) {
         Ok(plan) => plan,
         Err(error) => return error,
     };
 
-    let files = DepotFiles::prepare(manifest, target_dir);
+    let files = match DepotFiles::prepare_cancellable(manifest, target_dir, options.cancel) {
+        Ok(files) => files,
+        Err(error) => return error,
+    };
+    if let Some(log) = options.log {
+        log(&format!("prepare depot={} stage=paths done elapsed_ms={} existing_bytes={}",
+            manifest.metadata.depot_id, preparation_started.elapsed().as_millis(), files.already_present_bytes));
+    }
 
     // Free-space guard using the EXACT manifest sizes (ground truth), minus what is already on disk.
     // Conservative: only fail when statvfs succeeds with a sane non-zero figure and the deficit
@@ -3206,11 +3244,11 @@ mod tests {
         assert!(dir.join("Game").is_dir());
         assert!(dir.join("Game/Data/Sub").is_dir(), "nested dir created under on-disk case");
         assert!(
-            !dir.join("game").exists(),
+            !fs::read_dir(&dir).unwrap().any(|entry| entry.unwrap().file_name() == "game"),
             "layout must merge into the existing `Game/`, not mkdir `game/`"
         );
         assert!(
-            !dir.join("Game/data").exists(),
+            !fs::read_dir(dir.join("Game")).unwrap().any(|entry| entry.unwrap().file_name() == "data"),
             "nested layout must not mkdir a duplicate `data/` either"
         );
         let _ = fs::remove_dir_all(&dir);

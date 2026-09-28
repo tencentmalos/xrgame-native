@@ -3,6 +3,9 @@ package app.gamenative.utils
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import app.gamenative.PrefManager
+import io.mockk.coEvery
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import app.gamenative.api.prepareCommunityConfigForApply
 import app.gamenative.api.sanitizeCommunityConfig
 import com.winlator.container.ContainerData
@@ -14,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -87,11 +91,13 @@ class CommunityConfigApplicationTest {
             File(workingDir, "manifest.json"),
             File(workingDir.parentFile, "manifest.json"),
         ).firstOrNull { it.exists() }
-        if (manifestFile != null) {
-            PrefManager.componentManifestJson = manifestFile.readText()
-            PrefManager.componentManifestFetchedAt = System.currentTimeMillis()
-        }
+        val manifest = requireNotNull(ManifestRepository.parseManifest(requireNotNull(manifestFile).readText()))
+        mockkObject(ManifestRepository)
+        coEvery { ManifestRepository.loadManifest(any()) } returns manifest
     }
+
+    @After
+    fun restoreManifestRepository() = unmockkObject(ManifestRepository)
 
     @Test
     fun allAllowedCommunityFieldsReachContainerUnchanged() = runBlocking {

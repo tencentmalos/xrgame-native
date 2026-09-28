@@ -3,13 +3,19 @@
 ## Project objective and current state
 
 - `xrgame-native` is a fork of [GameNative](https://github.com/utkarshdalal/GameNative) (GPL-3.0). It targets **Windows / Steam games on a Pico XR headset** (internal device "Swan": Android 16, ARM64, 4 KiB pages, Adreno 840v2 / KGSL): a 2D theater mode plus PCVR through an OpenXR bridge.
-- The current requirements are in [docs/specs/xrgame-native-v1.md](docs/specs/xrgame-native-v1.md). The route analysis behind it is in [docs/background/](docs/background/).
-- **State (2026-09-24):**
+- The current execution plan is [docs/specs/xrgame-native-personal-v2.md](docs/specs/xrgame-native-personal-v2.md): personal learning, AYN first, Swan deferred. The old [v1 spec](docs/specs/xrgame-native-v1.md) retains the full historical requirements; the new plan takes precedence for sequencing and current acceptance gates. The route analysis is in [docs/background/](docs/background/).
+- Compare progress against the original v1 requirements using [the observability review](docs/validation/spec-observability-review-20260926.md). D0–D4 adds guest/host debugger and profiling work alongside P1–P3; the shared shadPS4 FEX pin does not provide the Orbis frontend's debugger capabilities to Wine automatically. AYN results do not close Swan/XR acceptance.
+- **State (2026-09-27):**
   - **WP0 is done** and merged to `malos/main`. See `docs/validation/wp0-picoxr-identity-20260924.md`.
   - **WP1 is in progress** on `feature/malos/wp1-steam-install`. The build part is done: JavaSteam and `libgndownload` are built from source, the install root is `/sdcard/XRGameNative`, and non-Valve egress is blocked. An AYN Thor smoke test without login has been run.
-  - Still open for WP1: device acceptance (the user chose AYN Thor first) with the user's Steam test account, and the DepotDownloader cross-check. `docs/validation/wp1-steam-install-20260924.md` tracks both.
-  - The app is otherwise upstream GameNative @ `ebde76e9`. Specifications are requirements, not evidence of implementation.
+  - Current AYN P2 evidence: Balatro download/verification and single-byte repair pass; AI Limit completes after pause/forced-stop resume with 3050/3050 whole-file hashes matching its cached manifest. An unjournaled Balatro directory roundtrip via the host is recognized and verified; the shared redistributable depot matches an independent DepotDownloader copy (5/5 files). A PC Steam-origin copy and a complete paid-game DepotDownloader comparison remain open. See `docs/validation/personal-p2-downloads-20260927.md`; do not expand partial or AYN results into full original WP1 acceptance.
+  - Current P1/P3 evidence: AYN app-domain execution matrix and console/GDI/D3D11 paths are recorded, with Hades II scene/save/three-cycle and 10-minute observations. Physical controls and audible audio remain unverified. AHB direct sampling is experimental and default-off. The local FEX callback guard repairs guest breakpoint recovery; fixture straight-line/CALL/RET stepping and stale-epoch rejection pass. Default breakpoint insertion stays off until the D2 matrix is complete. DXVK deferred-clear presentation is fixed in xrg2 and verified in both display modes. See `docs/validation/personal-p3-debuggers-20260927.md`.
+  - MHW startup now passes the Steam client, ARM64EC loader and root-path configuration failures on AYN; the pinned runtime reaches the 3D title, opening cinematic and hunter creation. Only its profile changes the executable launch path to a prefix directory alias; do not replace game files or relax zero-size D3D buffers. Cloud account/path repair has restored and verified all four original save files. Explicit owned DLC grants now expose Iceborne, and the AYN menu shows ICEBORNE without the missing-DLC warning. All bundled-client launches also receive an explicit game install path. Original-character slots are visible, and a user-driven Iceborne scene has been observed. Controlled DX11 → DX12 → DX11 restarts and a normal exit pass with the opt-in MHW bootstrap/process-family path; long-play stability remains open. See `docs/validation/mhw-restart-20260927.md`. See `docs/validation/mhw-startup-20260927.md` and `docs/validation/mhw-saves-20260927.md`.
+  - **WP2/WP3 are in progress, not accepted.** picoXr builds its core Android native libraries and XR payload from source. The internal validation APK bundles Proton 11, pinned FEX, ARM64EC DXVK/VKD3D, Turnip and base imagefs. Windows x64 7-Zip runs on AYANEO Pocket DS through FEX: a 595-second observation, keyboard navigation, folder creation and normal exit are recorded. The production catalog is still empty. Runtime clean-container replay has passed; complete corresponding sources, remote CI, OpenComposite and publication remain open. See `docs/validation/wp3-build-pipeline-20260926.md`. Hades II now reaches its main menu and an interactive game scene with the pinned Turnip AHardwareBuffer/X11 path (GPU copy, no CPU readback, present-wait enabled); native app and Wine x64 guest debugger smoke tests pass (attach/inspect/pause/resume/cleanup). See `docs/validation/wp3-hades2-20260926.md` and `docs/validation/wp3-debuggers-20260926.md`.
+  - The upstream baseline is GameNative @ `ebde76e9`. Specifications are requirements, not evidence of implementation.
 - **Order of work:**
+  - Linux build/runtime dependency migration is deferred by the user (2026-09-26). Keep the current Linux recipes and proceed with P1–P3 and the debugger work; do not start macOS toolchain migration or imagefs replacement.
+  - **User revision (2026-09-26):** use AYN Thor for current validation; do not operate Swan yet. Start with P1 (the former WP4's execution/runtime checks on AYN), then Steam usability and display work. The former WP3's remaining engineering/publication work is the final **optional P5**, not a prerequisite. Keep existing local builds, embedded catalog/hash checks and evidence. OpenComposite waits until OpenVR is selected. Do not mark the old full WP3 accepted merely because it is deferred.
   - WP0: repo governance plus minimal identity (applicationId/name/signing).
   - **WP1: install Steam games first.** Build JavaSteam from `references/JavaSteam` to drop the SNAPSHOT dependency, and `libgndownload` from its in-repo Rust source. Use an external-storage install root, support directory import, and cross-check files against DepotDownloader.
   - Every later device acceptance uses games installed by WP1.
@@ -17,13 +23,13 @@
 ## Repository layout
 
 - `app/`: upstream GameNative (Kotlin/Java UI and services, the Winlator-derived `com.winlator` runtime, native code under `app/src/main/cpp`, and the Windows-side XR runtime under `app/src/main/windows`).
-- `references/`: independently versioned checkouts for comparison and porting, never built into the app. See [references/README.md](references/README.md) for purposes, pins and licenses.
+- `references/`: independently versioned checkouts for comparison, porting and pinned runtime builds. JavaSteam supplies the app's protocol dependency; runtime components use the documented Wine/FEX/Mesa/Proton pins. See [references/README.md](references/README.md) for purposes, pins and licenses.
 - `docs/specs/`: normative specs. `docs/background/`: route evaluations copied from the shadPS4 workspace. `docs/validation/`: evidence records (create per work package).
-- `tools/`: upstream build helpers. The XR payload scripts are PowerShell and need NDK 29.0.14206865 + VS2022.
+- `tools/`: upstream helpers and picoXr source-build scripts. `tools/build-picoxr-native.sh` and `tools/build-picoxr-xr-payload.sh` run on macOS/Linux with NDK 27; `tools/xrgame/` contains the Linux x86_64 runtime recipes. The older PowerShell XR route remains for upstream flavors.
 
 ## Branches and upstream
 
-- `malos/main` is the integration branch. Feature work goes on `feature/malos/<topic>`, based on the latest `malos/main` unless the user says otherwise.
+- **Main repository trunk: `malos/main`** (confirmed by the user on 2026-09-26). Use it as the base and merge/PR target for work in `tencentmalos/xrgame-native`. Feature work goes on `feature/malos/<topic>`, based on the latest `malos/main` unless the user says otherwise. This applies to the main repository; each submodule keeps its own documented branch policy.
 - `origin` = `tencentmalos/xrgame-native`; `upstream` = `utkarshdalal/GameNative`. Upstream moves daily. Merge `upstream/master` into `malos/main` periodically and record conflict hotspots.
 - Keep our changes concentrated in the new `picoXr` flavor's source set and in build-time switches. Do not delete or rewrite upstream code in `src/main` just to disable it.
 - Commit or push only when the user asks.
@@ -40,7 +46,7 @@
    - Do not enable Steamless.
    - Keep `THIRD_PARTY_NOTICES` complete.
    - Code ported from `references/shadPS4` keeps its `GPL-2.0-or-later` SPDX header.
-   - shadPS4's private Foundation library must never enter this repo.
+   - User authorization (2026-09-27) permits private `tencentmalos/foundation` as the pinned `foundation/` build submodule for diagnostics, including the later-requested Litep startup capture. This supersedes the previous Foundation exclusion. Only DebugBus and the profiler ring dependencies enter internal picoXr debug APKs; audio/input integration remains deferred. Do not copy or publish Foundation source or treat it as GPL-licensed. Public redistribution remains outside this authorization.
 5. **Evidence.**
    - Every acceptance record includes: APK SHA-256, `.so` Build IDs, component manifest SHA, and device identity (model, build, boot id), PID and duration.
    - Keep failed and aborted captures.
@@ -49,14 +55,22 @@
 
 ## References and dependencies
 
+- All directly introduced repositories are maintained under `tencentmalos` (user instruction, 2026-09-26). Fork new source dependencies before adopting them; preserve the reviewed gitlink/pin and retain the original upstream for provenance. Third-party nested dependencies stay pinned; do not rewrite their gitlinks incidentally.
 - The gitlink is the authoritative revision. Do not run `git submodule update --remote` incidentally.
 - `references/FEX` is `tencentmalos/FEX`, the same pin as shadPS4. **FEX's own AGENTS.md / CLAUDE.md forbid AI-generated contributions upstream.** Changes stay in the tencentmalos fork, and upstreaming is done by humans.
-- `references/mesa-turnip` is `tencentmalos/mesa-mirror` `codex/turnip-xr-fdm2` (the Turnip used by shadPS4 on Swan). Push child-repo changes to their owned branch before advancing a parent gitlink.
+- The user requested an embedded default Proton runtime and a separately maintained FEX branch on 2026-09-26. The default is our pinned Proton 11 ARM64EC plus matching FEX and runtime dependencies. FEX's maintenance branch `feature/malos/xrgame-arm64ec` is published at shadPS4's `3f1f30a0`; its gitlink is unchanged. Runtime build-copy patches remain versioned in `tools/xrgame/patches`.
+- `references/mesa-turnip` is our `tencentmalos/mesa-mirror` fork. Its maintenance trunk is **`malos/main`** (user instruction, 2026-09-26), published from shadPS4's actual **`codex/turnip-xr-fdm2` at `d15b7c019c8daa17e80051258077d9b2d5146a2b`**, not Mesa upstream `main`. The published iteration branch `feature/malos/xrgame-wine-icd` starts there and adds Wine's ICD export and Android X11 AHB presentation. Keep Mesa's AI contribution restrictions; do not act on upstream GitLab. Push child-repo changes to their owned branch before advancing a parent gitlink.
+- The 2026-09-28 checkpoint publishes Foundation, Wine, Turnip and GBE maintenance changes and updates their gitlinks. The validated runtime recipes still use their explicit historical base pins plus recorded patches; rebased maintenance sources are not automatically new device-validated binaries. See `docs/validation/stage-20260928.md`.
 - `references/proton-wine` is the bionic arm64ec Proton Wine that GameNative ships; its `.github/workflows/build-proton.yml` is the build recipe (x86_64 runner, NDK r27d, bylaws llvm-mingw).
 - Steam client references are `JavaSteam`, `Pluvia`, `SteamKit`, `DepotDownloader` and `gbe_fork`. WinNative's Rust `wnsteam` client is inside `references/WinNative`.
   - Valve's CM servers and CDN are the only allowed remote endpoints in the install flow.
   - Test only with the dedicated Steam test account the user provides, never a personal main account. The user types the credentials on the device; never put account names, passwords, tokens or Steam Guard data in the repo or in validation records.
 - The upstream GameNative app pins submodules `app/src/main/cpp/extras/adrenotools` and `app/src/main/cpp/lsfg-vk-android`.
+
+## DebugBus
+
+- `foundation/` tracks the shared `main`, pinned by gitlink; initialize only this submodule, not its study references. No incidental `--remote` updates. **Before modifying Foundation, create a separate feature branch from the current pinned commit (user instruction, 2026-09-27); do not edit shared `main` directly.**
+- Internal `picoXrDebug` exposes `app.gamenative.xrgame.DebugBusService` through Android dumpsys, gated by `android.permission.DUMP`. See `docs/debugging/debugbus.md` for commands and host/guest boundaries.
 
 ## Building
 
@@ -67,9 +81,13 @@
 - Our flavor: `./gradlew :app:assemblePicoXrDebug` (applicationId `com.tencentmalos.xrgamenative`; sources in `app/src/picoXr`, otherwise the same inputs as `modern` until spec WP5). CI: `.github/workflows/xrgame-picoxr.yml`. Release signing reads only the gitignored `app/keystores/xrgame.properties`.
 - A `local.properties` must exist at the repo root, because the secrets-gradle-plugin fails configuration without it. `sdk.dir` alone is enough; no secret is needed.
 - Debug builds of the upstream flavors: `./gradlew :app:assembleLegacyDebug`, `assembleModernDebug`, `assembleLegacyXrDebug`, `assembleModernXrDebug`.
-- Every `externalNativeBuild` block in `app/build.gradle.kts` is commented out. Native libraries ship as prebuilt `.so` files in `jniLibs`. Restoring source builds is spec WP3 (`libgndownload` comes first, in WP1).
+- The old `externalNativeBuild` blocks remain commented out. picoXr uses a dedicated Gradle `PicoNativeBuildTask` and `app/src/picoXr/cpp/CMakeLists.txt` to build the core native libraries, XR runtime PE DLLs and Android unixlib. The official OpenXR 1.1.61 AAR supplies the loader/headers. PulseAudio must first be built with `tools/xrgame/build-pulseaudio.sh` and copied to `build/xrgame-runtime/pulseaudio`. The validation APK passes `tools/audit-apk`; source-build and package checks do not mean WP2/WP3 device acceptance.
+- Linux runtime work uses `/data00/xrgame-native` (container mount `/work`), not the system disk. Do not insert `workspace` or `bug_reports_work` into that path.
+- Runtime pipeline: `tools/xrgame/run-runtime-container.sh` freezes recipe inputs and starts a new Ubuntu container; `build-runtime.sh` builds the full set and `record-runtime.sh` binds binaries to source indexes. See `tools/xrgame/README.md`. `.github/workflows/xrgame-runtime.yml` is manual and uploads only runtime/source evidence, never APKs. A successful build does not clear the still-open source/publication prerequisites; `audit-runtime-release.py` rejects incomplete evidence.
+- Stage the default runtime with `tools/xrgame/prepare-runtime-bundle.py --catalog <pinned-catalog> --packages <archives>`. Gradle picks up the gitignored `build/xrgame-runtime/bundle`, or `-PxrGameRuntimeBundle=<directory>`. Both packaging and installation verify the catalog SHA for each archive. The private validation catalog still must not be used to publish unreleased components.
+- The complete bundle is mandatory for picoXr APKs: Proton, FEX, DXVK, VKD3D, Turnip, imagefs and the source-built Steam client. Missing defaults fail packaging/audit. Each x64 Steam launch stages the client automatically; compatibility profiles only adjust game paths/arguments and optional hooks. Runtime caches are verified and repaired from the bundle before launch, and the D3D8–12 DLL set is verified in each prefix. Never replace saves or game-owned DLLs to repair a runtime. See `docs/validation/bundled-runtime-20260927.md`.
 
 ## Devices and host
 
-- Main acceptance device: **Swan** (Pico headset, Android 16, 4 KiB, Adreno 840v2, adb root available). Auxiliary: **AYN Thor** (Android handheld, non-XR smoke tests only). Serial numbers and root tooling are recorded in the local agent memory, not in this public repo.
-- The workstation is Windows 11. Git Bash heredocs mangle backslashes, and the working copy uses CRLF (`core.autocrlf`). For mesa, set `core.longpaths=true`.
+- Current validation device: **AYN Thor** (Android 13 / API 33, 4 KiB; installed app targetSdk 36), authorized by the user for the revised plan. Prior 7-Zip/Hades II results were on **AYANEO Pocket DS** and must be replayed on AYN. **Swan is deferred**: it remains the eventual Pico XR / Android 16 target, not a current task prerequisite. AYN results cannot establish Swan behavior. Serial numbers, device authorization and root tooling are recorded outside this public repo.
+- The current workstation (2026-09-26) is macOS ARM64; the earlier validation host was Windows 11. On Windows, Git Bash heredocs mangle backslashes and that working copy uses CRLF (`core.autocrlf`); for mesa, set `core.longpaths=true`. Do not apply Windows-specific host settings to macOS.

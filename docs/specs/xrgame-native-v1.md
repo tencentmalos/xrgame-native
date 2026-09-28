@@ -2,6 +2,14 @@
 
 状态：**SPEC_DRAFT v1.2**，2026-09-24。本文是需求与验收，不是实现记录。
 
+**2026-09-26 执行规划已调整：** 以 [个人学习版 v2](xrgame-native-personal-v2.md) 为当前入口。
+AYN 优先，Swan 延后；原 WP3 的工程化与发行收尾移到最后作为可选项。
+本文保留历史完整目标；执行顺序、当前设备与阶段门槛冲突时以新版为准。
+
+**2026-09-26 原要求复核：** [逐项对照与可分析性扩展](../validation/spec-observability-review-20260926.md)
+保留各原出口的未完成项，并将 C5 / WP4 / WP7 / §8 细化为 D0–D4 调试与分析任务。
+AYN 平面验证不代替原 Swan/XR 验收；完整 guest/host debugger 是本次新增细化。
+
 v1.1 相对 v1 的变更：把 **Steam 装游戏**前置为 WP1，后续各工作包都依赖它提供可测的游戏；并加入 Android 上 Steam 的开源实现作为 references。
 
 v1.2 相对 v1.1 的变更：§9 待决策项已由用户确认（2026-09-24），结论同步到 C1、C4、WP0、WP1、WP3 与 §6。
@@ -186,7 +194,7 @@ v1 flavor 中，以下访问必须改指我们的地址或关闭：
 - 补全 `THIRD_PARTY_NOTICES`，包括：
   - 已使用但未登记的：JavaSteam（MIT）、gbe_fork（LGPL-3.0）、OpenComposite（GPL-3.0）、Winlator 派生代码、Pluvia 来源；
   - 本仓新引入的：Turnip（MIT）、FEX（MIT）、Wine（LGPL）、DXVK（zlib）、VKD3D-Proton（LGPL）。
-- 从 shadPS4 移植的代码保留其 `GPL-2.0-or-later` SPDX 头（与 GPL-3.0 兼容）。shadPS4 依赖的私有 Foundation 库**不得**进入本仓产物。
+- 从 shadPS4 移植的代码保留其 `GPL-2.0-or-later` SPDX 头（与 GPL-3.0 兼容）。原约束禁止私有 Foundation 进入产物；**2026-09-27 用户授权的例外**：`foundation/` 私有子仓的 DebugBus 模块可进入内部 `picoXrDebug` 研究包，见 [接入边界](../debugging/debugbus.md)。不扩展为公开分发授权，也不改写其他模块的许可证。
 - **分发范围（§9-2）**：APK 仅在内部设备上分发，不公开发布。本仓是 public 仓库，因此：
   - CI 不上传 APK，既不作为 Actions artifact（public 仓的 artifact 任何登录用户都能下载），也不作为 Release 资产；
   - WP3 的运行时组件发布在本仓的公开 GitHub Releases（§9-3），这本身就是对这些组件的公开再分发。每个组件须随附许可文本，并指明对应源码（references 的 gitlink 与构建配方）；LGPL / GPL 组件（Wine、Proton 等）按其源码提供义务处理。
@@ -334,7 +342,10 @@ flowchart LR
 - `tools/audit-apk` 对 `picoXr` debug APK 通过；"上游预编译、无源码"一栏只剩显式豁免项，每项写明原因与退出计划
 - Swan 上从冷启动到进入一次游戏会话，全程没有连接 `*.gamenative.app` 与该 R2 桶，有 DNS / 连接日志留证
 
-### WP3 — 可复现构建与组件管线
+### WP3 — 可复现构建与组件管线（移至最后，可选）
+
+个人学习路线按 [v2 P5](xrgame-native-personal-v2.md#p5--原-wp3工程化与发行收尾最后可选) 执行。
+已有本地构建与内置运行时继续作为基础；以下完整工程化/发行要求不再阻塞 WP4 或后续功能验证。
 
 **原生库**：恢复本仓原生库的源码构建。至少覆盖 v1 路径上的：
 
@@ -353,8 +364,10 @@ flowchart LR
 | Proton 11 arm64ec（bionic） | `references/proton-wine` 的 `build-proton.yml` 配方 | 含 ntsync-android 用户态回退与 sysvshm。把 `gamenative_xr_unixbridge` builtin 并入 Wine 构建（上游在 proton-wine `77eed550` 上构建，见 `tools/provision-build-arm64x-wine-bridge.sh`） |
 | FEX ARM64EC / WoW64 / unixlib | `references/FEX`，与 shadPS4 同一 pin（FEX-2608 之后 241 个提交） | llvm-mingw 构建 `Source/Windows/{ARM64EC,WOW64}`，NDK 构建 `UnixLib`，打成 `.wcp` |
 | DXVK、VKD3D-Proton（arm64ec） | Proton 11 子模块版本（`references/proton` 的 gitlink） | meson 交叉编译，参照 `references/proton/Makefile.in:701-834` |
-| Turnip | `references/mesa-turnip`（`codex/turnip-xr-fdm2`） | bionic 构建的 `libvulkan_freedreno.so` + ICD json，打成 adrenotools 驱动包格式（带 `meta.json`） |
+| Turnip | `references/mesa-turnip`（本 fork 的 `malos/main`；基线为 shadPS4 的 `codex/turnip-xr-fdm2`） | 从 shadPS4 的引用提交切功能分支；bionic 构建的 `libvulkan_freedreno.so` 同时支持 Android HAL 和 Wine 桌面 ICD，打成带 `meta.json` 的驱动包 |
 | OpenComposite | `GameNative/opencomposite` v2 或其上游 | 源码构建，或 pin 发布物 SHA；补许可 |
+
+**内置默认运行时（2026-09-26 用户补充）**：内部 APK 内置一套后续由本项目维护的 Proton 11 ARM64EC，并固定配套 FEX、DXVK/VKD3D、Turnip 和基础文件系统；首次使用从 APK 解包并校验本仓 manifest 的 SHA，不依赖上游下载。FEX 从 shadPS4 使用的 `tencentmalos/FEX` 同一基线拉出 XRGame 维护分支。版本升级通过新的组件版本与构建记录显式进行，不随远端分支自动漂移；公开组件发布及源码/许可要求不变。
 
 **出口判据**
 

@@ -1296,7 +1296,9 @@ class SteamAppScreen : BaseAppScreen() {
                                 if (operation == AppOptionMenuType.VerifyFiles) {
                                     MarkerUtils.clearInstalledPrerequisiteMarkers(getAppDirPath(gameId))
                                     val steamId = SteamService.userSteamId
-                                    if (steamId != null) {
+                                    // Verifying depot bytes must not overwrite the user's local saves.
+                                    // XRGame keeps cloud recovery as a separate, explicit operation.
+                                    if (!BuildConfig.XRGAME && steamId != null) {
                                         val prefixToPath: (String) -> String = { prefix ->
                                             PathType.from(prefix).toAbsPath(container, gameId, steamId.accountID)
                                         }
@@ -1305,7 +1307,7 @@ class SteamAppScreen : BaseAppScreen() {
                                             prefixToPath = prefixToPath,
                                             overrideLocalChangeNumber = -1,
                                         ).await()
-                                    } else {
+                                    } else if (!BuildConfig.XRGAME) {
                                         SnackbarManager.show(context.getString(R.string.steam_not_logged_in))
                                     }
                                 }

@@ -21,7 +21,9 @@ const val LOADING_PROGRESS_UNKNOWN: Float = -1f
  */
 class LaunchDependencies {
     companion object {
-        private val launchDependencies: List<LaunchDependency> = listOf(
+        private val launchDependencies: List<LaunchDependency> = if (app.gamenative.BuildConfig.XRGAME) listOf(
+            app.gamenative.xrgame.XrGameRuntimeDependency,
+        ) else listOf(
             BionicDefaultProtonDependency,
             GogScriptInterpreterDependency,
             EpicOverlayDependency,
@@ -43,6 +45,7 @@ class LaunchDependencies {
         setLoadingMessage: (String) -> Unit,
         setLoadingProgress: (Float) -> Unit,
     ) {
+        val xrProfile = app.gamenative.xrgame.XrGameProfiler.region("launch.dependencies")
         val callbacks = LaunchDependencyCallbacks(setLoadingMessage, setLoadingProgress)
         try {
             for (dep in getLaunchDependencies(container, gameSource, gameId)) {
@@ -52,6 +55,7 @@ class LaunchDependencies {
                 }
             }
         } finally {
+            xrProfile.close()
             setLoadingMessage(context.getString(R.string.main_loading))
             setLoadingProgress(1f)
         }

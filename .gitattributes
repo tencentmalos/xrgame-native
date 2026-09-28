@@ -1,0 +1,2 @@
+# Unified-diff context lines carry spaces and tabs that must remain byte-exact.
+tools/xrgame/patches/*.patch -whitespace

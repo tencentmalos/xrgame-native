@@ -3,6 +3,7 @@ package app.gamenative.ui.component.dialog
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.gamenative.BuildConfig
 import app.gamenative.data.ConfigInfo
 import app.gamenative.data.SteamApp
 import app.gamenative.db.PluviaDatabase
@@ -200,7 +201,7 @@ class ContainerConfigDialogContainerUpdateTest {
 
         // Boolean flags
         assertFalse(container.isShowFPS)
-        assertEquals(mutated.launchRealSteam, container.isLaunchRealSteam)
+        assertEquals(mutated.launchRealSteam && !BuildConfig.XRGAME, container.isLaunchRealSteam)
         assertEquals(mutated.allowSteamUpdates, container.isAllowSteamUpdates)
         assertEquals(mutated.forceDlc, container.isForceDlc)
         assertEquals(mutated.useLegacyDRM, container.isUseLegacyDRM)
@@ -346,7 +347,7 @@ class ContainerConfigDialogContainerUpdateTest {
 
         // Boolean flags
         assertFalse(container.isShowFPS)
-        assertEquals(mutated.launchRealSteam, container.isLaunchRealSteam)
+        assertEquals(mutated.launchRealSteam && !BuildConfig.XRGAME, container.isLaunchRealSteam)
         assertEquals(mutated.allowSteamUpdates, container.isAllowSteamUpdates)
         assertEquals(mutated.forceDlc, container.isForceDlc)
         assertEquals(mutated.useLegacyDRM, container.isUseLegacyDRM)
@@ -477,7 +478,7 @@ class ContainerConfigDialogContainerUpdateTest {
         ContainerUtils.applyToContainer(context, container, containerData, saveToDisk = false)
 
         assertFalse(container.isShowFPS)
-        assertTrue(container.isLaunchRealSteam)
+        assertEquals(!BuildConfig.XRGAME, container.isLaunchRealSteam)
         assertTrue(container.isAllowSteamUpdates)
         assertTrue(container.isForceDlc)
         assertTrue(container.isUseLegacyDRM)
@@ -683,4 +684,3 @@ class ContainerConfigDialogContainerUpdateTest {
         assertTrue(container.isPortraitMode)
     }
 }
-

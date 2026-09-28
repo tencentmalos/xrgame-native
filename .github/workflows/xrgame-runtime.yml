@@ -1,0 +1,63 @@
+name: XRGame runtime build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xrgame-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  runtime:
+    if: github.repository == 'tencentmalos/xrgame-native'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out recipes
+        uses: actions/checkout@v4
+      - name: Test publication checks
+        run: python3 -m unittest discover -s tools/xrgame/tests -v
+      - name: Prepare build directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/xrgame-runtime"
+          docker build -f tools/xrgame/Dockerfile -t xrgame-runtime-build tools/xrgame
+      - name: Build pinned runtime set in an empty directory
+        timeout-minutes: 180
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/xrgame-runtime:/work" \
+            -v "$GITHUB_WORKSPACE:/project:ro" \
+            -e XRGAME_BUILD_ROOT=/work -e XRGAME_PROJECT_ROOT=/project \
+            -e XRGAME_JOBS=4 xrgame-runtime-build bash -euo pipefail -c '
+              mkdir -p /work/logs
+              dpkg-query -W > /work/logs/host-packages.txt
+              bash /project/tools/xrgame/prepare-linux.sh > /work/logs/prepare.log 2>&1
+              bash /project/tools/xrgame/build-runtime.sh
+              bash /project/tools/xrgame/record-runtime.sh
+            '
+      - name: Record draft identities
+        run: cat "$RUNNER_TEMP/xrgame-runtime/packages/runtime-20260926-preview1/SHA256SUMS" | tee -a "$GITHUB_STEP_SUMMARY"
+      # Only runtime/source archives and build reports. No APK, account or game data.
+      # A successful build does not authorize publishing or activate the app catalog.
+      - name: Save runtime build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrgame-runtime-draft-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/xrgame-runtime/logs/*.log
+            ${{ runner.temp }}/xrgame-runtime/logs/*.txt
+            ${{ runner.temp }}/xrgame-runtime/packages/runtime-20260926-preview1/*.json
+            ${{ runner.temp }}/xrgame-runtime/packages/runtime-20260926-preview1/SHA256SUMS
+            ${{ runner.temp }}/xrgame-runtime/packages/runtime-20260926-preview1/*.wcp
+            ${{ runner.temp }}/xrgame-runtime/packages/runtime-20260926-preview1/*.zip
+            ${{ runner.temp }}/xrgame-runtime/packages/runtime-20260926-preview1/*.txz
+            ${{ runner.temp }}/xrgame-runtime/sources/*.json
+            ${{ runner.temp }}/xrgame-runtime/sources/*.tar.xz
+            ${{ runner.temp }}/xrgame-runtime/dependency-sources/*.json
+            ${{ runner.temp }}/xrgame-runtime/dependency-sources/*.tar.xz

@@ -1311,6 +1311,17 @@ class SteamService : Service(), IChallengeUrlChanged {
             return runBlocking(Dispatchers.IO) { instance?.appDao?.findHiddenDLCApps(appId) }
         }
 
+        fun getXrGameDlcForLaunch(appId: Int): Map<Int, String> = runBlocking(Dispatchers.IO) {
+            val service = instance ?: return@runBlocking emptyMap()
+            val base = service.appDao.findApp(appId) ?: return@runBlocking emptyMap()
+            val ids = service.appDao.findDlcAppIdsForParent(appId)
+            val dlcs = ids.chunked(900).flatMap { service.appDao.findSteamAppWithAppIds(it) }
+            val installed = (listOf(appId) + ids).mapNotNull { service.appInfoDao.getInstalledApp(it) }
+            app.gamenative.xrgame.XrGameSteamDlc.available(base, dlcs, service.licenseDao.getAllLicenses(),
+                installed.flatMap { it.downloadedDepots }.toSet(),
+                installed.firstOrNull { it.id == appId }?.branch ?: "public")
+        }
+
         fun getInstalledApp(appId: Int): AppInfo? {
             return runBlocking(Dispatchers.IO) { instance?.appInfoDao?.getInstalledApp(appId) }
         }
@@ -2097,6 +2108,10 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         fun isImageFsInstalled(context: Context): Boolean {
+            if (BuildConfig.XRGAME) {
+                val imageFs = ImageFs.find(context)
+                return imageFs.isValid && imageFs.libDir.isDirectory && imageFs.binDir.isDirectory
+            }
             return ImageFs.find(context).rootDir.exists()
         }
 
@@ -2161,6 +2176,11 @@ class SteamService : Service(), IChallengeUrlChanged {
             context: Context,
             onProgress: (Float) -> Unit,
         ) = withContext(Dispatchers.IO) {
+            if (BuildConfig.XRGAME) {
+                val entry = app.gamenative.xrgame.XrGameComponents.byFileName(context, fileName)
+                app.gamenative.xrgame.XrGameComponents.download(context, entry, dest, onProgress)
+                return@withContext
+            }
             val primaryUrl = "https://downloads.gamenative.app/$fileName"
             val fallbackUrl = "https://pub-9fcd5294bd0d4b85a9d73615bf98f3b5.r2.dev/$fileName"
             try {
@@ -2776,6 +2796,9 @@ class SteamService : Service(), IChallengeUrlChanged {
                         throw e
                     } catch (e: Exception) {
                         Timber.e(e, "Download failed for app $appId")
+                        if (BuildConfig.XRGAME) {
+                            instance?.let { SnackbarManager.show(it.getString(R.string.download_failed_try_again)) }
+                        }
                         di.persistProgressSnapshot()
                         // Mark all depots as failed
                         selectedDepots.keys.sorted().forEachIndexed { idx, _ ->
@@ -2871,7 +2894,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                     val containerId = "${GameSource.STEAM.name}_$appId"
                     // Skip post-install sync for utility apps (e.g., Lossless Scaling)
                     val isUtilityApp = appId == LsfgVkManager.LOSSLESS_SCALING_APP_ID
-                    if (!isUtilityApp) {
+                    if (!isUtilityApp && !BuildConfig.XRGAME) {
                         if (steamId != null && !ContainerUtils.isLocalSavesOnly(svc.applicationContext, containerId)) {
                             downloadInfo.setPostInstallSyncing(true)
                             downloadInfo.updateStatusMessage("Syncing saves...")
@@ -3003,7 +3026,9 @@ class SteamService : Service(), IChallengeUrlChanged {
             try {
                 val context = instance?.applicationContext ?: return@asyncIsolated PostSyncInfo(SyncResult.UnknownFail)
                 // Migrate GSE Saves to Steam userdata
-                SteamUtils.migrateGSESavesToSteamUserdata(context, appId)
+                // picoXr's client uses account-scoped userdata directly. Legacy GSE saves
+                // have no reliable account ownership and must not overwrite cloud saves.
+                if (!BuildConfig.XRGAME) SteamUtils.migrateGSESavesToSteamUserdata(context, appId)
 
                 var syncResult = PostSyncInfo(SyncResult.UnknownFail)
 
@@ -3095,7 +3120,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             try {
                 val context = instance?.applicationContext ?: return@asyncIsolated PostSyncInfo(SyncResult.UnknownFail)
                 // Migrate GSE Saves to Steam userdata
-                SteamUtils.migrateGSESavesToSteamUserdata(context, appId)
+                if (!BuildConfig.XRGAME) SteamUtils.migrateGSESavesToSteamUserdata(context, appId)
 
                 var syncResult = PostSyncInfo(SyncResult.UnknownFail)
 

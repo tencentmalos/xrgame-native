@@ -93,7 +93,7 @@ class MainViewModel @Inject constructor(
     private var pendingWarmPitch: Pair<String, Boolean>? = null
 
     private fun warmPitchAllowed(): Boolean {
-        if (PrefManager.tipped || BuildConfig.GOLD) return false
+        if (BuildConfig.XRGAME || PrefManager.tipped || BuildConfig.GOLD) return false
         return System.currentTimeMillis() - PrefManager.lastWarmPitchTime >= WARM_PITCH_COOLDOWN_MS
     }
 
@@ -637,7 +637,7 @@ class MainViewModel @Inject constructor(
                 val container = ContainerUtils.getOrCreateContainer(context, appId)
                 val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
                 if (gameSource == GameSource.STEAM) {
-                    if (container.isLaunchRealSteam() || container.isLaunchBionicSteam()) {
+                    if (app.gamenative.BuildConfig.XRGAME || container.isLaunchRealSteam() || container.isLaunchBionicSteam()) {
                         SteamUtils.restoreSteamApi(context, appId)
                     } else {
                         val offline = _offline.value
@@ -774,6 +774,7 @@ class MainViewModel @Inject constructor(
     }
 
     private suspend fun offerAiDebugRun(context: Context, appId: String, trigger: String): Boolean {
+        if (BuildConfig.XRGAME) return false
         if (PrefManager.hideAiFeatures) return false
         return try {
             val container = ContainerUtils.getContainer(context, appId)

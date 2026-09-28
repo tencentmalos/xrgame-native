@@ -15,6 +15,7 @@ object XrGame {
     /** Called once from PluviaApp.onCreate, before any network client is created. */
     fun install(app: Application) {
         if (!enabled) return
+        XrGameProfiler.initialize(app)
         XrGameEgress.install()
         XrGameStorage.install(app)
     }

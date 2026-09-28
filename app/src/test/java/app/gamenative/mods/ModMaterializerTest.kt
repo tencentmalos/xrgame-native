@@ -25,7 +25,8 @@ class ModMaterializerTest {
 
     @Before
     fun setUp() {
-        tempDir = createTempDirectory("nexus_materializer_test").toFile()
+        // Match the resolver's canonical paths when macOS aliases /var to /private/var.
+        tempDir = createTempDirectory("nexus_materializer_test").toFile().canonicalFile
         extracted = File(tempDir, "extracted").apply { mkdirs() }
         gameDir = File(tempDir, "game").apply { mkdirs() }
         backupDir = File(tempDir, "backups").apply { mkdirs() }

@@ -1,0 +1,1005 @@
+{
+  "schema": 1,
+  "snapshotSha256": "b088df560c9395d7c2cc797d208d8a727d1f06fc70e5ea34eef6118ef64a7e42",
+  "snapshotRecipeCommit": "ab31bb07445226c0d2c9e3a252ba212f5a22a16f",
+  "attribution": "Recipes matched to installed package versions; the prebuilt snapshot does not attest individual package build commits.",
+  "completeCorrespondingSource": false,
+  "recipeArchive": {
+    "url": "https://codeload.github.com/termux/termux-packages/tar.gz/5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+    "sha256": "adb498bdbe3192480ae6492a172412be88e2c063df1911bb4adb0351baa4051c"
+  },
+  "packages": {
+    "alsa-lib": {
+      "version": "1.2.15.3",
+      "license": "LGPL-2.1",
+      "recipe": "packages/alsa-lib/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.15.3.tar.gz",
+          "sha256": "7a3bee640f1c29fdfa3d1f922185929b546f012c27a73bbb6b424d12488c3c8e"
+        }
+      ]
+    },
+    "brotli": {
+      "version": "1.2.0",
+      "license": "MIT",
+      "recipe": "packages/brotli/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz",
+          "sha256": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec"
+        }
+      ]
+    },
+    "dbus": {
+      "version": "1.16.2-2",
+      "license": "GPL-2.0",
+      "recipe": "packages/dbus/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz",
+          "sha256": "0ba2a1a4b16afe7bceb2c07e9ce99a8c2c3508e5dec290dbb643384bd6beb7e2"
+        }
+      ]
+    },
+    "ffmpeg": {
+      "version": "8.0.1-5",
+      "license": "GPL-3.0",
+      "recipe": "packages/ffmpeg/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://www.ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz",
+          "sha256": "05ee0b03119b45c0bdb4df654b96802e909e0a752f72e4fe3794f487229e5a41"
+        }
+      ]
+    },
+    "fontconfig": {
+      "version": "2.17.1-1",
+      "license": "MIT",
+      "recipe": "packages/fontconfig/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.17.1/fontconfig-2.17.1.tar.gz",
+          "sha256": "82e73b26adad651b236e5f5d4b3074daf8ff0910188808496326bd3449e5261d"
+        }
+      ]
+    },
+    "freetype": {
+      "version": "2.14.1",
+      "license": "GPL-2.0",
+      "recipe": "packages/freetype/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.sourceforge.net/freetype/freetype-2.14.1.tar.xz",
+          "sha256": "32427e8c471ac095853212a37aef816c60b42052d4d9e48230bab3bdf2936ccc"
+        }
+      ]
+    },
+    "game-music-emu": {
+      "version": "0.6.4-1",
+      "license": "LGPL-2.1",
+      "recipe": "packages/game-music-emu/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/libgme/game-music-emu/releases/download/0.6.4/libgme-0.6.4-src.tar.gz",
+          "sha256": "6f94eac735d86bca998a7ce1170d007995191ef6d4388345a0dc5ffa1de0bafa"
+        }
+      ]
+    },
+    "glib": {
+      "version": "2.86.4",
+      "license": "LGPL-2.1",
+      "recipe": "packages/glib/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://download.gnome.org/sources/glib/2.86/glib-2.86.4.tar.xz",
+          "sha256": "d4e2b5d791d5015ffd8c6971ad8e975a0a55c1a14926cdb25cf843ff00682260",
+          "mirrors": [
+            "https://mirrors.kernel.org/gnome/sources/glib/2.86/glib-2.86.4.tar.xz"
+          ]
+        }
+      ]
+    },
+    "glslang": {
+      "version": "16.2.0",
+      "license": "BSD",
+      "recipe": "packages/glslang/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/KhronosGroup/glslang/archive/refs/tags/16.2.0.tar.gz",
+          "sha256": "01985335785c97906a91afe3cb5ee015997696181ec6c125bab5555602ba08e2"
+        }
+      ]
+    },
+    "gst-plugins-base": {
+      "version": "1.28.0-1",
+      "license": "LGPL-2.1",
+      "recipe": "packages/gst-plugins-base/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.28.0.tar.xz",
+          "sha256": "eace79d63bd2edeb2048777ea9f432d8b6e7336e656cbc20da450f6235758b31"
+        }
+      ]
+    },
+    "gst-plugins-good": {
+      "version": "1.28.0-1",
+      "license": "LGPL-2.1",
+      "recipe": "packages/gst-plugins-good/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.28.0.tar.xz",
+          "sha256": "d97700f346fdf9ef5461c035e23ed1ce916ca7a31d6ddad987f774774361db77"
+        }
+      ]
+    },
+    "gstreamer": {
+      "version": "1.28.0-1",
+      "license": "LGPL-2.1",
+      "recipe": "packages/gstreamer/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.28.0.tar.xz",
+          "sha256": "6c8676bc39a2b41084fd4b21d2c37985c69ac979c03ce59575db945a3a623afd"
+        }
+      ]
+    },
+    "libandroid-execinfo": {
+      "version": "0.1-3",
+      "license": "BSD 2-Clause",
+      "recipe": "packages/libandroid-execinfo/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [],
+      "sourceInRecipeTree": true
+    },
+    "libandroid-glob": {
+      "version": "0.6-3",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libandroid-glob/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [],
+      "sourceInRecipeTree": true
+    },
+    "libandroid-posix-semaphore": {
+      "version": "0.1-4",
+      "license": "MIT",
+      "recipe": "packages/libandroid-posix-semaphore/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [],
+      "sourceInRecipeTree": true
+    },
+    "libandroid-shmem": {
+      "version": "0.7",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libandroid-shmem/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/termux/libandroid-shmem/archive/refs/tags/v0.7.tar.gz",
+          "sha256": "1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867"
+        }
+      ]
+    },
+    "libandroid-stub": {
+      "version": "29-1",
+      "license": "NCSA",
+      "recipe": "packages/libandroid-stub/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [],
+      "sourceInRecipeTree": true
+    },
+    "libandroid-support": {
+      "version": "29-1",
+      "license": "Apache-2.0, MIT",
+      "recipe": "packages/libandroid-support/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/termux/libandroid-support/archive/refs/tags/v29.tar.gz",
+          "sha256": "8f74ce0f9cf70ec29f548696c248cac0ba560a2d8916a0fe1cf9316d5f167a80"
+        },
+        {
+          "url": "https://github.com/termux/wcwidth/archive/refs/tags/v4.tar.gz",
+          "sha256": "08489e00f797ffb3b71f9c1894c83e5ebe12c90a2ee0e1f9dc7c6eb29a2ff1a8"
+        }
+      ]
+    },
+    "libandroid-sysv-semaphore": {
+      "version": "0.1-1",
+      "license": "BSD 2-Clause",
+      "recipe": "packages/libandroid-sysv-semaphore/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [],
+      "sourceInRecipeTree": true
+    },
+    "libaom": {
+      "version": "3.13.1-1",
+      "license": "BSD 2-Clause",
+      "recipe": "packages/libaom/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://storage.googleapis.com/aom-releases/libaom-3.13.1.tar.gz",
+          "sha256": "19e45a5a7192d690565229983dad900e76b513a02306c12053fb9a262cbeca7d"
+        }
+      ]
+    },
+    "libbluray": {
+      "version": "1.4.0",
+      "license": "LGPL-2.1",
+      "recipe": "packages/libbluray/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.videolan.org/pub/videolan/libbluray/1.4.0/libbluray-1.4.0.tar.xz",
+          "sha256": "77937baf07eadda4b2b311cf3af4c50269d2ea3165041f5843d96476c4c92777"
+        }
+      ]
+    },
+    "libbz2": {
+      "version": "1.0.8-8",
+      "license": "BSD",
+      "recipe": "packages/libbz2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://fossies.org/linux/misc/bzip2-1.0.8.tar.xz",
+          "sha256": "47fd74b2ff83effad0ddf62074e6fad1f6b4a77a96e121ab421c20a216371a1f"
+        }
+      ]
+    },
+    "libdav1d": {
+      "version": "1.5.3",
+      "license": "BSD 2-Clause",
+      "recipe": "packages/libdav1d/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://code.videolan.org/videolan/dav1d/-/archive/1.5.3/dav1d-1.5.3.tar.bz2",
+          "sha256": "e099f53253f6c247580c554d53a13f1040638f2066edc3c740e4c2f15174ce22"
+        }
+      ]
+    },
+    "libdecor": {
+      "version": "0.2.5",
+      "license": "MIT",
+      "recipe": "x11-packages/libdecor/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gitlab.freedesktop.org/libdecor/libdecor/-/archive/0.2.5/libdecor-0.2.5.tar.gz",
+          "sha256": "39c109a9a7eae943ba34d18a282c447d5729f9c486c8bc05ea305e4acd341522"
+        }
+      ]
+    },
+    "libexpat": {
+      "version": "2.7.4",
+      "license": "MIT",
+      "recipe": "packages/libexpat/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/libexpat/libexpat/releases/download/R_2_7_4/expat-2.7.4.tar.bz2",
+          "sha256": "e6af11b01e32e5ef64906a5cca8809eabc4beb7ff2f9a0e6aabbd42e825135d0"
+        }
+      ]
+    },
+    "libffi": {
+      "version": "3.4.7-1",
+      "license": "MIT",
+      "recipe": "packages/libffi/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/libffi/libffi/releases/download/v3.4.7/libffi-3.4.7.tar.gz",
+          "sha256": "138607dee268bdecf374adf9144c00e839e38541f75f24a1fcf18b78fda48b2d"
+        }
+      ]
+    },
+    "libflac": {
+      "version": "1.5.0-1",
+      "license": "GPL-2.0, LGPL-2.1, BSD 3-Clause",
+      "recipe": "packages/libflac/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.xiph.org/releases/flac/flac-1.5.0.tar.xz",
+          "sha256": "f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920"
+        }
+      ]
+    },
+    "libglvnd": {
+      "version": "1.7.0-1",
+      "license": "custom",
+      "recipe": "packages/libglvnd/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gitlab.freedesktop.org/glvnd/libglvnd/-/archive/v1.7.0/libglvnd-v1.7.0.tar.gz",
+          "sha256": "2b6e15b06aafb4c0b6e2348124808cbd9b291c647299eaaba2e3202f51ff2f3d"
+        }
+      ]
+    },
+    "libgmp": {
+      "version": "6.3.0-2",
+      "license": "LGPL-3.0",
+      "recipe": "packages/libgmp/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://mirrors.kernel.org/gnu/gmp/gmp-6.3.0.tar.xz",
+          "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898"
+        }
+      ]
+    },
+    "libgnutls": {
+      "version": "3.8.11",
+      "license": "LGPL-2.1, GPL-3.0",
+      "recipe": "packages/libgnutls/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.11.tar.xz",
+          "sha256": "91bd23c4a86ebc6152e81303d20cf6ceaeb97bc8f84266d0faec6e29f17baa20"
+        }
+      ]
+    },
+    "libiconv": {
+      "version": "1.18-1",
+      "license": "LGPL-2.1, GPL-3.0",
+      "recipe": "packages/libiconv/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://mirrors.kernel.org/gnu/libiconv/libiconv-1.18.tar.gz",
+          "sha256": "3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
+        }
+      ]
+    },
+    "libicu": {
+      "version": "78.2",
+      "license": "custom",
+      "recipe": "packages/libicu/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/unicode-org/icu/releases/download/release-78.2/icu4c-78.2-sources.tgz",
+          "sha256": "3e99687b5c435d4b209630e2d2ebb79906c984685e78635078b672e03c89df35"
+        }
+      ]
+    },
+    "libidn2": {
+      "version": "2.3.8-1",
+      "license": "LGPL-3.0, GPL-2.0, GPL-3.0",
+      "recipe": "packages/libidn2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://mirrors.kernel.org/gnu/libidn/libidn2-2.3.8.tar.gz",
+          "sha256": "f557911bf6171621e1f72ff35f5b1825bb35b52ed45325dcdee931e5d3c0787a"
+        }
+      ]
+    },
+    "liblzma": {
+      "version": "5.8.2",
+      "license": "LGPL-2.1, GPL-2.0, GPL-3.0",
+      "recipe": "packages/liblzma/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.2/xz-5.8.2.tar.xz",
+          "sha256": "890966ec3f5d5cc151077879e157c0593500a522f413ac50ba26d22a9a145214"
+        }
+      ]
+    },
+    "libmp3lame": {
+      "version": "3.100-7",
+      "license": "LGPL-2.0",
+      "recipe": "packages/libmp3lame/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz",
+          "sha256": "ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e"
+        }
+      ]
+    },
+    "libmpg123": {
+      "version": "1.33.3",
+      "license": "LGPL-2.1",
+      "recipe": "packages/libmpg123/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.sourceforge.net/sourceforge/mpg123/mpg123-1.33.3.tar.bz2",
+          "sha256": "6a0c6472dd156e213c2068f40115ebbb73978c2d873e66bae2a250e2d2198d26"
+        }
+      ]
+    },
+    "libnettle": {
+      "version": "4.0+really3.10.2",
+      "license": "GPL-2.0, LGPL-3.0",
+      "recipe": "packages/libnettle/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://mirrors.kernel.org/gnu/nettle/nettle-3.10.2.tar.gz",
+          "sha256": "fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5"
+        }
+      ]
+    },
+    "libogg": {
+      "version": "1.3.6-1",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libogg/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/xiph/ogg/releases/download/v1.3.6/libogg-1.3.6.tar.xz",
+          "sha256": "5c8253428e181840cd20d41f3ca16557a9cc04bad4a3d04cce84808677fa1061"
+        }
+      ]
+    },
+    "libopencore-amr": {
+      "version": "0.1.6-1",
+      "license": "Apache-2.0",
+      "recipe": "packages/libopencore-amr/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz/download",
+          "sha256": "483eb4061088e2b34b358e47540b5d495a96cd468e361050fae615b1809dc4a1"
+        }
+      ]
+    },
+    "libopenmpt": {
+      "version": "0.8.4",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libopenmpt/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.4+release.autotools.tar.gz",
+          "sha256": "627f9bf11aacae615a1f2c982c7e88cb21f11b2d6f0267946f7c82c5eae4943b"
+        }
+      ]
+    },
+    "libopus": {
+      "version": "1.6.1",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libopus/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz",
+          "sha256": "6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1"
+        }
+      ]
+    },
+    "libpng": {
+      "version": "1.6.55",
+      "license": "Libpng",
+      "recipe": "packages/libpng/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://download.sourceforge.net/libpng/libpng-1.6.55.tar.xz",
+          "sha256": "d925722864837ad5ae2a82070d4b2e0603dc72af44bd457c3962298258b8e82d"
+        }
+      ]
+    },
+    "librav1e": {
+      "version": "0.8.1",
+      "license": "BSD 2-Clause",
+      "recipe": "packages/librav1e/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/xiph/rav1e/archive/refs/tags/v0.8.1.tar.gz",
+          "sha256": "06d1523955fb6ed9cf9992eace772121067cca7e8926988a1ee16492febbe01e"
+        }
+      ]
+    },
+    "libsndfile": {
+      "version": "1.2.2-2",
+      "license": "LGPL-2.1",
+      "recipe": "packages/libsndfile/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/libsndfile/libsndfile/archive/refs/tags/1.2.2.tar.gz",
+          "sha256": "ffe12ef8add3eaca876f04087734e6e8e029350082f3251f565fa9da55b52121"
+        }
+      ]
+    },
+    "libsodium": {
+      "version": "1.0.21",
+      "license": "ISC",
+      "recipe": "packages/libsodium/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/jedisct1/libsodium/archive/refs/tags/1.0.21-RELEASE.tar.gz",
+          "sha256": "42e0ca94faaec901f4fbeda84b1b94b18f5309c360c66345cf52a7ab515b245b"
+        }
+      ]
+    },
+    "libsoxr": {
+      "version": "0.1.3-8",
+      "license": "LGPL-2.1",
+      "recipe": "packages/libsoxr/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz",
+          "sha256": "b111c15fdc8c029989330ff559184198c161100a59312f5dc19ddeb9b5a15889"
+        }
+      ]
+    },
+    "libsrt": {
+      "version": "1.5.4-2",
+      "license": "MPL-2.0",
+      "recipe": "packages/libsrt/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/Haivision/srt/archive/refs/tags/v1.5.4.tar.gz",
+          "sha256": "d0a8b600fe1b4eaaf6277530e3cfc8f15b8ce4035f16af4a5eb5d4b123640cdd"
+        }
+      ]
+    },
+    "libssh": {
+      "version": "0.12.0",
+      "license": "LGPL-2.1, BSD 2-Clause",
+      "recipe": "packages/libssh/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://www.libssh.org/files/0.12/libssh-0.12.0.tar.xz",
+          "sha256": "1a6af424d8327e5eedef4e5fe7f5b924226dd617ac9f3de80f217d82a36a7121"
+        }
+      ]
+    },
+    "libtheora": {
+      "version": "1.2.0-1",
+      "license": "BSD",
+      "recipe": "packages/libtheora/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.xiph.org/releases/theora/libtheora-1.2.0.tar.gz",
+          "sha256": "279327339903b544c28a92aeada7d0dcfd0397b59c2f368cc698ac56f515906e"
+        }
+      ]
+    },
+    "libudfread": {
+      "version": "1.2.0",
+      "license": "LGPL-2.1",
+      "recipe": "packages/libudfread/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://code.videolan.org/videolan/libudfread/-/archive/1.2.0/libudfread-1.2.0.tar.gz",
+          "sha256": "adcce1190925f9d35a477757c5e3f0e221315d14d3d45b4ae62540ea0925f877"
+        }
+      ]
+    },
+    "libunistring": {
+      "version": "1.3-1",
+      "license": "LGPL-3.0, GPL-2.0",
+      "recipe": "packages/libunistring/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://mirrors.kernel.org/gnu/libunistring/libunistring-1.3.tar.xz",
+          "sha256": "f245786c831d25150f3dfb4317cda1acc5e3f79a5da4ad073ddca58886569527"
+        }
+      ]
+    },
+    "libvo-amrwbenc": {
+      "version": "0.1.3-2",
+      "license": "Apache-2.0",
+      "recipe": "packages/libvo-amrwbenc/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz/download",
+          "sha256": "5652b391e0f0e296417b841b02987d3fd33e6c0af342c69542cbb016a71d9d4e"
+        }
+      ]
+    },
+    "libvorbis": {
+      "version": "1.3.7-4",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libvorbis/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "http://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz",
+          "sha256": "b33cc4934322bcbf6efcbacf49e3ca01aadbea4114ec9589d1b1e9d20f72954b"
+        }
+      ]
+    },
+    "libvpx": {
+      "version": "1:1.16.0",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libvpx/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/webmproject/libvpx/archive/refs/tags/v1.16.0.tar.gz",
+          "sha256": "7a479a3c66b9f5d5542a4c6a1b7d3768a983b1e5c14c60a9396edc9b649e015c"
+        }
+      ]
+    },
+    "libwayland": {
+      "version": "1.24.0",
+      "license": "MIT",
+      "recipe": "packages/libwayland/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.24.0/downloads/wayland-1.24.0.tar.xz",
+          "sha256": "82892487a01ad67b334eca83b54317a7c86a03a89cfadacfef5211f11a5d0536"
+        }
+      ]
+    },
+    "libwebp": {
+      "version": "1.6.0-rc1-0",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/libwebp/build.sh",
+      "recipeCommit": "b279d510b0ee2d35ba76c8928e736532edb340a9",
+      "sources": [
+        {
+          "url": "https://github.com/webmproject/libwebp/archive/v1.6.0-rc1.tar.gz",
+          "sha256": "a8822fbd36e43fa1e5a83a7104d86c5be8692cee1e323d57030b5562ef884a8a"
+        }
+      ]
+    },
+    "libx11": {
+      "version": "1.8.13",
+      "license": "MIT, X11",
+      "recipe": "packages/libx11/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libX11-1.8.13.tar.xz",
+          "sha256": "69606f485c2c07c14ef64f75b7bb326d48587af33795d9ab3e607c0b5f94f11c"
+        }
+      ]
+    },
+    "libx264": {
+      "version": "1:0.164.3191-1",
+      "license": "GPL-2.0",
+      "recipe": "packages/libx264/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://code.videolan.org/videolan/x264/-/archive/4613ac3c15fd75cebc4b9f65b7fb95e70a3acce1/x264-4613ac3c15fd75cebc4b9f65b7fb95e70a3acce1.tar.bz2",
+          "sha256": "2a1b197fd1fbc85045794f18c9353648a9ae3cbe194b7b92d523d096f9445464"
+        }
+      ]
+    },
+    "libx265": {
+      "version": "4.1-3",
+      "license": "GPL-2.0",
+      "recipe": "packages/libx265/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.1.tar.gz",
+          "sha256": "a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29"
+        }
+      ]
+    },
+    "libxau": {
+      "version": "1.0.12-2",
+      "license": "MIT",
+      "recipe": "packages/libxau/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXau-1.0.12.tar.xz",
+          "sha256": "74d0e4dfa3d39ad8939e99bda37f5967aba528211076828464d2777d477fc0fb"
+        }
+      ]
+    },
+    "libxcursor": {
+      "version": "1.2.3",
+      "license": "HPND",
+      "recipe": "packages/libxcursor/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXcursor-1.2.3.tar.xz",
+          "sha256": "fde9402dd4cfe79da71e2d96bb980afc5e6ff4f8a7d74c159e1966afb2b2c2c0"
+        }
+      ]
+    },
+    "libxdmcp": {
+      "version": "1.1.5-2",
+      "license": "MIT",
+      "recipe": "packages/libxdmcp/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/archive/individual/lib/libXdmcp-1.1.5.tar.xz",
+          "sha256": "d8a5222828c3adab70adf69a5583f1d32eb5ece04304f7f8392b6a353aa2228c"
+        }
+      ]
+    },
+    "libxext": {
+      "version": "1.3.7",
+      "license": "MIT, HPND, ISC",
+      "recipe": "packages/libxext/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXext-1.3.7.tar.xz",
+          "sha256": "6c643c7035cdacf67afd68f25d01b90ef889d546c9fcd7c0adf7c2cf91e3a32d"
+        }
+      ]
+    },
+    "libxfixes": {
+      "version": "6.0.2",
+      "license": "HPND, MIT",
+      "recipe": "packages/libxfixes/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXfixes-6.0.2.tar.xz",
+          "sha256": "39f115d72d9c5f8111e4684164d3d68cc1fd21f9b27ff2401b08fddfc0f409ba"
+        }
+      ]
+    },
+    "libxi": {
+      "version": "1.8.2-1",
+      "license": "MIT, HPND",
+      "recipe": "packages/libxi/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXi-1.8.2.tar.xz",
+          "sha256": "d0e0555e53d6e2114eabfa44226ba162d2708501a25e18d99cfb35c094c6c104"
+        }
+      ]
+    },
+    "libxkbcommon": {
+      "version": "1.13.1",
+      "license": "MIT",
+      "recipe": "x11-packages/libxkbcommon/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-1.13.1.tar.gz",
+          "sha256": "aeb951964c2f7ecc08174cb5517962d157595e9e3f38fc4a130b91dc2f9fec18"
+        }
+      ]
+    },
+    "libxml2": {
+      "version": "2.15.1-1",
+      "license": "MIT",
+      "recipe": "packages/libxml2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.1.tar.xz",
+          "sha256": "c008bac08fd5c7b4a87f7b8a71f283fa581d80d80ff8d2efd3b26224c39bc54c",
+          "mirrors": [
+            "https://mirrors.kernel.org/gnome/sources/libxml2/2.15/libxml2-2.15.1.tar.xz"
+          ]
+        }
+      ]
+    },
+    "libxrandr": {
+      "version": "1.5.5",
+      "license": "HPND",
+      "recipe": "packages/libxrandr/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXrandr-1.5.5.tar.xz",
+          "sha256": "72b922c2e765434e9e9f0960148070bd4504b288263e2868a4ccce1b7cf2767a"
+        }
+      ]
+    },
+    "libxrender": {
+      "version": "0.9.12-1",
+      "license": "MIT",
+      "recipe": "packages/libxrender/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXrender-0.9.12.tar.xz",
+          "sha256": "b832128da48b39c8d608224481743403ad1691bf4e554e4be9c174df171d1b97"
+        }
+      ]
+    },
+    "libxss": {
+      "version": "1.2.5",
+      "license": "MIT",
+      "recipe": "packages/libxss/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://xorg.freedesktop.org/releases/individual/lib/libXScrnSaver-1.2.5.tar.xz",
+          "sha256": "5057365f847253e0e275871441e10ff7846c8322a5d88e1e187d326de1cd8d00"
+        }
+      ]
+    },
+    "libzmq": {
+      "version": "4.3.5-2",
+      "license": "LGPL-2.0",
+      "recipe": "packages/libzmq/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz",
+          "sha256": "6653ef5910f17954861fe72332e68b03ca6e4d9c7160eb3a8de5a5a913bfab43"
+        }
+      ]
+    },
+    "littlecms": {
+      "version": "2.18",
+      "license": "MIT",
+      "recipe": "packages/littlecms/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.18.tar.gz",
+          "sha256": "4f52a4459a93ac02b88e49b04dc0679e52fc92d36d3b722e5a1a44dbe8118236"
+        }
+      ]
+    },
+    "ocl-icd": {
+      "version": "2.3.4",
+      "license": "BSD 2-Clause",
+      "recipe": "packages/ocl-icd/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.4.tar.gz",
+          "sha256": "1a302b71b7304cca5a36f69d017b1af2b762cc4c2dd1c0c0e2fc1933db25c9cc"
+        }
+      ]
+    },
+    "openssl": {
+      "version": "1:3.6.1",
+      "license": "Apache-2.0",
+      "recipe": "packages/openssl/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.1/openssl-3.6.1.tar.gz",
+          "sha256": "b1bfedcd5b289ff22aee87c9d600f515767ebf45f77168cb6d64f231f518a82e"
+        }
+      ]
+    },
+    "pcre2": {
+      "version": "10.47",
+      "license": "BSD 3-Clause",
+      "recipe": "packages/pcre2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.47/pcre2-10.47.tar.bz2",
+          "sha256": "47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7"
+        }
+      ]
+    },
+    "pulseaudio": {
+      "version": "17.0-1",
+      "license": "GPL-2.0",
+      "recipe": "packages/pulseaudio/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://codeload.github.com/pulseaudio/pulseaudio/tar.gz/1f020889c9aa44ea0f63d7222e8c2b62c3f45f68",
+          "sha256": "0ccee8a0c9653badc668cf11f0eaad97a1febb85afa82c24c2d1935926446e3b",
+          "gitCommit": "1f020889c9aa44ea0f63d7222e8c2b62c3f45f68",
+          "tag": "v17.0"
+        }
+      ]
+    },
+    "sdl2": {
+      "version": "2.32.10",
+      "license": "ZLIB",
+      "recipe": "x11-packages/sdl2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://www.libsdl.org/release/SDL2-2.32.10.tar.gz",
+          "sha256": "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165"
+        }
+      ]
+    },
+    "svt-av1": {
+      "version": "4.0.1",
+      "license": "custom",
+      "recipe": "packages/svt-av1/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v4.0.1/SVT-AV1-v4.0.1.tar.gz",
+          "sha256": "9c0f9a4327334c40a76d2f39940d8a1b2dd8b1358375a11c4715d516b90a65cb"
+        }
+      ]
+    },
+    "ttf-dejavu": {
+      "version": "2.37-8",
+      "license": "MIT",
+      "recipe": "packages/ttf-dejavu/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.sourceforge.net/project/dejavu/dejavu/2.37/dejavu-fonts-ttf-2.37.tar.bz2",
+          "sha256": "fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7"
+        }
+      ]
+    },
+    "vulkan-loader-generic": {
+      "version": "1.4.343",
+      "license": "Apache-2.0",
+      "recipe": "packages/vulkan-loader-generic/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/v1.4.343.tar.gz",
+          "sha256": "42d78c1b7c70e52f12055a2bc91a33a4ca22f16dd6d76c7caee6ade096200002"
+        }
+      ]
+    },
+    "xvidcore": {
+      "version": "1.3.7-1",
+      "license": "GPL-2.0",
+      "recipe": "packages/xvidcore/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://downloads.xvid.com/downloads/xvidcore-1.3.7.tar.gz",
+          "sha256": "abbdcbd39555691dd1c9b4d08f0a031376a3b211652c0d8b3b8aa9be1303ce2d"
+        }
+      ]
+    },
+    "zlib": {
+      "version": "1.3.2",
+      "license": "ZLIB",
+      "recipe": "packages/zlib/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "sources": [
+        {
+          "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.xz",
+          "sha256": "d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3"
+        }
+      ]
+    }
+  },
+  "recipeOverrides": {
+    "libwebp": {
+      "build.sh": {
+        "url": "https://raw.githubusercontent.com/termux/termux-packages/b279d510b0ee2d35ba76c8928e736532edb340a9/packages/libwebp/build.sh",
+        "sha256": "861d2cf5d1c5b07e2d135e7842662cf8aa87a8ea5ae49b17c81d9eb5b087de79"
+      },
+      "disable-check-cpufeatures.patch": {
+        "url": "https://raw.githubusercontent.com/termux/termux-packages/b279d510b0ee2d35ba76c8928e736532edb340a9/packages/libwebp/disable-check-cpufeatures.patch",
+        "sha256": "383d293e5f0975ec8c8bfbfcf310ba27bd3e866ac89aefcd18a9f71b82a91781"
+      },
+      "libwebp-1.3.1-pkgconfig-files.patch": {
+        "url": "https://raw.githubusercontent.com/termux/termux-packages/b279d510b0ee2d35ba76c8928e736532edb340a9/packages/libwebp/libwebp-1.3.1-pkgconfig-files.patch",
+        "sha256": "a8ad4282fc82c1649b2efd244e28a916f776dd96e2bd1a22138d8e7ae68638e2"
+      }
+    }
+  }
+}

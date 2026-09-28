@@ -1,6 +1,7 @@
 package app.gamenative.service.gog
 
 import android.content.Context
+import app.gamenative.PluviaApp
 import app.gamenative.PrefManager
 import app.gamenative.data.DownloadInfo
 import app.gamenative.data.GOGGame
@@ -49,6 +50,11 @@ class GOGDownloadManagerTest {
 
     @Before
     fun setUp() {
+        // Robolectric retains static event subscriptions from earlier PluviaApp startups,
+        // even though this class uses a plain Application. An install event can otherwise
+        // fan out to stale FrontendSyncManager listeners, exhausting Dispatchers.IO while
+        // they block on DataStore and hanging the next test's PrefManager.init().
+        PluviaApp.events.clearAllListeners()
         apiClient = mock()
         parser = mock()
         gogManager = mock()

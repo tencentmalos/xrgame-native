@@ -41,7 +41,8 @@ public class ContentsManager {
             "${syswow64}/d3d12core.dll", "${syswow64}/d3d12.dll"};
     public static final String[] BOX64_TRUST_FILES = {"${localbin}/box64", "${bindir}/box64"};
     public static final String[] WOWBOX64_TRUST_FILES = {"${system32}/wowbox64.dll"};
-    public static final String[] FEXCORE_TRUST_FILES = {"${system32}/libwow64fex.dll", "${system32}/libarm64ecfex.dll"};
+    public static final String[] FEXCORE_TRUST_FILES = {"${system32}/libwow64fex.dll", "${system32}/libarm64ecfex.dll",
+            "${libdir}/wine/aarch64-unix/libwow64fex.so", "${libdir}/wine/aarch64-unix/libarm64ecfex.so"};
     private Map<String, String> dirTemplateMap;
     private Map<ContentProfile.ContentType, List<String>> trustedFilesMap;
 
@@ -673,8 +674,13 @@ public class ContentsManager {
                 File targetFile = new File(getPathFromTemplate(contentFile.target));
                 File sourceFile = new File(getInstallDir(context, profile), contentFile.source);
 
-                targetFile.delete();
-                FileUtils.copy(sourceFile, targetFile);
+                if (app.gamenative.BuildConfig.XRGAME) {
+                    if (!sourceFile.isFile() || (targetFile.exists() && !targetFile.delete())
+                            || !FileUtils.copy(sourceFile, targetFile)) return false;
+                } else {
+                    targetFile.delete();
+                    FileUtils.copy(sourceFile, targetFile);
+                }
 
                 if (profile.type == ContentProfile.ContentType.CONTENT_TYPE_BOX64) {
                     Log.d("ContentsManager", "found box64 profile type - running chmod on " + targetFile);

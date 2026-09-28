@@ -1,0 +1,124 @@
+--- a/Source/Windows/ARM64EC/Module.cpp
++++ b/Source/Windows/ARM64EC/Module.cpp
+@@ -50,6 +50,7 @@
+ #include "BTInterface.h"
+ #include "Windows/Common/SHMStats.h"
+ 
++#include <atomic>
+ #include <cstdint>
+ #include <cstdio>
+ #include <type_traits>
+@@ -147,6 +148,18 @@
+ std::optional<FEX::Windows::OvercommitTracker> OvercommitTracker;
+ std::optional<FEX::Windows::ImageTracker> ImageTracker;
+ 
++// Private diagnostic build only: trace one configured guest RIP, 64 events total.
++// Loader callbacks can run before PE TLS exists; do not use thread_local here.
++uint64_t XrGameTraceRip {};
++std::atomic<DWORD> XrGameTraceTid {};
++std::atomic<unsigned> XrGameTraceRemaining {64};
++static void XrGameContextTrace(const char* Event, uint64_t Address = 0) {
++  const DWORD Tid = GetCurrentThreadId();
++  if (XrGameTraceTid.load(std::memory_order_relaxed) != Tid) return;
++  unsigned Remaining = XrGameTraceRemaining.load(std::memory_order_relaxed);
++  while (Remaining && !XrGameTraceRemaining.compare_exchange_weak(Remaining, Remaining - 1, std::memory_order_relaxed)) {}
++  if (Remaining) LogMan::Msg::IFmt("XRGameContext event={} tid={:X} address={:X}", Event, Tid, Address);
++}
+ std::recursive_mutex ThreadCreationMutex;
+ // Map of TIDs to their FEX thread state, `ThreadCreationMutex` must be locked when accessing
+ std::unordered_map<DWORD, FEXCore::Core::InternalThreadState*> Threads;
+@@ -565,7 +578,11 @@
+ } // namespace Exception
+ 
+ extern "C" void SyncThreadContext(CONTEXT* Context) {
++  const bool Trace = XrGameTraceRip && Context->Rip == XrGameTraceRip;
++  if (Trace) XrGameTraceTid.store(GetCurrentThreadId(), std::memory_order_relaxed);
++  XrGameContextTrace("sync.cross-process.begin", Context->Rip);
+   ProcessPendingCrossProcessEmulatorWork();
++  XrGameContextTrace("sync.cross-process.end", Context->Rip);
+   auto* Thread = GetCPUArea().ThreadState();
+   // All other EFlags bits are lost when converting to/from an ARM64EC context, so merge them in from the current JIT state.
+   // This is advisable over dropping their values as thread suspend/resume uses this function, and that can happen at any point in guest code.
+@@ -576,6 +593,8 @@
+   uint32_t StateEFlags = CTX->ReconstructCompactedEFLAGS(Thread, false, nullptr, 0);
+   Context->EFlags = (Context->EFlags & ECValidEFlagsMask) | (StateEFlags & ~ECValidEFlagsMask);
+   Exception::LoadStateFromECContext(Thread, *Context);
++  XrGameContextTrace("sync.loaded", Context->Rip);
++  if (Trace) XrGameTraceTid.store(0, std::memory_order_relaxed);
+ }
+ 
+ NTSTATUS ProcessInit() {
+@@ -588,6 +607,11 @@
+   FEX::Config::LoadConfig(AppConfigName, _environ, FEX::ReadPortabilityInformation());
+   FEXCore::Config::ReloadMetaLayer();
+   FEX::Windows::Logging::Init();
++  if (const char* TraceRip = getenv("XRGAME_FEX_TRACE_RIP")) {
++    char* End {};
++    const uint64_t Value = strtoull(TraceRip, &End, 16);
++    if (End != TraceRip && *End == 0) XrGameTraceRip = Value;
++  }
+   FEXCore::Config::Set(FEXCore::Config::CONFIG_APP_FILENAME, ExecutablePath);
+   FEXCore::Config::Set(FEXCore::Config::CONFIG_APP_CONFIG_NAME, AppConfigName);
+ 
+@@ -818,18 +842,21 @@
+ }
+ 
+ void NotifyMemoryProtect(void* Address, SIZE_T Size, ULONG NewProt, BOOL After, NTSTATUS Status) {
++  XrGameContextTrace("NotifyMemoryProtect.begin", reinterpret_cast<uint64_t>(Address));
+   if (!InvalidationTracker || !GetCPUArea().ThreadState()) {
+     return;
+   }
+ 
+   if (!After) {
+     ThreadCreationMutex.lock();
++    XrGameContextTrace("NotifyMemoryProtect.locked");
+   } else {
+     if (!Status) {
+       InvalidationTracker->HandleMemoryProtectionNotification(reinterpret_cast<uint64_t>(Address), static_cast<uint64_t>(Size), NewProt);
+     }
+     ThreadCreationMutex.unlock();
+   }
++  XrGameContextTrace("NotifyMemoryProtect.end");
+ }
+ 
+ NTSTATUS NotifyMapViewOfSection(void* Unk1, void* Address, void* Unk2, SIZE_T Size, ULONG AllocType, ULONG Prot) {
+@@ -863,30 +890,39 @@
+ }
+ 
+ void FlushInstructionCacheHeavy(const void* Address, SIZE_T Size) {
++  XrGameContextTrace("FlushInstructionCacheHeavy.begin", reinterpret_cast<uint64_t>(Address));
+   if (!InvalidationTracker || !GetCPUArea().ThreadState()) {
+     return;
+   }
+ 
+   std::scoped_lock Lock(ThreadCreationMutex);
++  XrGameContextTrace("FlushInstructionCacheHeavy.locked");
+   InvalidationTracker->InvalidateAlignedInterval(reinterpret_cast<uint64_t>(Address), static_cast<uint64_t>(Size), false);
++  XrGameContextTrace("FlushInstructionCacheHeavy.end");
+ }
+ 
+ void BTCpu64FlushInstructionCache(const void* Address, SIZE_T Size) {
++  XrGameContextTrace("BTCpu64FlushInstructionCache.begin", reinterpret_cast<uint64_t>(Address));
+   if (!InvalidationTracker || !GetCPUArea().ThreadState()) {
+     return;
+   }
+ 
+   std::scoped_lock Lock(ThreadCreationMutex);
++  XrGameContextTrace("BTCpu64FlushInstructionCache.locked");
+   InvalidationTracker->InvalidateAlignedInterval(reinterpret_cast<uint64_t>(Address), static_cast<uint64_t>(Size), false);
++  XrGameContextTrace("BTCpu64FlushInstructionCache.end");
+ }
+ 
+ void BTCpu64NotifyMemoryDirty(void* Address, SIZE_T Size) {
++  XrGameContextTrace("BTCpu64NotifyMemoryDirty.begin", reinterpret_cast<uint64_t>(Address));
+   if (!InvalidationTracker || !GetCPUArea().ThreadState()) {
+     return;
+   }
+ 
+   std::scoped_lock Lock(ThreadCreationMutex);
++  XrGameContextTrace("BTCpu64NotifyMemoryDirty.locked");
+   InvalidationTracker->InvalidateAlignedInterval(reinterpret_cast<uint64_t>(Address), static_cast<uint64_t>(Size), false);
++  XrGameContextTrace("BTCpu64NotifyMemoryDirty.end");
+ }
+ 
+ void BTCpu64NotifyReadFile(HANDLE Handle, void* Address, SIZE_T Size, BOOL After, NTSTATUS Status) {

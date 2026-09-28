@@ -7,9 +7,29 @@ import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertSame
+import okhttp3.OkHttpClient
 import org.junit.Test
 
 class XrGameEgressTest {
+
+    @Test fun steamCloudStorageExceptionIsLimitedToOneAuthenticatedReplyOrigin() {
+        val host = "steamcloud-hkg.oss-accelerate.aliyuncs.com"
+        val base = OkHttpClient()
+        val client = XrGameEgress.steamCloudClient(base, "https://$host/signed-save")
+        assertFalse(XrGameEgress.isAllowed(host))
+        assertFalse(client.followRedirects)
+        assertFalse(client.followSslRedirects)
+        assertEquals(XrGameEgress.componentProxySelector().select(URI("https://$host/save")),
+            client.proxySelector.select(URI("https://$host/save")))
+        for (url in listOf("https://steamcloudhk2.blob.core.windows.net/save", "https://other.aliyuncs.com/",
+            "https://$host.evil.example/", "http://$host/save", "https://$host:444/save")) {
+            assertEquals(9, (client.proxySelector.select(URI(url)).single().address() as InetSocketAddress).port)
+        }
+        for (url in listOf("https://other.blob.core.windows.net/save", "http://$host/save", "https://$host:444/save")) {
+            assertSame(base, XrGameEgress.steamCloudClient(base, url))
+        }
+    }
 
     @Test
     fun valveHostsAreAllowed() {
@@ -64,6 +84,9 @@ class XrGameEgressTest {
     @Test
     fun selectorRoutesBlockedHostsToClosedLoopbackPort() {
         val original = ProxySelector.getDefault()
+        val allowedUri = URI("https://api.steampowered.com/ISteamDirectory/")
+        // Allowed hosts retain the system proxy configuration (which need not be DIRECT).
+        val originalRoute = original?.select(allowedUri) ?: listOf(Proxy.NO_PROXY)
         try {
             XrGameEgress.install()
             val selector = ProxySelector.getDefault()
@@ -74,8 +97,7 @@ class XrGameEgressTest {
             assertTrue(address.address.isLoopbackAddress)
             assertEquals(9, address.port)
 
-            val allowed = selector.select(URI("https://api.steampowered.com/ISteamDirectory/"))
-            assertTrue(allowed.all { it.type() == Proxy.Type.DIRECT })
+            assertEquals(originalRoute, selector.select(allowedUri))
         } finally {
             ProxySelector.setDefault(original)
         }

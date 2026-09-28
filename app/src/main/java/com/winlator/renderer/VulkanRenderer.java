@@ -45,6 +45,57 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     public final XServerView xServerView;
     private final XServer xServer;
     private long nativeHandle = 0;
+    private boolean sampleHardwareBuffers = false;
+    private final HardwareBufferLeases hardwareLeases = new HardwareBufferLeases();
+
+    public void setSampleHardwareBuffers(boolean enabled) {
+        sampleHardwareBuffers = app.gamenative.BuildConfig.XRGAME && app.gamenative.BuildConfig.DEBUG && enabled;
+    }
+
+    public boolean canSampleHardwareBuffers() {
+        return sampleHardwareBuffers && initComplete && !nativeMode && !frameGenArmed
+                && flatPresentationEnabled && xrFrameBridge == null;
+    }
+
+    public boolean sampleHardwarePixmap(Window window, GPUImage image, long traceFrame, Runnable complete, Runnable idle) {
+        HardwareBufferLeases.Result result;
+        synchronized (lock) {
+            if (nativeHandle == 0 || !canSampleHardwareBuffers()) return false;
+            long drawable = did(window.getContent()), buffer = image.getHardwareBufferPtr();
+            result = hardwareLeases.replace(window.id, drawable, buffer, idle,
+                    () -> nativeSampleWindowContentAHB(nativeHandle, drawable, buffer, traceFrame));
+            if (result.accepted) complete.run();
+        }
+        result.notifyRetired();
+        if (result.accepted && hudRef != null) hudRef.update();
+        return result.accepted;
+    }
+
+    private boolean retireHardwarePixmap(long windowId, boolean removeWindow) {
+        HardwareBufferLeases.Result result;
+        synchronized (lock) {
+            HardwareBufferLeases.Lease old = hardwareLeases.get(windowId);
+            if (old == null) return true;
+            result = hardwareLeases.retire(windowId,
+                    () -> nativeHandle != 0 && nativeRetireSampledWindow(nativeHandle, old.drawable));
+            if (result.accepted && removeWindow) nativeRemoveWindow(nativeHandle, old.drawable);
+        }
+        result.notifyRetired();
+        return result.accepted;
+    }
+
+    private void retireAllHardwarePixmaps() {
+        ArrayList<Long> windows;
+        synchronized (lock) { windows = hardwareLeases.windowIds(); }
+        for (long window : windows) {
+            if (!retireHardwarePixmap(window, true))
+                android.util.Log.e("VulkanRenderer", "AHB retirement failed; retaining Present lease for " + window);
+        }
+    }
+
+    private native boolean nativeSampleWindowContentAHB(long handle, long id, long ahbPtr, long traceFrame);
+    private native boolean nativeRetireSampledWindow(long handle, long id);
+
     private final Object lock = new Object();
 
     public final ViewTransformation viewTransformation = new ViewTransformation();
@@ -76,6 +127,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
         if (flatPresentationEnabled == enabled) return;
         flatPresentationEnabled = enabled;
         if (!enabled) {
+            retireAllHardwarePixmaps();
             scenePending.set(false);
         } else {
             onPointerMove(xServer.pointer.getX(), xServer.pointer.getY());
@@ -171,6 +223,14 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private native boolean nativeIsGameFrameDelivered(long handle);
     private native void nativeSetScanoutWindow(long handle, android.view.Surface game, android.view.Surface cursor);
     private native void nativeScanoutSetDst(long handle, int x, int y, int w, int h);
+    private boolean foreignAhbOwnership = false;
+    public void setForeignAhbOwnership(boolean enabled) {
+        synchronized (lock) {
+            foreignAhbOwnership = enabled;
+            if (nativeHandle != 0) nativeSetForeignAhbOwnership(nativeHandle, enabled);
+        }
+    }
+    private native void nativeSetForeignAhbOwnership(long handle, boolean enabled);
     private native void nativeSetVerboseLog(long handle, boolean v);
     private native void nativeDumpRendererInfo(long handle);
     private native void nativeSetFilterMode(long handle, int mode);
@@ -226,6 +286,10 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                 if (nativeHandle != 0) {
                     boolean ok = nativeReattachSurface(nativeHandle, surface);
                     if (!ok) {
+                        if (!hardwareLeases.windowIds().isEmpty()) {
+                            android.util.Log.e("VulkanRenderer", "Surface recovery blocked by retained AHB leases");
+                            return;
+                        }
                         nativeDestroy(nativeHandle);
                         nativeHandle = 0;
                         xrTargetAhbPtr = 0;
@@ -239,6 +303,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                 }
                 nativeHandle = nativeInit(surface, xServer.screenInfo.width, xServer.screenInfo.height, driverPath, driverLibraryName, nativeLibDir, frameGenArmed);
                 if (nativeHandle != 0) {
+                    nativeSetForeignAhbOwnership(nativeHandle, foreignAhbOwnership);
                     nativeSetPresentMode(nativeHandle, pendingPresentMode);
                     nativeSetFilterMode(nativeHandle, pendingFilterMode);
                     nativeSetSwapRB(nativeHandle, pendingSwapRB);
@@ -320,6 +385,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
             catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             initExecutor = null;
         }
+        retireAllHardwarePixmaps();
         synchronized (lock) {
             if (nativeHandle != 0) {
                 if (nativeMode) {
@@ -512,7 +578,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     public void onUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
-        if (!flatPresentationEnabled) return;
+        if (!flatPresentationEnabled || !retireHardwarePixmap(window.id, false)) return;
         if (hudRef != null && !nativeMode) hudRef.update();
         if (nativeHandle == 0 || pixmap == null) return;
         Drawable targetDrawable = window.getContent();
@@ -564,9 +630,22 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
         }
     }
 
+    public boolean copyHardwarePixmap(Window window, GPUImage image, long traceFrame) {
+        if (!retireHardwarePixmap(window.id, false)) return false;
+        final boolean copied;
+        synchronized (lock) {
+            if (nativeHandle == 0 || image.getHardwareBufferPtr() == 0) return false;
+            copied = nativeCopyWindowContentAHB(nativeHandle, did(window.getContent()), image.getHardwareBufferPtr(), traceFrame);
+        }
+        if (copied && hudRef != null) hudRef.update();
+        return copied;
+    }
+
+    private native boolean nativeCopyWindowContentAHB(long handle, long id, long ahbPtr, long traceFrame);
+
     @Override
     public void onUpdateWindowContent(Window window) {
-        if (!flatPresentationEnabled) return;
+        if (!flatPresentationEnabled || !retireHardwarePixmap(window.id, false)) return;
         if (hudRef != null) hudRef.update();
         final long handle;
         synchronized (lock) { handle = nativeHandle; }
@@ -645,6 +724,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     @Override
     public void onDestroyWindow(Window window) {
+        if (!retireHardwarePixmap(window.id, true)) return;
         final long id = did(window.getContent());
         xServerView.queueEvent(() -> {
             synchronized (lock) { if (nativeHandle != 0) nativeRemoveWindow(nativeHandle, id); }
@@ -658,9 +738,10 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     @Override
     public void onUnmapWindow(Window window) {
+        if (!retireHardwarePixmap(window.id, true)) return;
         final long id = did(window.getContent());
         xServerView.queueEvent(() -> {
-            synchronized (lock) { if (nativeHandle != 0) nativeRemoveWindow(nativeHandle, id); }
+            synchronized (lock) { if (nativeHandle != 0 && !window.attributes.isMapped()) nativeRemoveWindow(nativeHandle, id); }
             queueSceneUpdate();
         });
     }
@@ -671,6 +752,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     @Override
     public void onUpdateWindowGeometry(Window window, boolean resized) {
+        if (resized && !retireHardwarePixmap(window.id, true)) return;
         if (flatPresentationEnabled) queueSceneUpdate();
     }
 

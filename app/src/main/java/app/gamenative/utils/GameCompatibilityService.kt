@@ -72,6 +72,7 @@ object GameCompatibilityService {
         gameNames: List<String>,
         gpuName: String
     ): Map<String, GameCompatibilityResponse>? = withContext(Dispatchers.IO) {
+        if (BuildConfig.XRGAME) return@withContext null
         if (gameNames.isEmpty()) {
             return@withContext emptyMap()
         }
@@ -146,4 +147,3 @@ object GameCompatibilityService {
         }
     }
 }
-

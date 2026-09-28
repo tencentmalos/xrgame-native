@@ -8,6 +8,7 @@ import java.net.ProxySelector
 import java.net.SocketAddress
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
+import okhttp3.OkHttpClient
 import timber.log.Timber
 
 /**
@@ -26,6 +27,14 @@ import timber.log.Timber
  * Verify it with a per-UID connection capture on the device, not with this log.
  */
 object XrGameEgress {
+    private var inheritedSelector: ProxySelector? = null
+    private var installedSelector: ProxySelector? = null
+
+    // Inherited route for catalog-validated components and the CM-scoped Cloud client below.
+    fun componentProxySelector(): ProxySelector = inheritedSelector ?: object : ProxySelector() {
+        override fun select(uri: URI?) = listOf(Proxy.NO_PROXY)
+        override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
+    }
     /** Valve-operated domains: Steam CM, Web API, store/community, content CDN, cloud, images. */
     private val allowedSuffixes = listOf(
         "steampowered.com",
@@ -46,6 +55,34 @@ object XrGameEgress {
     private val blackhole = Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), 9))
     private val loggedHosts = ConcurrentHashMap.newKeySet<String>()
 
+    // These exact storage endpoints were returned by authenticated SteamCloud CM replies.
+    // They are not generally allowed: only the request built from that reply gets this route.
+    private val steamCloudStorageHosts = setOf(
+        "steamcloud-hkg.oss-accelerate.aliyuncs.com",
+        "steamcloud-sgp.oss-accelerate.aliyuncs.com",
+        "steamcloudhk2.blob.core.windows.net",
+    )
+
+    fun steamCloudClient(base: OkHttpClient, authorizedUrl: String): OkHttpClient {
+        val uri = URI(authorizedUrl)
+        if (uri.scheme != "https" || uri.userInfo != null || uri.port !in listOf(-1, 443) ||
+            uri.host?.lowercase() !in steamCloudStorageHosts) return base
+        val route = componentProxySelector()
+        val selector = object : ProxySelector() {
+            override fun select(target: URI?): List<Proxy> =
+                if (target?.scheme == "https" && target.host.equals(uri.host, ignoreCase = true) &&
+                    target.userInfo == null && target.port in listOf(-1, 443)) route.select(target)
+                else listOf(blackhole)
+
+            override fun connectFailed(target: URI?, sa: SocketAddress?, ioe: IOException?) {
+                route.connectFailed(target, sa, ioe)
+            }
+        }
+        // A signed Cloud URL cannot grant a redirect access to another origin.
+        return base.newBuilder().proxy(null).proxySelector(selector)
+            .followRedirects(false).followSslRedirects(false).build()
+    }
+
     fun isAllowed(host: String?): Boolean {
         if (host.isNullOrEmpty()) return true
         val h = host.lowercase().trimEnd('.').removePrefix("[").removeSuffix("]")
@@ -65,8 +102,11 @@ object XrGameEgress {
         return true
     }
 
+    @Synchronized
     fun install() {
         val previous = ProxySelector.getDefault()
+        if (previous != null && previous === installedSelector) return
+        inheritedSelector = previous
         ProxySelector.setDefault(
             object : ProxySelector() {
                 override fun select(uri: URI?): List<Proxy> {
@@ -83,6 +123,7 @@ object XrGameEgress {
                 }
             },
         )
+        installedSelector = ProxySelector.getDefault()
         Timber.tag("XrGameEgress").i("installed; allowed suffixes: %s", allowedSuffixes)
     }
 }

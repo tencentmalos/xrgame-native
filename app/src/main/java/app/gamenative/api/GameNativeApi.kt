@@ -19,6 +19,7 @@ object GameNativeApi {
     val httpClient: OkHttpClient = Net.http
 
     inline fun <T> executeRequest(request: Request, parser: (String) -> T): ApiResult<T> {
+        if (BuildConfig.XRGAME) return ApiResult.NetworkError(IOException("Upstream services are disabled in XRGame Native"))
         return try {
             val response = httpClient.newCall(request).execute()
             val body = response.body?.string() ?: ""
@@ -45,6 +46,7 @@ object GameNativeApi {
     }
 
     suspend fun buildPostRequest(url: String, body: JSONObject): Request {
+        check(!BuildConfig.XRGAME) { "Upstream services are disabled in XRGame Native" }
         val mediaType = "application/json".toMediaType()
         val bodyString = body.toString()
         val requestBody = bodyString.toRequestBody(mediaType)

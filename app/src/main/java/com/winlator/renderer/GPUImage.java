@@ -30,8 +30,16 @@ public class GPUImage extends NativeTexture {
     }
 
     public GPUImage(int socketFd) {
+        this(socketFd, false);
+    }
+
+    public GPUImage(int socketFd, boolean gpuOnly) {
         hardwareBufferPtr = hardwareBufferFromSocket(socketFd);
         if (hardwareBufferPtr != 0) {
+            if (gpuOnly) {
+                stride = hardwareBufferStride(hardwareBufferPtr);
+                return;
+            }
             virtualData = lockHardwareBuffer(hardwareBufferPtr);
             if (virtualData == null) {
                 System.err.println("Error: Failed to lock hardware buffer");
@@ -122,6 +130,8 @@ public class GPUImage extends NativeTexture {
     }
 
     private native long hardwareBufferFromSocket(int fd);
+
+    private native short hardwareBufferStride(long hardwareBufferPtr);
 
     private native long createHardwareBuffer(short width, short height);
 

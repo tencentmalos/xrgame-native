@@ -16,12 +16,13 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class EaLsxServerTest {
+    private var port = 0
     @Before
     fun startServer() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         mockkObject(EaAuthManager)
         every { EaAuthManager.credentials(any()) } returns null
-        EaLsxServer.start(EaLaunchSession(context, context.cacheDir, File(context.cacheDir, "nfs"), "C:\\NFS", "NFS13.exe", "", 1262560))
+        port = EaLsxServer.start(EaLaunchSession(context, context.cacheDir, File(context.cacheDir, "nfs"), "C:\\NFS", "NFS13.exe", "", 1262560), port = 0)
     }
 
     @After
@@ -30,7 +31,7 @@ class EaLsxServerTest {
         unmockkObject(EaAuthManager)
     }
 
-    private fun request(frame: String): String = Socket("127.0.0.1", EaConstants.LSX_PORT).use { socket ->
+    private fun request(frame: String): String = Socket("127.0.0.1", port).use { socket ->
         socket.soTimeout = 3000
         val input = socket.getInputStream()
         fun readFrame(): String = buildString {

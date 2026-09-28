@@ -20,6 +20,10 @@ data class ManifestInstallResult(
 )
 
 object ManifestInstaller {
+    private suspend fun fetchComponent(context: Context, entry: ManifestEntry, dest: File, onProgress: (Float) -> Unit) {
+        if (app.gamenative.BuildConfig.XRGAME) app.gamenative.xrgame.XrGameComponents.download(context, entry, dest, onProgress)
+        else SteamService.fetchFile(entry.url, dest, onProgress)
+    }
     suspend fun downloadAndInstallDriver(
         context: Context,
         entry: ManifestEntry,
@@ -28,7 +32,7 @@ object ManifestInstaller {
         var destFile: File? = null
         try {
             destFile = File(context.cacheDir, entry.url.substringAfterLast("/"))
-            SteamService.fetchFile(entry.url, destFile, onProgress)
+            fetchComponent(context, entry, destFile, onProgress)
             val uri = Uri.fromFile(destFile)
             val name = AdrenotoolsManager(context).installDriver(uri)
             if (name.isEmpty()) {
@@ -36,6 +40,11 @@ object ManifestInstaller {
                     success = false,
                     message = context.getString(R.string.manifest_install_failed, entry.name),
                 )
+            }
+            if (app.gamenative.BuildConfig.XRGAME) {
+                check(name == entry.id) { "Driver identity does not match the XRGame catalog" }
+                app.gamenative.xrgame.XrGameInstalledComponents.record(context, entry,
+                    File(context.filesDir, "contents/adrenotools/$name"))
             }
             return@withContext ManifestInstallResult(
                 success = true,
@@ -91,7 +100,7 @@ object ManifestInstaller {
             val cacheDir = File(context.filesDir, "assets/dxwrapper")
             cacheDir.mkdirs()
             val dest = File(cacheDir, entry.url.substringAfterLast("/"))
-            SteamService.fetchFile(entry.url, dest, onProgress)
+            fetchComponent(context, entry, dest, onProgress)
             if (!dest.exists() || dest.length() == 0L) {
                 dest.delete()
                 return@withContext ManifestInstallResult(
@@ -124,12 +133,12 @@ object ManifestInstaller {
         var destFile: File? = null
         try {
             destFile = File(context.cacheDir, entry.url.substringAfterLast("/"))
-            SteamService.fetchFile(entry.url, destFile, onProgress)
+            fetchComponent(context, entry, destFile, onProgress)
             val uri = Uri.fromFile(destFile)
             val mgr = ContentsManager(context)
 
             val (profile, fail, error) = extractContent(mgr, uri)
-            if (profile == null) {
+            if (profile == null || profile.type != expectedType) {
                 return@withContext ManifestInstallResult(
                     success = false,
                     message = context.getString(R.string.manifest_install_failed, entry.name),
@@ -142,6 +151,11 @@ object ManifestInstaller {
                     success = false,
                     message = context.getString(R.string.manifest_install_failed, entry.name),
                 )
+            }
+
+            if (app.gamenative.BuildConfig.XRGAME) {
+                check(profile.verName == entry.id) { "Runtime identity does not match the XRGame catalog" }
+                app.gamenative.xrgame.XrGameInstalledComponents.record(context, entry, ContentsManager.getInstallDir(context, profile))
             }
 
             return@withContext ManifestInstallResult(

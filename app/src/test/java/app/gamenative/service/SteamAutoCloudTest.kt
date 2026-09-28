@@ -2060,6 +2060,25 @@ class SteamAutoCloudTest {
     // ── Scenario 1: App update wipes sync DB, user has local saves, cloud has different saves ──
     // Must ask the user which saves to keep — never silently overwrite.
     @Test
+    fun abandonedCloudDownloadIsNotTreatedAsANewSaveToUpload() = runBlocking {
+        cacheCurrentLocalFiles(5)
+        val partial = File(tempDir, ".xrgame-cloud-123.part").apply { writeText("truncated download") }
+        every { mockSteamCloud.getAppFileListChange(any(), any(), any()) } returns
+            CompletableFuture.completedFuture(makeCloudFileChangeList(cloudChangeNumber = 5))
+        val result = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = makePrefixToPath(),
+        ).await()!!
+        assertEquals(0, result.filesUploaded)
+        assertFalse(result.uploadsRequired)
+        assertTrue(partial.isFile)
+    }
+
+    @Test
     fun dbCleared_localFilesExist_cloudAhead_returnsConflict() = runBlocking {
         // DB cleared: no change number, no cached file list
         db.appChangeNumbersDao().deleteByAppId(steamAppId)

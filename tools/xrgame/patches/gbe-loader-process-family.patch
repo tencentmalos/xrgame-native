@@ -1,0 +1,135 @@
+--- a/tools/steamclient_loader/win/ColdClientLoader.cpp
++++ b/tools/steamclient_loader/win/ColdClientLoader.cpp
+@@ -59,6 +59,12 @@
+ static bool IgnoreInjectionError{};
+ static bool IgnoreLoaderArchDifference{};
+ static bool ResumeByDebugger{};
++static bool WineBootstrap{};
++
++struct game_job {
++    HANDLE handle = NULL;
++    ~game_job() { if (handle) CloseHandle(handle); }
++};
+ 
+ static long PersistentMode{};
+ 
+@@ -557,6 +563,7 @@
+ 
+     // debug
+     ResumeByDebugger = local_ini.GetBoolValue("Debug", "ResumeByDebugger", false);
++    WineBootstrap = local_ini.GetBoolValue("Injection", "WineBootstrap", false);
+ 
+     if (PersistentMode != 0 && PersistentMode != 1 && PersistentMode != 2) PersistentMode = 0;
+ 
+@@ -574,6 +581,7 @@
+     logger.write("Injection::IgnoreInjectionError: " + std::to_string(IgnoreInjectionError));
+     logger.write("Injection::IgnoreLoaderArchDifference: " + std::to_string(IgnoreLoaderArchDifference));
+     logger.write("Debug::ResumeByDebugger: " + std::to_string(ResumeByDebugger));
++    logger.write("Injection::WineBootstrap: " + std::to_string(WineBootstrap));
+ 
+     if (!common_helpers::file_exist(Client64Path)) {
+         logger.write("Couldn't find the requested SteamClient64Dll");
+@@ -694,6 +702,28 @@
+         }
+     }
+ 
++    game_job family;
++    if (WineBootstrap) {
++        // This requires XRGame Wine's exact-image bootstrap support. Do not
++        // enable it for an arbitrary Wine runtime or an unreviewed DLL set.
++        if (dlls_to_inject.size() != 1 ||
++            !SetEnvironmentVariableW(L"XRGAME_BOOTSTRAP_IMAGE", common_helpers::to_wstr(ExeFile).c_str()) ||
++            !SetEnvironmentVariableW(L"XRGAME_BOOTSTRAP_DLL", common_helpers::to_wstr(dlls_to_inject[0]).c_str())) {
++            MessageBoxA(NULL, "Invalid Wine bootstrap configuration.", "ColdClientLoader", MB_ICONERROR);
++            return 1;
++        }
++        family.handle = CreateJobObjectW(NULL, NULL);
++        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
++        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
++        if (!family.handle || !SetInformationJobObject(family.handle, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
++            logger.write("Unable to create game process family, error=" + std::to_string(GetLastError()));
++            return 1;
++        }
++        // Wine loads this DLL before each matching image's entry point. A second
++        // remote LoadLibrary would initialize/refcount it twice on the first run.
++        dlls_to_inject.clear();
++    }
++
+     if (PersistentMode != 2) {
+         if (AppId.empty()) {
+             read_steam_settings_appid();
+@@ -815,6 +845,17 @@
+             return 1;
+         }
+         
++        if (family.handle && !AssignProcessToJobObject(family.handle, processInfo.hProcess)) {
++            logger.write("Unable to track game process family, error=" + std::to_string(GetLastError()));
++            TerminateProcess(processInfo.hProcess, 1);
++            CloseHandle(processInfo.hProcess);
++            CloseHandle(processInfo.hThread);
++            cleanup_registry_hkcu();
++            cleanup_registry_hkcu_2();
++            cleanup_registry_hklm();
++            cleanup_registry_hkcs();
++            return 1;
++        }
+         logger.write("injecting " + std::to_string(dlls_to_inject.size()) + " dlls");
+         for (const auto &dll : dlls_to_inject) {
+             logger.write("Injecting dll: '" + dll + "' ...");
+@@ -875,6 +916,56 @@
+         child_exit_code = wait_result == WAIT_OBJECT_0 && process_exit_valid ? process_exit : ERROR_PROCESS_ABORTED;
+         CloseHandle(processInfo.hProcess);
+         CloseHandle(processInfo.hThread);
++        if (family.handle) {
++            // A self-relaunch is already in the inherited job before its parent
++            // can return from CreateProcess. No grace period or exit-code retry.
++            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
++            HANDLE successor = NULL;
++            ULONGLONG successor_created = 0;
++            for (;;) {
++                if (!QueryInformationJobObject(family.handle, JobObjectBasicAccountingInformation,
++                                               &accounting, sizeof(accounting), NULL)) {
++                    child_exit_code = GetLastError();
++                    logger.write("Game family query failed, error=" + std::to_string(child_exit_code));
++                    break;
++                }
++                if (!accounting.ActiveProcesses) break;
++                std::vector<ULONG_PTR> storage(4 + accounting.ActiveProcesses);
++                auto members = reinterpret_cast<JOBOBJECT_BASIC_PROCESS_ID_LIST *>(storage.data());
++                if (QueryInformationJobObject(family.handle, JobObjectBasicProcessIdList,
++                                               members, static_cast<DWORD>(storage.size() * sizeof(ULONG_PTR)), NULL)) {
++                    for (DWORD i = 0; i < members->NumberOfProcessIdsInList; ++i) {
++                        DWORD pid = static_cast<DWORD>(members->ProcessIdList[i]);
++                        if (pid == processInfo.dwProcessId) continue;
++                        HANDLE child = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
++                        if (!child) continue;
++                        WCHAR path[32768];
++                        DWORD length = sizeof(path) / sizeof(path[0]);
++                        FILETIME created{}, exited{}, kernel{}, user{};
++                        if (QueryFullProcessImageNameW(child, 0, path, &length) &&
++                            !_wcsicmp(path, exe_file.c_str()) && GetProcessTimes(child, &created, &exited, &kernel, &user)) {
++                            ULONGLONG time = (static_cast<ULONGLONG>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
++                            if (time > successor_created) {
++                                if (successor) CloseHandle(successor);
++                                successor = child;
++                                successor_created = time;
++                                child = NULL;
++                                logger.write("Following game successor pid=" + std::to_string(pid));
++                            }
++                        }
++                        if (child) CloseHandle(child);
++                    }
++                }
++                Sleep(100);
++            }
++            if (successor) {
++                DWORD code;
++                if (!accounting.ActiveProcesses && GetExitCodeProcess(successor, &code)) child_exit_code = code;
++                CloseHandle(successor);
++            }
++            logger.write("Game family finished, total processes=" + std::to_string(accounting.TotalProcesses));
++            logger.write("Game family exit=" + std::to_string(child_exit_code));
++        }
+     }
+ 
+     if (PersistentMode == 1 ) {

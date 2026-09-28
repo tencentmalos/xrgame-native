@@ -121,29 +121,31 @@ class PluviaApp : SplitCompatApplication() {
             Timber.e(e, "[PluviaApp]: Failed to clear temporary config overrides")
         }
 
-        // Initialize PostHog Analytics
-        val postHogConfig = PostHogAndroidConfig(
-            apiKey = BuildConfig.POSTHOG_API_KEY,
-            host = BuildConfig.POSTHOG_HOST,
-        ).apply {
-            /* turn every event into an identified one */
-            personProfiles = PersonProfiles.ALWAYS
-        }
-        PostHogAndroid.setup(this, postHogConfig)
-        com.posthog.PostHog.register("build_flavor", BuildConfig.FLAVOR)
-        DeviceInfo.registerSuperProperties(this)
-        Thread({ DeviceInfo.registerGpuSuperProperties(applicationContext) }, "device-info").apply { isDaemon = true }.start()
+        if (!BuildConfig.XRGAME) {
+            // Initialize PostHog Analytics
+            val postHogConfig = PostHogAndroidConfig(
+                apiKey = BuildConfig.POSTHOG_API_KEY,
+                host = BuildConfig.POSTHOG_HOST,
+            ).apply {
+                /* turn every event into an identified one */
+                personProfiles = PersonProfiles.ALWAYS
+            }
+            PostHogAndroid.setup(this, postHogConfig)
+            com.posthog.PostHog.register("build_flavor", BuildConfig.FLAVOR)
+            DeviceInfo.registerSuperProperties(this)
+            Thread({ DeviceInfo.registerGpuSuperProperties(applicationContext) }, "device-info").apply { isDaemon = true }.start()
 
-        if (PrefManager.usageAnalyticsEnabled) {
-            com.posthog.PostHog.capture(
-                event = "\$set",
-                properties = mapOf(
-                    "\$set" to mapOf("recommendation_enabled" to PrefManager.showRecommendations),
-                ),
-            )
-        }
+            if (PrefManager.usageAnalyticsEnabled) {
+                com.posthog.PostHog.capture(
+                    event = "\$set",
+                    properties = mapOf(
+                        "\$set" to mapOf("recommendation_enabled" to PrefManager.showRecommendations),
+                    ),
+                )
+            }
 
-        PlayIntegrity.warmUp(this)
+            PlayIntegrity.warmUp(this)
+        }
 
         Thread {
             PowerManager.initialize(this)
@@ -225,7 +227,7 @@ class PluviaApp : SplitCompatApplication() {
 
         // TODO: find a way to make this saveable, this is terrible (leak that memory baby)
         internal var xEnvironment: XEnvironment? = null
-        internal var xServerView: XServerRendererView? = null
+        @Volatile internal var xServerView: XServerRendererView? = null
         var inputControlsView: InputControlsView? = null
         var inputControlsManager: InputControlsManager? = null
         var touchpadView: TouchpadView? = null

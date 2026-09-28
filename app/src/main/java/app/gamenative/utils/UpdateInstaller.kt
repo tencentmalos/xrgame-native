@@ -19,6 +19,7 @@ object UpdateInstaller {
         versionName: String,
         onProgress: (Float) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
+        if (BuildConfig.XRGAME) return@withContext false
         try {
             val apkFileName = "gamenative-v$versionName.apk"
             val destFile = File(context.cacheDir, apkFileName)
@@ -119,4 +120,3 @@ object UpdateInstaller {
         }
     }
 }
-

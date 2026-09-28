@@ -496,6 +496,7 @@ public abstract class ProcessHelper {
     }
 
     public static String[] splitCommand(String command) {
+        if (BuildConfig.XRGAME) return app.gamenative.xrgame.XrGameCommandLine.split(command);
         ArrayList<String> result = new ArrayList<>();
         boolean startedQuotes = false;
         String value = "";

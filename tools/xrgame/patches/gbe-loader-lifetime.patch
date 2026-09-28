@@ -1,0 +1,108 @@
+diff --git a/helpers/pe_helpers.cpp b/helpers/pe_helpers.cpp
+index da97b6a..f34dbcd 100644
+--- a/helpers/pe_helpers.cpp
++++ b/helpers/pe_helpers.cpp
+@@ -4,6 +4,7 @@
+ #include <utility>
+ #include <mutex>
+ #include <cwchar>
++#include <tlhelp32.h>
+ 
+ static inline bool is_hex(const char c)
+ {
+@@ -363,9 +364,34 @@ DWORD pe_helpers::loadlib_remote(HANDLE hProcess, const std::string &fullpath, c
+         return GetLastError();
+     }
+ 
+-    // wait for DllMain
+-    WaitForSingleObject(remote_thread, INFINITE);
++    // A thread exit is a DWORD, not an HMODULE. A truncated 64-bit module handle
++    // can be zero, while an exception status is nonzero. Verify the loaded module.
++    DWORD wait_result = WaitForSingleObject(remote_thread, INFINITE);
++    DWORD inject_error = wait_result == WAIT_OBJECT_0 ? ERROR_SUCCESS : GetLastError();
++    if (wait_result != WAIT_OBJECT_0 && !inject_error) inject_error = ERROR_GEN_FAILURE;
++    DWORD process_exit = STILL_ACTIVE;
++    if (!inject_error && !GetExitCodeProcess(hProcess, &process_exit)) inject_error = GetLastError();
++    if (!inject_error && process_exit != STILL_ACTIVE) inject_error = ERROR_PROCESS_ABORTED;
+     CloseHandle(remote_thread);
++    if (!inject_error) {
++        HANDLE snapshot = INVALID_HANDLE_VALUE;
++        for (unsigned retry = 0; retry < 5; ++retry) {
++            snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetProcessId(hProcess));
++            if (snapshot != INVALID_HANDLE_VALUE || GetLastError() != ERROR_BAD_LENGTH) break;
++            Sleep(1);
++        }
++        if (snapshot == INVALID_HANDLE_VALUE) inject_error = GetLastError();
++        else {
++            MODULEENTRY32W module{};
++            module.dwSize = sizeof(module);
++            bool loaded = false;
++            if (Module32FirstW(snapshot, &module)) do {
++                if (!_wcsicmp(module.szExePath, lib_fullpath.c_str())) { loaded = true; break; }
++            } while (Module32NextW(snapshot, &module));
++            CloseHandle(snapshot);
++            if (!loaded) inject_error = ERROR_DLL_INIT_FAILED;
++        }
++    }
+ 
+     // cleanup allcoated page
+     VirtualFreeEx(
+@@ -375,7 +401,8 @@ DWORD pe_helpers::loadlib_remote(HANDLE hProcess, const std::string &fullpath, c
+         MEM_RELEASE
+     );
+ 
+-    return ERROR_SUCCESS;
++    if (inject_error && err_reason) *err_reason = "Remote LoadLibraryW did not leave the requested module loaded in a live process";
++    return inject_error;
+ }
+ 
+ size_t pe_helpers::get_pe_size(HMODULE hModule)
+diff --git a/tools/steamclient_loader/win/ColdClientLoader.cpp b/tools/steamclient_loader/win/ColdClientLoader.cpp
+index 8fd79c4..4fca32c 100644
+--- a/tools/steamclient_loader/win/ColdClientLoader.cpp
++++ b/tools/steamclient_loader/win/ColdClientLoader.cpp
+@@ -790,6 +790,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
+     //     return 1;
+     // }
+     
++    DWORD child_exit_code = 0;
+     if (PersistentMode != 2 || AppId.size()) { // persistent mode 0 or 1, or mode 2 with defined app id   
+         STARTUPINFOW info = { 0 };
+ 
+@@ -852,7 +853,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
+             if (PersistentMode == 2) {
+                 std::this_thread::sleep_for(std::chrono::seconds(5));
+             }
+-            ResumeThread(processInfo.hThread);
++            DWORD previous_suspend_count = ResumeThread(processInfo.hThread);
++            logger.write("ResumeThread previous suspend count=" + std::to_string(previous_suspend_count) +
++                ", error=" + std::to_string(previous_suspend_count == (DWORD)-1 ? GetLastError() : 0));
+         } else {
+             std::string msg = "Attach a debugger now to PID " + std::to_string(processInfo.dwProcessId) + " and resume its main thread";
+             logger.write(msg);
+@@ -860,8 +863,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
+         }
+         
+         // wait
+-        WaitForSingleObject(processInfo.hThread, INFINITE);
+-
++        DWORD wait_result = WaitForSingleObject(processInfo.hProcess, INFINITE);
++        DWORD wait_error = wait_result == WAIT_FAILED ? GetLastError() : 0;
++        DWORD process_exit = STILL_ACTIVE, thread_exit = STILL_ACTIVE;
++        BOOL process_exit_valid = GetExitCodeProcess(processInfo.hProcess, &process_exit);
++        BOOL thread_exit_valid = GetExitCodeThread(processInfo.hThread, &thread_exit);
++        logger.write("Process wait=" + std::to_string(wait_result) + ", error=" + std::to_string(wait_error) +
++            ", process exit=" + std::to_string(process_exit) + ", valid=" + std::to_string(process_exit_valid) +
++            ", thread exit=" + std::to_string(thread_exit) + ", valid=" + std::to_string(thread_exit_valid));
++
++        child_exit_code = wait_result == WAIT_OBJECT_0 && process_exit_valid ? process_exit : ERROR_PROCESS_ABORTED;
+         CloseHandle(processInfo.hProcess);
+         CloseHandle(processInfo.hThread);
+     }
+@@ -879,5 +890,5 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
+         cleanup_registry_hkcs();
+     }
+ 
+-    return 0;
++    return static_cast<int>(child_exit_code);
+ }

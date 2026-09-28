@@ -1,0 +1,14 @@
+diff --git a/src/dxvk/dxvk_context.cpp b/src/dxvk/dxvk_context.cpp
+--- a/src/dxvk/dxvk_context.cpp
++++ b/src/dxvk/dxvk_context.cpp
+@@ -169,6 +169,10 @@ namespace dxvk {
+ 
+ 
+   Rc<DxvkCommandList> DxvkContext::beginExternalRendering() {
++    // External rendering may sample ordinary images without going through
++    // resource tracking. Finish deferred clears and restore their layouts
++    // before handing the command list to the presentation blitter.
++    spillRenderPass(false);
+     // Flush and invalidate everything
+     endCurrentCommands();
+     beginCurrentCommands();

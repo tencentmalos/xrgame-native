@@ -2,4 +2,6 @@
 <!-- XRGame Native identity (spec C1). Every locale that defines app_name in src/main is overridden here. -->
 <resources>
     <string name="app_name">XRGame Native</string>
+    <string name="login_app_name">XRGame Native</string>
+    <string name="steam_verify_files_message">Check installed game files and download missing or changed files. Cloud saves are not restored.</string>
 </resources>

@@ -32,6 +32,7 @@ VulkanRendererContext::~VulkanRendererContext() {
     vk_.DeviceWaitIdle(device);
     for (auto& [id, wt] : texMap) destroyWinTex(wt);
     texMap.clear();
+    cleanupAllAHBCache();
     
     for (auto& wt : deleteQueue) {
         if (wt.ds   != VK_NULL_HANDLE) vk_.FreeDescriptorSets(device, winTexPool, 1, &wt.ds);
@@ -253,6 +254,7 @@ void VulkanRendererContext::createLogicalDevice() {
       for (auto& e:av) {
           if (strcmp(e.extensionName,"VK_EXT_filter_cubic")==0
            || strcmp(e.extensionName,"VK_IMG_filter_cubic")==0) cubicSupported=true;
+          if (strcmp(e.extensionName, VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME)==0) foreignAhbSupported=true;
           if (framegenArmed && strcmp(e.extensionName, VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME)==0) memoryModelExtSupported=true;
           if (framegenArmed && strcmp(e.extensionName, VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)==0) float16ExtSupported=true;
       } }
@@ -261,6 +263,7 @@ void VulkanRendererContext::createLogicalDevice() {
         VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME
     };
     if (cubicSupported) extList.push_back("VK_EXT_filter_cubic");
+    if (foreignAhbSupported) extList.push_back(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME);
     if (props.apiVersion < VK_API_VERSION_1_2 && memoryModelExtSupported) {
         extList.push_back(VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME);
     }
@@ -611,10 +614,31 @@ void VulkanRendererContext::transition(VkCommandBuffer cb, VkImage img,
     vk_.CmdPipelineBarrier(cb,ss,ds,0,0,nullptr,0,nullptr,1,&b);
 }
 
-bool VulkanRendererContext::createWinTexResources(WinTex& wt, int w, int h) {
+void VulkanRendererContext::setForeignAhbOwnership(bool enabled) {
+    std::lock_guard<std::mutex> lk(renderMutex);
+    foreignAhbOwnership = enabled && foreignAhbSupported;
+    RLOG("XRGame AHB ownership requested=%d supported=%d enabled=%d", enabled, foreignAhbSupported, foreignAhbOwnership);
+}
 
+void VulkanRendererContext::ahbBarrier(VkCommandBuffer cb, VkImage image, bool acquire,
+    VkImageLayout hostLayout, VkAccessFlags hostAccess, VkPipelineStageFlags hostStage) {
+    VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    b.image = image;
+    b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    b.oldLayout = acquire ? VK_IMAGE_LAYOUT_GENERAL : hostLayout;
+    b.newLayout = acquire ? hostLayout : VK_IMAGE_LAYOUT_GENERAL;
+    b.srcAccessMask = acquire ? (foreignAhbOwnership ? 0 : VK_ACCESS_MEMORY_WRITE_BIT) : hostAccess;
+    b.dstAccessMask = acquire ? hostAccess : 0;
+    b.srcQueueFamilyIndex = foreignAhbOwnership ? (acquire ? VK_QUEUE_FAMILY_FOREIGN_EXT : graphicsQueueFamilyIndex) : VK_QUEUE_FAMILY_IGNORED;
+    b.dstQueueFamilyIndex = foreignAhbOwnership ? (acquire ? graphicsQueueFamilyIndex : VK_QUEUE_FAMILY_FOREIGN_EXT) : VK_QUEUE_FAMILY_IGNORED;
+    vk_.CmdPipelineBarrier(cb, acquire ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : hostStage,
+        acquire ? hostStage : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+}
+
+bool VulkanRendererContext::createWinTexResources(WinTex& wt, int w, int h, bool staging, VkFormat format) {
+    wt.format = format;
     VkImageCreateInfo ii{}; ii.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; ii.imageType=VK_IMAGE_TYPE_2D;
-    ii.extent={(uint32_t)w,(uint32_t)h,1}; ii.mipLevels=1; ii.arrayLayers=1; ii.format=VK_FORMAT_B8G8R8A8_UNORM;
+    ii.extent={(uint32_t)w,(uint32_t)h,1}; ii.mipLevels=1; ii.arrayLayers=1; ii.format=format;
     ii.tiling=VK_IMAGE_TILING_OPTIMAL; ii.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
     ii.usage=VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT; ii.samples=VK_SAMPLE_COUNT_1_BIT; ii.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
     if (vk_.CreateImage(device,&ii,nullptr,&wt.img)!=VK_SUCCESS) return false;
@@ -622,7 +646,8 @@ bool VulkanRendererContext::createWinTexResources(WinTex& wt, int w, int h) {
     VkMemoryAllocateInfo ai{}; ai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; ai.allocationSize=req.size; ai.memoryTypeIndex=findMemType(req.memoryTypeBits,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     if (vk_.AllocateMemory(device,&ai,nullptr,&wt.mem)!=VK_SUCCESS){vk_.DestroyImage(device,wt.img,nullptr);wt.img=VK_NULL_HANDLE;return false;}
     vk_.BindImageMemory(device,wt.img,wt.mem,0);
-    VkImageViewCreateInfo vi{}; vi.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; vi.image=wt.img; vi.viewType=VK_IMAGE_VIEW_TYPE_2D; vi.format=VK_FORMAT_B8G8R8A8_UNORM; vi.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+    wt.format = format;
+    VkImageViewCreateInfo vi{}; vi.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; vi.image=wt.img; vi.viewType=VK_IMAGE_VIEW_TYPE_2D; vi.format=format; vi.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
     vi.components={swapRB?VK_COMPONENT_SWIZZLE_B:VK_COMPONENT_SWIZZLE_IDENTITY,VK_COMPONENT_SWIZZLE_IDENTITY,swapRB?VK_COMPONENT_SWIZZLE_R:VK_COMPONENT_SWIZZLE_IDENTITY,VK_COMPONENT_SWIZZLE_IDENTITY};
     if (vk_.CreateImageView(device,&vi,nullptr,&wt.view)!=VK_SUCCESS){destroyWinTex(wt);return false;}
     VkDescriptorSetAllocateInfo dsai{}; dsai.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; dsai.descriptorPool=winTexPool; dsai.descriptorSetCount=1; dsai.pSetLayouts=&dsLayout;
@@ -630,6 +655,7 @@ bool VulkanRendererContext::createWinTexResources(WinTex& wt, int w, int h) {
     VkDescriptorImageInfo dii{}; dii.imageLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; dii.imageView=wt.view; dii.sampler=sampler;
     VkWriteDescriptorSet wr{}; wr.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; wr.dstSet=wt.ds; wr.dstBinding=0; wr.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; wr.descriptorCount=1; wr.pImageInfo=&dii;
     vk_.UpdateDescriptorSets(device,1,&wr,0,nullptr);
+    if (!staging) { wt.w=w; wt.h=h; wt.needsTransition=true; return true; }
     VkDeviceSize stgSz=(VkDeviceSize)w*h*4;
     createBuffer(stgSz,VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,wt.stg,wt.stgMem);
@@ -638,7 +664,7 @@ bool VulkanRendererContext::createWinTexResources(WinTex& wt, int w, int h) {
     return true;
 }
 
-bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb) {
+bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb, bool forCopy) {
     if (!vk_.GetAndroidHardwareBufferPropertiesANDROID)
         return false;
 
@@ -648,6 +674,8 @@ bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb) 
     props.sType=VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
     props.pNext=&fmtP;
     if (vk_.GetAndroidHardwareBufferPropertiesANDROID(device,ahb,&props)!=VK_SUCCESS)
+        return false;
+    if (forCopy && (fmtP.format == VK_FORMAT_UNDEFINED || props.memoryTypeBits == 0))
         return false;
 
     AHardwareBuffer_Desc desc{};
@@ -661,7 +689,7 @@ bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb) 
     emi.sType=VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
     emi.handleTypes=VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
     ef.pNext=const_cast<void*>(emi.pNext);
-    emi.pNext=&ef;
+    emi.pNext=forCopy ? nullptr : &ef;
 
     VkImageCreateInfo ii{};
     ii.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -670,6 +698,7 @@ bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb) 
     ii.extent={desc.width,desc.height,1};
     ii.mipLevels=1; ii.arrayLayers=1; ii.samples=VK_SAMPLE_COUNT_1_BIT;
     ii.tiling=VK_IMAGE_TILING_OPTIMAL; ii.usage=VK_IMAGE_USAGE_SAMPLED_BIT;
+    if (forCopy) { ii.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT; ii.format = fmtP.format; }
     ii.sharingMode=VK_SHARING_MODE_EXCLUSIVE; ii.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
     if (vk_.CreateImage(device,&ii,nullptr,&wt.img)!=VK_SUCCESS)
         return false;
@@ -699,8 +728,9 @@ bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb) 
 
     VkImageViewCreateInfo vi{};
     vi.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    vi.pNext=&vef; vi.image=wt.img; vi.viewType=VK_IMAGE_VIEW_TYPE_2D;
+    vi.pNext=forCopy ? nullptr : &vef; vi.image=wt.img; vi.viewType=VK_IMAGE_VIEW_TYPE_2D;
     vi.format=swapRB ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_B8G8R8A8_UNORM;
+    if (forCopy) vi.format = fmtP.format;
     vi.components={VK_COMPONENT_SWIZZLE_IDENTITY,VK_COMPONENT_SWIZZLE_IDENTITY,
                    VK_COMPONENT_SWIZZLE_IDENTITY,VK_COMPONENT_SWIZZLE_IDENTITY};
     vi.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
@@ -733,6 +763,7 @@ bool VulkanRendererContext::importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb) 
 
     wt.needsTransition=true;
     wt.isAHB=true;
+    wt.format=ii.format;
     wt.w=(int)desc.width;
     wt.h=(int)desc.height;
     return true;
@@ -1098,7 +1129,7 @@ void VulkanRendererContext::renderFrame() {
     needsRender.store(false,std::memory_order_relaxed);
     cursorMoved.store(false,std::memory_order_relaxed);
 
-    if (surfaceDetached.load(std::memory_order_acquire)) return;
+    if (surfaceDetached.load(std::memory_order_acquire) || ahbSamplingFailed.load()) return;
     if (scanoutActive.load()) {
         applyScanoutBuffer();
 
@@ -1612,6 +1643,7 @@ void VulkanRendererContext::updateWindowContent(int64_t id, void* px, short w, s
     void* mapped=nullptr;
     {
         std::lock_guard<std::mutex> lk(renderMutex);
+        if (sampledAhbs.count(id)) return; // A Present lease must be explicitly retired first.
         WinTex& wt=texMap[id];
         if (wt.img==VK_NULL_HANDLE || wt.w!=w || wt.h!=h) {
             if (wt.img!=VK_NULL_HANDLE) destroyWinTex(wt);
@@ -1636,9 +1668,199 @@ void VulkanRendererContext::updateWindowContent(int64_t id, void* px, short w, s
     needsRender.store(true); dirtyCV.notify_one();
 }
 
+bool VulkanRendererContext::copyWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame) {
+    if (!ahb) return false;
+    const auto nowNs = []() -> uint64_t {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
+    const uint64_t startedNs = nowNs();
+    std::unique_lock<std::shared_mutex> frameLock(frameMutex);
+    std::lock_guard<std::mutex> lk(renderMutex);
+    const uint64_t lockedNs = nowNs();
+    if (sampledAhbs.count(id)) return false;
+    auto found = ahbImportCache.find(ahb);
+    if (found == ahbImportCache.end()) {
+        WinTex imported{};
+        if (!importAHBToWinTex(imported, ahb, true)) return false;
+        AHardwareBuffer_acquire(ahb);
+        found = ahbImportCache.emplace(ahb, imported).first;
+        windowAhbs[id].push_back(ahb);
+        RLOG("XRGame AHB GPU copy: imported %dx%d; no CPU mapping", imported.w, imported.h);
+    }
+    WinTex& src = found->second;
+    WinTex& dst = texMap[id];
+    if (!dst.img || dst.isAHB || dst.w != src.w || dst.h != src.h || dst.format != src.format) {
+        destroyWinTex(dst);
+        if (!createWinTexResources(dst, src.w, src.h, false, src.format)) return false;
+    }
+    VkCommandBuffer cb = beginOneTime();
+    ahbBarrier(cb, src.img, true, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    transition(cb, dst.img, dst.needsTransition ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst.needsTransition ? 0 : VK_ACCESS_SHADER_READ_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    VkImageCopy region{};
+    region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.dstSubresource = region.srcSubresource;
+    region.extent = {(uint32_t)src.w, (uint32_t)src.h, 1};
+    vk_.CmdCopyImage(cb, src.img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        dst.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    ahbBarrier(cb, src.img, false, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    transition(cb, dst.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    VkResult result = vk_.EndCommandBuffer(cb);
+    VkFence fence = VK_NULL_HANDLE;
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    if (result == VK_SUCCESS) result = vk_.CreateFence(device, &fi, nullptr, &fence);
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &cb;
+    if (result == VK_SUCCESS) result = vk_.QueueSubmit(graphicsQueue, 1, &submit, fence);
+    const uint64_t waitStartedNs = nowNs();
+    if (result == VK_SUCCESS) result = vk_.WaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    const uint64_t waitedNs = nowNs();
+    if (fence) vk_.DestroyFence(device, fence, nullptr);
+    vk_.FreeCommandBuffers(device, cmdPool, 1, &cb);
+    if (result != VK_SUCCESS) { RLOG_E("XRGame AHB GPU copy failed: %d", result); return false; }
+    const uint64_t endedNs = nowNs();
+    const uint64_t elapsedNs = endedNs - startedNs;
+    auto& timing = ahbCopyTimings[id];
+    ++timing.count;
+    timing.totalNs += elapsedNs;
+    timing.lockNs += lockedNs - startedNs;
+    timing.fenceNs += waitedNs - waitStartedNs;
+    timing.maxNs = std::max(timing.maxNs, elapsedNs);
+    if (traceFrame) {
+        __android_log_print(ANDROID_LOG_DEBUG, "XRGamePresentTrace",
+            "event=copy_done frame=%" PRIu64 " mono_ns=%" PRIu64 " drawable=%" PRId64
+            " ahb=%p start_ns=%" PRIu64 " locked_ns=%" PRIu64 " submitted_ns=%" PRIu64
+            " fence_done_ns=%" PRIu64 " result=%d width=%d height=%d",
+            traceFrame, endedNs, id, (void*)ahb, startedNs, lockedNs, waitStartedNs,
+            waitedNs, result, src.w, src.h);
+    }
+    if (timing.count >= 300) {
+        RLOG("XRGamePresent path=copy window=%" PRId64 " mono_ns=%" PRIu64
+             " frames=%" PRIu64 " span_ns=%" PRIu64 " total_ns=%" PRIu64
+             " lock_ns=%" PRIu64 " fence_wait_ns=%" PRIu64 " max_ns=%" PRIu64
+             " width=%d height=%d imports=%zu",
+             id, endedNs, timing.count, timing.lastNs ? endedNs-timing.lastNs : 0,
+             timing.totalNs, timing.lockNs, timing.fenceNs, timing.maxNs, src.w, src.h, ahbImportCache.size());
+        timing = {};
+        timing.lastNs = endedNs;
+    }
+    dst.needsTransition = false;
+    dst.dirty = false;
+    needsRender.store(true);
+    dirtyCV.notify_one();
+    return true;
+}
+
+// The exclusive frame lock prevents renderFrame from recording or submitting another
+// read of the old image. This submission is ordered after all earlier graphics reads.
+// Only a successful fence wait permits Java to emit the old Present's Idle event.
+bool VulkanRendererContext::submitAhbBarriers(VkImage previous, VkImage next) {
+    if (ahbSamplingFailed.load()) return false;
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    ai.commandPool = cmdPool; ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
+    VkResult result = vk_.AllocateCommandBuffers(device, &ai, &cb);
+    if (result != VK_SUCCESS) return false;
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    result = vk_.BeginCommandBuffer(cb, &bi);
+    if (result == VK_SUCCESS) {
+        if (previous) ahbBarrier(cb, previous, false, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        if (next) ahbBarrier(cb, next, true, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        result = vk_.EndCommandBuffer(cb);
+    }
+    VkFence fence = VK_NULL_HANDLE;
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    if (result == VK_SUCCESS) result = vk_.CreateFence(device, &fi, nullptr, &fence);
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1; si.pCommandBuffers = &cb;
+    if (result == VK_SUCCESS) result = vk_.QueueSubmit(graphicsQueue, 1, &si, fence);
+    if (result == VK_SUCCESS) result = vk_.WaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    if (fence) vk_.DestroyFence(device, fence, nullptr);
+    vk_.FreeCommandBuffers(device, cmdPool, 1, &cb);
+    if (result != VK_SUCCESS) {
+        // Ownership may have changed. Do not guess or release a guest buffer on failure.
+        ahbSamplingFailed.store(true);
+        RLOG_E("XRGame AHB sample fence failed: %d; retaining leases", result);
+    }
+    return result == VK_SUCCESS;
+}
+
+void VulkanRendererContext::traceSampleRetired(int64_t id, uint64_t frame) {
+    if (!frame) return;
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    __android_log_print(ANDROID_LOG_DEBUG, "XRGamePresentTrace",
+        "event=sample_retired frame=%" PRIu64 " mono_ns=%" PRIu64 " drawable=%" PRId64,
+        frame, (uint64_t)ns, id);
+}
+
+bool VulkanRendererContext::sampleWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame) {
+    if (!ahb) return false;
+    std::unique_lock<std::shared_mutex> frameLock(frameMutex);
+    std::lock_guard<std::mutex> lk(renderMutex);
+    if (ahbSamplingFailed.load() || surfaceDetached.load() || framegenArmed ||
+        scanoutActive.load() || xrTargetActive.load()) return false;
+    for (const auto& [windowId, lease] : sampledAhbs) if (lease.buffer == ahb) return false;
+    // Imports belong to one drawable until removeWindow; reject cross-window aliases.
+    for (const auto& [windowId, buffers] : windowAhbs) {
+        if (windowId != id && std::find(buffers.begin(), buffers.end(), ahb) != buffers.end()) return false;
+    }
+    auto found = ahbImportCache.find(ahb);
+    if (found == ahbImportCache.end()) {
+        WinTex imported{};
+        if (!importAHBToWinTex(imported, ahb, true)) return false;
+        AHardwareBuffer_acquire(ahb);
+        found = ahbImportCache.emplace(ahb, imported).first;
+        windowAhbs[id].push_back(ahb);
+        RLOG("XRGame AHB sample: imported %dx%d; no image copy", imported.w, imported.h);
+    }
+    auto old = sampledAhbs.find(id);
+    VkImage oldImage = old == sampledAhbs.end() ? VK_NULL_HANDLE : texMap.at(id).img;
+    if (!submitAhbBarriers(oldImage, found->second.img)) return false;
+    if (old != sampledAhbs.end()) traceSampleRetired(id, old->second.frame);
+    WinTex& dst = texMap[id];
+    destroyWinTex(dst);
+    dst = found->second;
+    dst.ahb = ahb; dst.needsTransition = false; dst.dirty = false;
+    sampledAhbs[id] = {ahb, traceFrame};
+    if (traceFrame) {
+        const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        __android_log_print(ANDROID_LOG_DEBUG, "XRGamePresentTrace",
+            "event=sample_ready frame=%" PRIu64 " mono_ns=%" PRIu64 " drawable=%" PRId64
+            " ahb=%p width=%d height=%d", traceFrame, (uint64_t)ns, id, (void*)ahb, dst.w, dst.h);
+    }
+    needsRender.store(true); dirtyCV.notify_one();
+    return true;
+}
+
+bool VulkanRendererContext::retireSampledWindow(int64_t id) {
+    std::unique_lock<std::shared_mutex> frameLock(frameMutex);
+    std::lock_guard<std::mutex> lk(renderMutex);
+    auto old = sampledAhbs.find(id);
+    if (old == sampledAhbs.end()) return true;
+    if (!submitAhbBarriers(texMap.at(id).img, VK_NULL_HANDLE)) return false;
+    traceSampleRetired(id, old->second.frame);
+    texMap.erase(id); // Cache owns the import. No subsequent frame can sample this alias.
+    sampledAhbs.erase(old);
+    needsRender.store(true); dirtyCV.notify_one();
+    return true;
+}
+
 void VulkanRendererContext::updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short, short, int, int) {
     if (!ahb) return;
     std::lock_guard<std::mutex> lk(renderMutex);
+    if (sampledAhbs.count(id)) return;
 
 
 
@@ -1686,7 +1908,10 @@ void VulkanRendererContext::setRenderList(const int64_t* ids, const int* xs, con
 }
 
 void VulkanRendererContext::removeWindow(int64_t id) {
+    std::unique_lock<std::shared_mutex> frameLock(frameMutex);
     std::lock_guard<std::mutex> lk(renderMutex);
+    if (sampledAhbs.count(id)) return; // Retire with a GPU fence before removal.
+    ahbCopyTimings.erase(id);
 
 
 

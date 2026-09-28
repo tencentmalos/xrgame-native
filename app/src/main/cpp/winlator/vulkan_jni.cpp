@@ -99,10 +99,29 @@ Java_com_winlator_renderer_VulkanRenderer_nativeUpdateWindowContentAHB(
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle);
     if (r&&ahbPtr) r->updateWindowContentAHB(id,reinterpret_cast<AHardwareBuffer*>(ahbPtr),w,h,x,y);
 }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeCopyWindowContentAHB(
+    JNIEnv*, jobject, jlong handle, jlong id, jlong ahbPtr, jlong traceFrame)
+{
+    auto* r = reinterpret_cast<VulkanRendererContext*>(handle);
+    return r && ahbPtr && r->copyWindowContentAHB(id, reinterpret_cast<AHardwareBuffer*>(ahbPtr), traceFrame);
+}
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeEnableXrTarget(JNIEnv*, jobject, jlong handle) {
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle);
     return r ? (jlong)r->enableXrTarget() : 0;
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeSampleWindowContentAHB(
+    JNIEnv*, jobject, jlong handle, jlong id, jlong ahbPtr, jlong traceFrame) {
+    auto* r = reinterpret_cast<VulkanRendererContext*>(handle);
+    return r && r->sampleWindowContentAHB(id, reinterpret_cast<AHardwareBuffer*>(ahbPtr), traceFrame);
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeRetireSampledWindow(JNIEnv*, jobject, jlong handle, jlong id) {
+    auto* r = reinterpret_cast<VulkanRendererContext*>(handle);
+    return r && r->retireSampledWindow(id);
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeDisableXrTarget(JNIEnv*, jobject, jlong handle) {
@@ -365,3 +384,8 @@ Java_com_winlator_renderer_VulkanRenderer_nativeGetRealFrameCount(JNIEnv*, jobje
     return r ? (jlong)r->getRealFrameCount() : 0;
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeSetForeignAhbOwnership(JNIEnv*, jobject, jlong handle, jboolean enabled) {
+    auto* renderer = reinterpret_cast<VulkanRendererContext*>(handle);
+    if (renderer) renderer->setForeignAhbOwnership(enabled);
+}

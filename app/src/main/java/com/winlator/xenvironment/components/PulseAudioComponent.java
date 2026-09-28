@@ -47,6 +47,7 @@ public class PulseAudioComponent extends EnvironmentComponent {
     private final AtomicBoolean isPauseResumeRunning = new AtomicBoolean(false);
     private final AtomicBoolean isPaused = new AtomicBoolean(false);
     private boolean lowLatency = false;
+    private java.lang.Process ownedProcess;
 
     private final ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
 
@@ -56,6 +57,19 @@ public class PulseAudioComponent extends EnvironmentComponent {
     }
 
     private void killAllPulseAudioProcesses() {
+        if (app.gamenative.BuildConfig.XRGAME) {
+            if (ownedProcess != null) {
+                ownedProcess.destroy();
+                try {
+                    if (!ownedProcess.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) ownedProcess.destroyForcibly();
+                } catch (InterruptedException e) {
+                    ownedProcess.destroyForcibly();
+                    Thread.currentThread().interrupt();
+                }
+                ownedProcess = null;
+            }
+            return;
+        }
         List<ProcessHelper.ProcessInfo> allProcesses = ProcessHelper.listSubProcesses();
         List<Integer> pulsePids = new ArrayList<>();
 
@@ -181,6 +195,7 @@ public class PulseAudioComponent extends EnvironmentComponent {
 
         EnvVars envVars = new EnvVars();
         envVars.put("LD_LIBRARY_PATH", "/system/lib64:"+nativeLibraryDir+":"+modulesDir);
+        envVars.put("PA_DLSEARCHPATH", modulesDir);
         envVars.put("HOME", workingDir);
         envVars.put("TMPDIR", XEnvironment.getTmpDir(context));
 
@@ -190,13 +205,20 @@ public class PulseAudioComponent extends EnvironmentComponent {
         command += " --disable-shm=true";
         command += " --fail=false";
         command += " -n --file=default.pa";
-        command += " --daemonize=true";
+        command += app.gamenative.BuildConfig.XRGAME ? " --daemonize=false" : " --daemonize=true";
         command += " --use-pid-file=false";
         command += " --exit-idle-time=-1";
 
         // Uncomment to enable verbose log in pulseaudio
         //command += " -vvv";
 
+        if (app.gamenative.BuildConfig.XRGAME) {
+            // With linker64 the process name is "linker64", so name-based cleanup
+            // cannot find a daemon. Retain the foreground child for exact cleanup.
+            ownedProcess = ProcessHelper.startProcess(command, envVars.toStringArray(), workingDir);
+            if (ownedProcess == null) throw new IllegalStateException("Could not start XRGame PulseAudio");
+            return;
+        }
         String output = ProcessHelper.execWithOutput(command, envVars.toStringArray(), workingDir, true);
         Timber.tag("PulseAudioComponent").d("Started PulseAudio server %s", output);
     }

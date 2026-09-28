@@ -29,11 +29,28 @@ import com.winlator.xserver.events.PresentCompleteNotify;
 import com.winlator.xserver.events.PresentIdleNotify;
 
 import java.io.IOException;
+import app.gamenative.xrgame.XrGamePresentTrace;
 
 public class PresentExtension implements Extension {
     public static final byte MAJOR_OPCODE = -103;
     public enum Kind { PIXMAP, MSC_NOTIFY }
     public enum Mode { COPY, FLIP, SKIP }
+
+    private final XrGamePresentTrace presentTrace = new XrGamePresentTrace();
+
+    public void setTraceFrames(int frames) { presentTrace.configure(frames); }
+
+    /** Approximate concurrent host snapshot; never takes the renderer/GPU or X server locks. */
+    public java.util.Map<String, Object> diagnosticSnapshot() {
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("pendingIdles", pendingIdles.size());
+        result.put("cpuQueuedIdles", cpuQueue.size());
+        result.put("frameRateLimit", frameRateLimit);
+        result.put("eagerIdleRelease", eagerIdleRelease);
+        result.put("traceFramesRemaining", presentTrace.remainingFrames());
+        result.put("atomicSnapshot", false);
+        return result;
+    }
 
     private final SparseArray<Event> events = new SparseArray<>();
     private SyncExtension syncExtension;
@@ -59,9 +76,11 @@ public class PresentExtension implements Extension {
 
     private static class PendingIdle {
         Window window; Pixmap pixmap; int serial; int idleFence;
+        XrGamePresentTrace.Frame trace;
         long targetNs;
         int  vsyncSkips;    // vsyncs left to skip before firing (for fps < refresh)
-        PendingIdle(Window w, Pixmap p, int s, int f, long t, int sk) {
+        PendingIdle(Window w, Pixmap p, int s, int f, long t, int sk, XrGamePresentTrace.Frame trace) {
+            this.trace = trace;
             window = w; pixmap = p; serial = s; idleFence = f; targetNs = t; vsyncSkips = sk;
         }
     }
@@ -122,7 +141,7 @@ public class PresentExtension implements Extension {
                 long now = System.nanoTime();
                 if (now >= p.targetNs) {
                     if (cpuQueue.remove(p)) {
-                        sendIdleNotify(p.window, p.pixmap, p.serial, p.idleFence);
+                        sendIdleNotify(p.window, p.pixmap, p.serial, p.idleFence, p.trace);
                     }
                 } else {
                     long diff = p.targetNs - now;
@@ -150,7 +169,7 @@ public class PresentExtension implements Extension {
                     p.vsyncSkips--;
                     anyRemaining = true;
                 } else if (pendingIdles.remove(p.window.id, p)) {
-                    sendIdleNotify(p.window, p.pixmap, p.serial, p.idleFence);
+                    sendIdleNotify(p.window, p.pixmap, p.serial, p.idleFence, p.trace);
                 }
             } else {
                 anyRemaining = true;
@@ -171,8 +190,14 @@ public class PresentExtension implements Extension {
 
     private void scheduleIdleNotify(Window window, Pixmap pixmap, int serial,
                                     int idleFence, int targetFps, VulkanRenderer renderer) {
+        scheduleIdleNotify(window, pixmap, serial, idleFence, targetFps, renderer, null);
+    }
+
+    private void scheduleIdleNotify(Window window, Pixmap pixmap, int serial,
+                                    int idleFence, int targetFps, VulkanRenderer renderer,
+                                    XrGamePresentTrace.Frame trace) {
         if (targetFps <= 0) {
-            sendIdleNotify(window, pixmap, serial, idleFence);
+            sendIdleNotify(window, pixmap, serial, idleFence, trace);
             return;
         }
 
@@ -190,11 +215,11 @@ public class PresentExtension implements Extension {
         android.view.Choreographer ch = tryGetChoreographer(renderer);
         if (ch != null) {
             PendingIdle superseded = pendingIdles.put(window.id,
-                    new PendingIdle(window, pixmap, serial, idleFence, fireTime, 0));
+                    new PendingIdle(window, pixmap, serial, idleFence, fireTime, 0, trace));
             if (superseded != null) {
-                if (eagerIdleRelease) {
+                if (eagerIdleRelease || app.gamenative.BuildConfig.XRGAME) {
                     sendIdleNotify(superseded.window, superseded.pixmap,
-                            superseded.serial, superseded.idleFence);
+                            superseded.serial, superseded.idleFence, superseded.trace);
                 } else if (supersededDrops++ < 8) {
                     android.util.Log.w("PresentExtension", "pending idle superseded and dropped"
                             + " for window 0x" + Integer.toHexString(window.id)
@@ -206,11 +231,11 @@ public class PresentExtension implements Extension {
             if (eagerIdleRelease) {
                 for (PendingIdle q : cpuQueue) {
                     if (q.window == window && cpuQueue.remove(q)) {
-                        sendIdleNotify(q.window, q.pixmap, q.serial, q.idleFence);
+                        sendIdleNotify(q.window, q.pixmap, q.serial, q.idleFence, q.trace);
                     }
                 }
             }
-            cpuQueue.offer(new PendingIdle(window, pixmap, serial, idleFence, fireTime, 0));
+            cpuQueue.offer(new PendingIdle(window, pixmap, serial, idleFence, fireTime, 0, trace));
         }
     }
 
@@ -252,6 +277,12 @@ public class PresentExtension implements Extension {
     public byte getFirstErrorId() { return firstErrorId; }
 
     private void sendIdleNotify(Window window, Pixmap pixmap, int serial, int idleFence) {
+        sendIdleNotify(window, pixmap, serial, idleFence, null);
+    }
+
+    private void sendIdleNotify(Window window, Pixmap pixmap, int serial, int idleFence,
+                                XrGamePresentTrace.Frame trace) {
+        if (trace != null) trace.event("idle", "");
         if (idleFence != 0 && syncExtension != null) syncExtension.setTriggered(idleFence);
         synchronized (events) {
             for (int i = 0; i < events.size(); i++) {
@@ -295,7 +326,8 @@ public class PresentExtension implements Extension {
         inputStream.skip(8);
         short xOff = inputStream.readShort();
         short yOff = inputStream.readShort();
-        inputStream.skip(8);
+        inputStream.skip(4); // target CRTC
+        int waitFence = inputStream.readInt();
         int idleFence = inputStream.readInt();
         inputStream.skip(client.getRemainingRequestLength());
 
@@ -305,6 +337,7 @@ public class PresentExtension implements Extension {
         final Pixmap pixmap = client.xServer.pixmapManager.getPixmap(pixmapId);
         if (pixmap == null) throw new BadPixmap(pixmapId);
 
+        app.gamenative.xrgame.XrGameProfiler.present();
         Drawable content = window.getContent();
         int contentDepth = content.visual.depth;
         int pixmapDepth = pixmap.drawable.visual.depth;
@@ -328,6 +361,35 @@ public class PresentExtension implements Extension {
         }
 
         synchronized (content.renderLock) {
+            if (app.gamenative.BuildConfig.XRGAME && pixmap.drawable.getTexture() instanceof GPUImage && vr != null) {
+                // Release the guest image only after the host GPU has finished reading it.
+                XrGamePresentTrace.Frame trace = presentTrace.begin(windowId, pixmapId, serial, waitFence, idleFence);
+                if (vr.canSampleHardwareBuffers() && waitFence == 0 && xOff == 0 && yOff == 0
+                        && window.attributes.isMapped()) {
+                    if (!vr.sampleHardwarePixmap(window, (GPUImage)pixmap.drawable.getTexture(),
+                            trace == null ? 0 : trace.id,
+                            () -> {
+                                long acceptedUst = System.nanoTime() / 1000;
+                                sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.FLIP, acceptedUst, acceptedUst / 16667);
+                                if (trace != null) trace.event("complete", " mode=sample");
+                            },
+                            () -> scheduleIdleNotify(window, pixmap, serial, idleFence, targetFps, vr, trace))) {
+                        if (trace != null) trace.event("sample_failed", "");
+                        throw new com.winlator.xserver.errors.BadAlloc();
+                    }
+                    // Idle belongs to the future GPU retirement, not this acceptance.
+                    return;
+                }
+                if (!vr.copyHardwarePixmap(window, (GPUImage)pixmap.drawable.getTexture(), trace == null ? 0 : trace.id)) {
+                    if (trace != null) trace.event("copy_failed", "");
+                    throw new com.winlator.xserver.errors.BadAlloc();
+                }
+                long completedUst = System.nanoTime() / 1000;
+                sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.COPY, completedUst, completedUst / 16667);
+                if (trace != null) trace.event("complete", " mode=copy");
+                scheduleIdleNotify(window, pixmap, serial, idleFence, targetFps, vr, trace);
+                return;
+            }
             if (asr != null) {
                 content.setTexture(pixmap.drawable.getTexture());
                 sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.FLIP, ust, msc);
@@ -360,7 +422,7 @@ public class PresentExtension implements Extension {
         Window window = client.xServer.windowManager.getWindow(windowId);
         if (window == null) throw new BadWindow(windowId);
 
-        if (GPUImage.isSupported() && !mask.isEmpty()) {
+        if (!app.gamenative.BuildConfig.XRGAME && GPUImage.isSupported() && !mask.isEmpty()) {
             Drawable content = window.getContent();
             final Texture oldTexture = content.getTexture();
             if (oldTexture != null && !(oldTexture instanceof GPUImage)) {

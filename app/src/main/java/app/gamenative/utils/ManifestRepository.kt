@@ -15,6 +15,7 @@ object ManifestRepository {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun loadManifest(context: Context): ManifestData {
+        if (BuildConfig.XRGAME) return app.gamenative.xrgame.XrGameComponents.load(context)
         if (BuildConfig.DEBUG) {
             readLocalManifest(context)?.let {
                 Timber.i("ManifestRepository: using local debug manifest")

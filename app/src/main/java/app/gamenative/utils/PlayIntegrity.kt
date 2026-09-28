@@ -17,6 +17,7 @@ object PlayIntegrity {
     private var tokenProvider: StandardIntegrityTokenProvider? = null
 
     fun warmUp(application: Application) {
+        if (BuildConfig.XRGAME) return
         val cloudProjectNumber = BuildConfig.CLOUD_PROJECT_NUMBER.toLongOrNull()
         if (cloudProjectNumber == null || cloudProjectNumber == 0L) {
             Timber.tag("PlayIntegrity").e("Invalid CLOUD_PROJECT_NUMBER: '${BuildConfig.CLOUD_PROJECT_NUMBER}'")
@@ -45,6 +46,7 @@ object PlayIntegrity {
      * [requestBodyBytes], or null if the provider is not ready or the request fails.
      */
     suspend fun requestToken(requestBodyBytes: ByteArray): String? {
+        if (BuildConfig.XRGAME) return null
         val provider = tokenProvider ?: return null
 
         val hash = MessageDigest.getInstance("SHA-256")

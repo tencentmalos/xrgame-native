@@ -7,6 +7,7 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.text.SimpleDateFormat
@@ -57,19 +58,29 @@ object EaLsxServer {
     @Volatile private var session: EaLaunchSession? = null
 
     @Synchronized
-    fun start(newSession: EaLaunchSession) {
+    fun start(newSession: EaLaunchSession, port: Int = EaConstants.LSX_PORT): Int {
         stop()
         session = newSession
-        val ss = ServerSocket(EaConstants.LSX_PORT, 8, InetAddress.getByName("127.0.0.1")).apply { reuseAddress = true }
+        val ss = ServerSocket().apply {
+            // Set before bind so a recently closed test/game session can reuse its port.
+            reuseAddress = true
+            try {
+                bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8)
+            } catch (e: Exception) {
+                close()
+                throw e
+            }
+        }
         server = ss
         running.set(true)
         thread = Thread({
-            Timber.i("EA LSX server listening on 127.0.0.1:${EaConstants.LSX_PORT}")
+            Timber.i("EA LSX server listening on 127.0.0.1:${ss.localPort}")
             while (running.get()) {
                 val sock = try { ss.accept() } catch (e: Exception) { if (running.get()) Timber.w(e, "LSX accept failed"); break }
                 Thread({ handle(sock) }, "ea-lsx-conn").start()
             }
         }, "ea-lsx-server").apply { isDaemon = true; start() }
+        return ss.localPort
     }
 
     @Synchronized

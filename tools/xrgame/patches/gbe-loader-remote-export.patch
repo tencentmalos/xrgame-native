@@ -1,0 +1,152 @@
+--- a/helpers/pe_helpers.cpp
++++ b/helpers/pe_helpers.cpp
+@@ -286,6 +286,113 @@
+     return nullptr;
+ }
+ 
++// Imported ARM64EC call thunks are process-local. Resolve the child's PE export
++// instead of passing this process's LoadLibraryW import address to a new thread.
++static LPTHREAD_START_ROUTINE remote_load_library(HANDLE process, const wchar_t *module_name = L"kernel32.dll",
++                                                 const char *symbol = "LoadLibraryW", unsigned depth = 0)
++{
++    if (depth > 4) return nullptr;
++    HANDLE snapshot = INVALID_HANDLE_VALUE;
++    for (unsigned retry = 0; retry < 5; ++retry) {
++        snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetProcessId(process));
++        if (snapshot != INVALID_HANDLE_VALUE || GetLastError() != ERROR_BAD_LENGTH) break;
++        Sleep(1);
++    }
++
++    MODULEENTRY32W module{};
++    module.dwSize = sizeof(module);
++    bool found = false;
++    if (snapshot != INVALID_HANDLE_VALUE && Module32FirstW(snapshot, &module)) do {
++        if (!_wcsicmp(module.szModule, module_name)) { found = true; break; }
++    } while (Module32NextW(snapshot, &module));
++    if (snapshot != INVALID_HANDLE_VALUE) CloseHandle(snapshot);
++    if (!found) {
++        // Before Wine initializes the child's PEB loader list, Toolhelp has no
++        // modules. Locate mapped PE images via VirtualQueryEx, not a local thunk.
++        uintptr_t cursor = 0;
++        for (unsigned region = 0; region < 8192; ++region) {
++            MEMORY_BASIC_INFORMATION memory{};
++            if (!VirtualQueryEx(process, reinterpret_cast<void *>(cursor), &memory, sizeof(memory))) break;
++            uintptr_t begin = reinterpret_cast<uintptr_t>(memory.BaseAddress);
++            uintptr_t next = begin + memory.RegionSize;
++            if (next <= cursor) break;
++            cursor = next;
++            if (memory.State != MEM_COMMIT || memory.Type != MEM_IMAGE || memory.BaseAddress != memory.AllocationBase) continue;
++            auto base = static_cast<BYTE *>(memory.AllocationBase);
++            SIZE_T count = 0;
++            IMAGE_DOS_HEADER header{};
++            IMAGE_NT_HEADERS64 image{};
++            if (!ReadProcessMemory(process, base, &header, sizeof(header), &count) || count != sizeof(header) ||
++                header.e_magic != IMAGE_DOS_SIGNATURE || header.e_lfanew < sizeof(header) || header.e_lfanew > 65536 ||
++                !ReadProcessMemory(process, base + header.e_lfanew, &image, sizeof(image), &count) || count != sizeof(image) ||
++                image.Signature != IMAGE_NT_SIGNATURE || image.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) continue;
++            const auto &table = image.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
++            IMAGE_EXPORT_DIRECTORY exports{};
++            if (!table.VirtualAddress || table.VirtualAddress > image.OptionalHeader.SizeOfImage ||
++                sizeof(exports) > image.OptionalHeader.SizeOfImage - table.VirtualAddress ||
++                !ReadProcessMemory(process, base + table.VirtualAddress, &exports, sizeof(exports), &count) || count != sizeof(exports)) continue;
++            char name[128]{};
++            if (!exports.Name || exports.Name > image.OptionalHeader.SizeOfImage || sizeof(name) > image.OptionalHeader.SizeOfImage - exports.Name ||
++                !ReadProcessMemory(process, base + exports.Name, name, sizeof(name), &count) || count != sizeof(name) || !memchr(name, 0, sizeof(name))) continue;
++            if (_wcsicmp(common_helpers::to_wstr(name).c_str(), module_name)) continue;
++            module.modBaseAddr = base;
++            module.modBaseSize = image.OptionalHeader.SizeOfImage;
++            found = true;
++            break;
++        }
++    }
++    if (!found) return nullptr;
++    auto read = [&](DWORD offset, void *out, size_t size) {
++        SIZE_T actual = 0;
++        return offset <= module.modBaseSize && size <= module.modBaseSize - offset &&
++            ReadProcessMemory(process, module.modBaseAddr + offset, out, size, &actual) && actual == size;
++    };
++    auto string_at = [&](DWORD offset, std::string &value) {
++        value.clear();
++        for (unsigned i = 0; i < 256; ++i) {
++            char ch;
++            if (offset > module.modBaseSize || i >= module.modBaseSize - offset || !read(offset + i, &ch, 1)) return false;
++            if (!ch) return true;
++            value.push_back(ch);
++        }
++        return false;
++    };
++    IMAGE_DOS_HEADER dos{};
++    IMAGE_NT_HEADERS64 nt{};
++    if (!read(0, &dos, sizeof(dos)) || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew < sizeof(dos) ||
++        !read(dos.e_lfanew, &nt, sizeof(nt)) || nt.Signature != IMAGE_NT_SIGNATURE ||
++        nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return nullptr;
++    const auto &range = nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
++    IMAGE_EXPORT_DIRECTORY exports{};
++    if (!range.VirtualAddress || range.Size < sizeof(exports) || range.VirtualAddress > module.modBaseSize ||
++        range.Size > module.modBaseSize - range.VirtualAddress || !read(range.VirtualAddress, &exports, sizeof(exports)) ||
++        !exports.NumberOfNames || exports.NumberOfNames > 65536 || !exports.NumberOfFunctions ||
++        exports.NumberOfFunctions > 65536) return nullptr;
++    std::vector<DWORD> names(exports.NumberOfNames), functions(exports.NumberOfFunctions);
++    std::vector<WORD> ordinals(exports.NumberOfNames);
++    if (!read(exports.AddressOfNames, names.data(), names.size() * sizeof(DWORD)) ||
++        !read(exports.AddressOfNameOrdinals, ordinals.data(), ordinals.size() * sizeof(WORD)) ||
++        !read(exports.AddressOfFunctions, functions.data(), functions.size() * sizeof(DWORD))) return nullptr;
++    for (size_t i = 0; i < names.size(); ++i) {
++        std::string name;
++        if (!string_at(names[i], name)) return nullptr;
++        if (name != symbol) continue;
++        if (ordinals[i] >= functions.size()) return nullptr;
++        DWORD rva = functions[ordinals[i]];
++        if (!rva || rva >= module.modBaseSize) return nullptr;
++        if (rva >= range.VirtualAddress && rva - range.VirtualAddress < range.Size) {
++            std::string forward;
++            if (!string_at(rva, forward)) return nullptr;
++            const auto dot = forward.rfind('.');
++            if (dot == std::string::npos || !dot || dot + 1 == forward.size() || forward[dot + 1] == '#') return nullptr;
++            const auto target = common_helpers::to_wstr(forward.substr(0, dot) + ".dll");
++            return remote_load_library(process, target.c_str(), forward.c_str() + dot + 1, depth + 1);
++        }
++        return reinterpret_cast<LPTHREAD_START_ROUTINE>(module.modBaseAddr + rva);
++    }
++    return nullptr;
++}
++
+ DWORD pe_helpers::loadlib_remote(HANDLE hProcess, const std::string &fullpath, const char** err_reason)
+ {
+     const auto lib_fullpath = common_helpers::to_wstr(fullpath);
+@@ -296,6 +403,26 @@
+         return ERROR_INVALID_PARAMETER;
+     }
+ 
++    auto remote_entry = remote_load_library(hProcess);
++    if (!remote_entry) {
++        // Wine may not have populated kernel32 in a newly suspended process yet.
++        // A thread ending through ntdll runs loader initialization while leaving
++        // the game's main thread suspended, then exports can be read from it.
++        auto bootstrap = remote_load_library(hProcess, L"ntdll.dll", "RtlExitUserThread");
++        if (bootstrap) {
++            HANDLE thread = CreateRemoteThread(hProcess, nullptr, 0, bootstrap, nullptr, 0, nullptr);
++            if (thread) {
++                DWORD wait = WaitForSingleObject(thread, 30000);
++                CloseHandle(thread);
++                if (wait == WAIT_OBJECT_0) remote_entry = remote_load_library(hProcess);
++            }
++        }
++    }
++    if (!remote_entry) {
++        if (err_reason) *err_reason = "Cannot resolve LoadLibraryW in the child process";
++        return ERROR_PROC_NOT_FOUND;
++    }
++
+     // create a remote page
+     const size_t lib_path_str_bytes = (lib_fullpath.size() + 1) * sizeof(lib_fullpath[0]);
+     LPVOID lib_remote_page = VirtualAllocEx(
+@@ -342,7 +469,7 @@
+         hProcess,
+         NULL,
+         0,
+-        (LPTHREAD_START_ROUTINE)LoadLibraryW,
++        remote_entry,
+         lib_remote_page,
+         0,
+         NULL

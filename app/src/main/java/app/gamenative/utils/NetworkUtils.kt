@@ -1,6 +1,7 @@
 package app.gamenative.utils
 
 import okhttp3.Dns
+import app.gamenative.BuildConfig
 import okhttp3.Dispatcher
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -27,6 +28,7 @@ object Net {
 
     val fallbackDns: Dns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
+            if (BuildConfig.XRGAME) return Dns.SYSTEM.lookup(hostname)
             return try {
                 doh.lookup(hostname)
             } catch (e: Exception) {

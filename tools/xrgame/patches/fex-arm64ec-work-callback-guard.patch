@@ -1,0 +1,51 @@
+--- a/Source/Windows/ARM64EC/Module.cpp
++++ b/Source/Windows/ARM64EC/Module.cpp
+@@ -63,6 +63,8 @@
+ #include <winnt.h>
+ #include <wine/debug.h>
+ 
++static void ProcessPendingEmulatorWork();
++
+ namespace Exception {
+ class ECSyscallHandler;
+ }
+@@ -517,7 +519,7 @@
+   ECSyscallHandler() = default;
+ 
+   void HandleSyscall(FEXCore::Core::CpuStateFrame* Frame) override {
+-    ProcessPendingCrossProcessEmulatorWork();
++    ProcessPendingEmulatorWork();
+ 
+     // Manually raise an exeption with the current JIT state packed into a native context, ntdll handles this and
+     // reenters the JIT (see dlls/ntdll/signal_arm64ec.c in wine).
+@@ -559,13 +561,13 @@
+   }
+ 
+   void PreCompile() override {
+-    ProcessPendingCrossProcessEmulatorWork();
++    ProcessPendingEmulatorWork();
+   }
+ };
+ } // namespace Exception
+ 
+ extern "C" void SyncThreadContext(CONTEXT* Context) {
+-  ProcessPendingCrossProcessEmulatorWork();
++  ProcessPendingEmulatorWork();
+   auto* Thread = GetCPUArea().ThreadState();
+   // All other EFlags bits are lost when converting to/from an ARM64EC context, so merge them in from the current JIT state.
+   // This is advisable over dropping their values as thread suspend/resume uses this function, and that can happen at any point in guest code.
+@@ -670,6 +672,14 @@
+     GetCPUArea().Area->InSyscallCallback = Prev;
+   }
+ };
++
++// Cross-process callbacks can invalidate blocks and flush native JIT instructions.
++// Suppress Wine's emulator callbacks during that work, just as local notifications
++// already do, so a native instruction-cache flush cannot reenter invalidation.
++static void ProcessPendingEmulatorWork() {
++  ScopedCallbackDisable Guard;
++  ProcessPendingCrossProcessEmulatorWork();
++}
+ 
+ // Returns true if exception dispatch should be halted and the execution context restored to NativeContext
+ bool ResetToConsistentStateImpl(const ThreadCPUArea CPUArea, EXCEPTION_RECORD* Exception, CONTEXT* GuestContext, ARM64_NT_CONTEXT* NativeContext) {

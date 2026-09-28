@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+project(xrgame_fex_unixlib LANGUAGES CXX)
+if(NOT ANDROID)
+    message(FATAL_ERROR "Use the Android NDK toolchain")
+endif()
+if(NOT EXISTS "${FEX_SOURCE}/Source/Windows/UnixLib/FEXUnixLib.cpp")
+    message(FATAL_ERROR "FEX_SOURCE must point to the pinned FEX checkout")
+endif()
+set(CMAKE_CXX_STANDARD 17)
+set(unixlib "${FEX_SOURCE}/Source/Windows/UnixLib/FEXUnixLib.cpp")
+set_source_files_properties("${unixlib}" PROPERTIES
+    COMPILE_DEFINITIONS "shm_open=xrgame_shm_open;shm_unlink=xrgame_shm_unlink"
+    COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/bionic-shm.h")
+foreach(name arm64ecfex wow64fex)
+    add_library(${name} SHARED "${unixlib}" bionic-shm.cpp)
+    target_link_options(${name} PRIVATE -Wl,--build-id=sha1 -Wl,-z,max-page-size=16384)
+    install(TARGETS ${name} LIBRARY DESTINATION lib/wine/aarch64-unix)
+endforeach()

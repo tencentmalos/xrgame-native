@@ -2017,6 +2017,10 @@ fun XServerScreen(
             // VirGL passthrough). Default to the legacy GL renderer for all
             // other containers as well. Uncheck the per-container useLegacyRenderer
             // setting to switch to the Vulkan renderer.
+            if (BuildConfig.XRGAME && BuildConfig.DEBUG && existingXServer == null) {
+                val traceFrames = EnvVars(container.envVars).get("XRGAME_PRESENT_TRACE_FRAMES").toIntOrNull() ?: 0
+                xServerToUse.getExtension<PresentExtension>(PresentExtension.MAJOR_OPCODE.toInt())?.setTraceFrames(traceFrames)
+            }
             val useGLRenderer = container.graphicsDriver == "virgl" || container.displayRenderer.equals("gl", true)
             val xServerViewInstance: XServerRendererView = if (useGLRenderer) {
                 XServerViewGL(context, xServerToUse)
@@ -2028,6 +2032,10 @@ fun XServerScreen(
                 setFrameRateLimit(if (fpsLimiterEnabled) fpsLimiterTarget else 0)
                 val renderer = this.renderer
                 if (!useGLRenderer && renderer is VulkanRenderer) {
+                    if (BuildConfig.XRGAME && BuildConfig.DEBUG) {
+                        renderer.setForeignAhbOwnership(EnvVars(container.envVars).get("XRGAME_AHB_OWNERSHIP") == "foreign")
+                        renderer.setSampleHardwareBuffers(EnvVars(container.envVars).get("XRGAME_AHB_PRESENT") == "sample")
+                    }
                     renderer.setFrameGenerationArmed(isLsfgAvailable)
                     val pm = container.rendererPresentMode.ifEmpty { "fifo" }
                     val vkMode = when (pm.lowercase(Locale.getDefault())) {
@@ -4069,6 +4077,10 @@ private fun setupXEnvironment(
 
         envVars.putAll(container.envVars)
         immersiveHooks?.windowsVr?.afterContainerEnvironmentMerged(envVars, container)
+        if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configurePresentation(envVars)
+        if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configureSync(
+            File(context.filesDir, "xrgame-sync"), envVars, ProcessHelper.listRunningWineProcesses().isNotEmpty(),
+        )
         envVars.remove("DXVK_FRAME_RATE")
         envVars.remove("VKD3D_FRAME_RATE")
         if (!envVars.has("WINEESYNC")) envVars.put("WINEESYNC", "1")
@@ -4395,7 +4407,7 @@ private fun getWineStartCommand(
             container.executablePath = SteamService.getInstalledExe(gameId)
             container.saveData()
         }
-        if (!container.isUseLegacyDRM && !ContainerUtils.isAbsoluteWindowsPath(container.executablePath)){
+        if (!BuildConfig.XRGAME && !container.isUseLegacyDRM && !ContainerUtils.isAbsoluteWindowsPath(container.executablePath)){
             // Create ColdClientLoader.ini file
             SteamUtils.writeColdClientIni(gameId, container, appLaunchInfo)
         }
@@ -4410,7 +4422,36 @@ private fun getWineStartCommand(
     val args = if (testGraphics) {
         "\"Z:/opt/apps/TestD3D.exe\""
     } else if (bootToContainer) {
-        "\"wfm.exe\""
+        if (BuildConfig.XRGAME) "\"winefile.exe\"" else "\"wfm.exe\""
+    } else if (BuildConfig.XRGAME && isSteamGame) {
+        // Every x64 Steam executable gets the bundled client. Profiles only adjust
+        // game-specific paths/arguments and optional compatibility hooks.
+        val gameDirectory = File(SteamService.getAppDirPath(gameId)).canonicalFile
+        val drive = Container.drivesIterator(container.drives).asSequence()
+            .firstOrNull { File(it[1]).canonicalFile == gameDirectory }?.get(0)?.firstOrNull()
+            ?: error("Installed Steam game has no mapped drive")
+        val profile = app.gamenative.xrgame.XrGameSteamLaunch.clientProfile(gameId, container.executablePath)
+        val target = if (profile != null) app.gamenative.xrgame.XrGameSteamLaunch.resolve(
+            gameDirectory, drive, profile.executable, profile.executable, profile.arguments, profile.workingDirectory,
+        ) else app.gamenative.xrgame.XrGameSteamLaunch.resolve(
+            gameDirectory, drive, container.executablePath,
+            appLaunchInfo?.executable.orEmpty(), appLaunchInfo?.arguments.orEmpty(),
+            appLaunchInfo?.workingDir.orEmpty(),
+        )
+        check(target.executable.isFile) { "Steam executable is missing: ${target.executable.name}" }
+        check(target.workingDirectory.isDirectory) { "Steam working directory is missing" }
+        val launch = if (app.gamenative.xrgame.XrGameSteamLaunch.usesBundledClient(target.executable)) {
+            app.gamenative.xrgame.XrGameSteamClient.prepare(context, File(container.rootDir, ".wine"),
+                gameDirectory, drive, gameId, target, profile?.injectExtra == true, profile?.nestedGamePath == true,
+                profile?.followSelfRestart == true)
+        } else target
+        guestProgramLauncherComponent.workingDir = launch.workingDirectory
+        envVars.put("SteamAppId", gameId.toString())
+        envVars.put("SteamGameId", gameId.toString())
+        // This path uses the bundled Windows client. A refreshed Proton prefix
+        // may restore lsteamclient, whose Linux-client redirection must stay off.
+        envVars.put("PROTON_DISABLE_LSTEAMCLIENT", "1")
+        launch.command
     } else if (isGOGGame) {
         // For GOG games, use GOGService to get the launch command
         Timber.tag("XServerScreen").i("Launching GOG game: $gameId")
@@ -4706,7 +4747,7 @@ private fun getWineStartCommand(
             // Attempt auto-detection only when we have the physical folder path
             if (gameFolderPath == null) {
                 Timber.tag("XServerScreen").e("Could not find A: drive for Custom Game: $appId")
-                return "winhandler.exe \"wfm.exe\""
+                return if (BuildConfig.XRGAME) "\"winefile.exe\"" else "winhandler.exe \"wfm.exe\""
             }
             val auto = CustomGameScanner.findUniqueExeRelativeToFolder(gameFolderPath!!)
             if (auto != null) {
@@ -4716,17 +4757,18 @@ private fun getWineStartCommand(
                 container.saveData()
             } else {
                 Timber.tag("XServerScreen").w("No unique executable found for Custom Game: $appId")
-                return "winhandler.exe \"wfm.exe\""
+                return if (BuildConfig.XRGAME) "\"winefile.exe\"" else "winhandler.exe \"wfm.exe\""
             }
         }
 
         if (ContainerUtils.isAbsoluteWindowsPath(executablePath)) {
+            if (BuildConfig.XRGAME) return "\"$executablePath\""
             return "winhandler.exe \"$executablePath\""
         }
 
         if (gameFolderPath == null) {
             Timber.tag("XServerScreen").e("Could not find A: drive for Custom Game: $appId")
-            return "winhandler.exe \"wfm.exe\""
+            return if (BuildConfig.XRGAME) "\"winefile.exe\"" else "winhandler.exe \"wfm.exe\""
         }
 
         // Set working directory to the game folder
@@ -4845,7 +4887,7 @@ private fun getWineStartCommand(
         }
     }
 
-    return "winhandler.exe $args"
+    return if (BuildConfig.XRGAME) args else "winhandler.exe $args"
 }
 private fun getSteamlessTarget(
     appId: String,
@@ -5059,6 +5101,8 @@ private fun unpackExecutableFile(
 ) {
     val imageFs = ImageFs.find(context)
     var output = StringBuilder()
+    // Mono/Gecko and Steamless are not part of the verified XRGame runtime.
+    if (BuildConfig.XRGAME) return
     if (needsUnpacking || containerVariantChanged){
         try {
             PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Installing Mono..."))
@@ -5486,7 +5530,8 @@ private suspend fun applyGeneralPatches(
 
 private fun refreshComponentsFiles(context: Context) {
     val extractionPairs = listOf(
-        "pulseaudio-gamenative-20260612.tzst" to File(context.filesDir, "pulseaudio")
+        (if (BuildConfig.XRGAME) "pulseaudio-xrgame-20260926.tzst" else "pulseaudio-gamenative-20260612.tzst") to
+            File(context.filesDir, "pulseaudio")
     )
 
     AssetUtils.extractComponentsWithVersionCheck(
@@ -5573,6 +5618,10 @@ private suspend fun extractDXWrapperFiles(
     contentsManager: ContentsManager,
     onExtractFileListener: OnExtractFileListener?,
 ) {
+    if (BuildConfig.XRGAME) {
+        app.gamenative.xrgame.XrGameRuntime.installGraphics(context, container, contentsManager)
+        return
+    }
     val dlls = arrayOf(
         "d3d10.dll",
         "d3d10_1.dll",
@@ -5737,6 +5786,12 @@ private suspend fun extractWinComponentFiles(
     // shortcut: Shortcut?,
     onExtractFileListener: OnExtractFileListener?,
 ) {
+    if (BuildConfig.XRGAME) {
+        // The source-built Proton tree supplies builtins on first prefix creation.
+        // Do not restore DLLs from upstream container patterns or download bundles.
+        app.gamenative.xrgame.XrGameRuntime.configureWindowsComponents(context, container)
+        return
+    }
     val rootDir = imageFs.rootDir
     val windowsDir = File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows")
     val systemRegFile = File(rootDir, ImageFs.WINEPREFIX + "/system.reg")
@@ -5825,6 +5880,12 @@ private suspend fun extractGraphicsDriverFiles(
     firstTimeBoot: Boolean,
     vkbasaltConfig: String,
 ) {
+    if (BuildConfig.XRGAME) {
+        app.gamenative.xrgame.XrGameRuntime.configureGraphics(context, container, envVars)
+        DXVKHelper.setEnvVars(context, dxwrapperConfig, envVars)
+        DXVKHelper.setVKD3DEnvVars(context, dxwrapperConfig, envVars)
+        return
+    }
     if (container.containerVariant.equals(Container.GLIBC)) {
         // Get the configured driver version or use default
         val turnipVersion =

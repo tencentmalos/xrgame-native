@@ -2,4 +2,6 @@
 <!-- XRGame Native identity (spec C1). Every locale that defines app_name in src/main is overridden here. -->
 <resources>
     <string name="app_name">XRGame Native</string>
+    <string name="login_app_name">XRGame Native</string>
+    <string name="steam_verify_files_message">检查已安装的游戏文件，并下载缺失或变更的文件。不执行云存档恢复。</string>
 </resources>

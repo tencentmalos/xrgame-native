@@ -3,8 +3,21 @@
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
 - Default to Chinese when talking with the user.
-- Start from [docs/specs/xrgame-native-v1.md](docs/specs/xrgame-native-v1.md). Work packages run in the order WP0 → WP7, with the dependencies and exit criteria given there.
-  - WP1 (Steam game installation) comes first because it supplies the test games for everything after it.
+- 修改 Foundation 前必须从当前固定提交切出独立功能分支，不能直接在共享 `main` 上修改（用户补充，2026-09-27）。
+- 用户于 2026-09-27 授权将私有 `tencentmalos/foundation` 作为 `foundation/` 子仓接入 DebugBus，替代原先的禁止引入规则。只选取 DebugBus 模块供内部调试包使用；操作与边界见 `docs/debugging/debugbus.md`，不公开发布 Foundation 源码。
+- **主仓主干为 `malos/main`**：`tencentmalos/xrgame-native` 的功能分支默认从最新 `malos/main` 创建，并以它作为合并 / PR 目标。子仓分支遵循各自约定；commit / push 仍需用户明确授权。
+- MHW 的 Steam/loader/根目录配置路径启动阻塞已修复，AYN 到达 3D 标题画面、开场剧情和角色创建；已观察用户进入冰原场景；受控 DX11 → DX12 → DX11 重启、原 3 个角色识别和正常退出已通过，长时间稳定性仍待验。重启链路见 `docs/validation/mhw-restart-20260927.md`。目录别名仅为 MHW profile 启用，不修改游戏文件，不放宽零长度 D3D buffer。见 `docs/validation/mhw-startup-20260927.md`。
+- picoXr 必须内置完整运行时（含源码 Steam 客户端、DXVK 与 VKD3D），缺组件禁止出包。x64 Steam 游戏默认配置客户端，旧容器启动时校验并修复运行库；不修改游戏目录或存档。验证范围见 `docs/validation/bundled-runtime-20260927.md`。
+- **Turnip 子仓主干也为 `malos/main`**：已从 shadPS4 的 `codex/turnip-xr-fdm2`（`d15b7c01`）建立并推送；迭代分支 `feature/malos/xrgame-wine-icd` 从该基线切出，不能从 Mesa 上游 `main` 起步。2026-09-28 阶段版本已先推子仓再更新 gitlink；已验证运行时仍采用配方的固定基线与补丁，不能把维护分支 rebase 当成新二进制验收。
+- Start from [docs/specs/xrgame-native-personal-v2.md](docs/specs/xrgame-native-personal-v2.md). The user revised the plan on 2026-09-26: personal learning, AYN validation now, Swan deferred; the old WP3 engineering/publication remainder is the final optional P5 and does not block runtime work.
+- Retain the original v1 acceptance gaps; see [the original-spec/observability review](docs/validation/spec-observability-review-20260926.md). D0–D4 expands guest/host debugging and analysis alongside P1–P3. Do not treat shared FEXCore code as an already integrated Wine debugger, or AYN validation as Swan/XR acceptance.
+  - Start with P1 (former WP4 on AYN), using the existing embedded runtime and Steam-installed games; complete the remaining Steam usability checks in P2.
   - Do not split work packages into micro-specs.
-  - Do not skip the measurement steps that later decisions depend on: the WP4 behavior matrix, the WP5.1 capability probe, and the WP7 baseline.
+  - Measure AYN behavior before adding a shim. Swan's Android 16 matrix and XR capability probe wait for P4; do not treat Android 13 plus targetSdk 36 as Android 16 evidence. Measure before replacing the display path in P3.
 - Before changing anything under `references/`, read that checkout's own instructions (for example FEX's AI-contribution ban).
+
+- 新引入的直接依赖仓库先 fork 到 `tencentmalos` 再维护；迁移 URL 不升级 gitlink。GBE、Proton Wine、JavaSteam 等已补齐 fork。
+
+- 调试流程：`tools/xrgame/README.md` 的 Device debugging。native app 与 Wine x64 guest 的基础暂停/读取/恢复/清理已验证，见 `docs/validation/wp3-debuggers-20260926.md`；Hades II 已通过 Turnip AHardwareBuffer/X11 路径进入实际场景并响应移动（GPU 拷贝，无 CPU 读回，保留 present-wait）；完整游戏与 WP3 仍未验收。
+
+- 当前 AYN 的下载/续传/修复/目录识别和独立公共 depot 对照见 `docs/validation/personal-p2-downloads-20260927.md`；guest 软件断点可命中但恢复仍失败，默认关闭，不能把基础 attach/inspect 通过扩大为完整 D2。

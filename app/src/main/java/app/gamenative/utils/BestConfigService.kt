@@ -74,6 +74,7 @@ object BestConfigService {
         gpuName: String,
         gameStore: String,
     ): BestConfigResponse? = withContext(Dispatchers.IO) {
+        if (BuildConfig.XRGAME) return@withContext null
         val cacheKey = "${gameName}_${gpuName}_${gameStore}"
 
         // Check cache first
@@ -996,4 +997,3 @@ object BestConfigService {
         }
     }
 }
-

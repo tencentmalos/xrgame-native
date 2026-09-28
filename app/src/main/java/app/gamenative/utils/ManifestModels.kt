@@ -9,6 +9,9 @@ data class ManifestEntry(
     val url: String,
     val variant: String? = null,
     val arch: String? = null,
+    val sha256: String? = null,
+    val license: String? = null,
+    val source: String? = null,
 )
 
 @Serializable

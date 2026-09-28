@@ -1,51 +1,55 @@
 [submodule "app/src/main/cpp/extras/adrenotools"]
 	path = app/src/main/cpp/extras/adrenotools
-	url = https://github.com/Pipetto-crypto/libadrenotools.git
+	url = https://github.com/tencentmalos/libadrenotools.git
 [submodule "app/src/main/cpp/lsfg-vk-android"]
 	path = app/src/main/cpp/lsfg-vk-android
-	url = https://github.com/GameNative/lsfg-vk-android.git
+	url = https://github.com/tencentmalos/lsfg-vk-android.git
 [submodule "references/proton"]
 	path = references/proton
-	url = https://github.com/ValveSoftware/Proton.git
+	url = https://github.com/tencentmalos/Proton.git
 	branch = proton_11.0
 [submodule "references/FEX"]
 	path = references/FEX
 	url = https://github.com/tencentmalos/FEX.git
-	branch = feature/malos/host-page-size
+	branch = feature/malos/xrgame-arm64ec
 [submodule "references/shadPS4"]
 	path = references/shadPS4
 	url = https://github.com/tencentmalos/Bachata-S4.git
 	branch = malos/main
 [submodule "references/proton-wine"]
 	path = references/proton-wine
-	url = https://github.com/GameNative/proton-wine.git
-	branch = proton_11.0-2
+	url = https://github.com/tencentmalos/proton-wine.git
+	branch = feature/malos/wine-guest-debug
 	shallow = true
 [submodule "references/WinNative"]
 	path = references/WinNative
-	url = https://github.com/WinNative-Emu/WinNative.git
+	url = https://github.com/tencentmalos/WinNative.git
 	shallow = true
 [submodule "references/mesa-turnip"]
 	path = references/mesa-turnip
 	url = https://github.com/tencentmalos/mesa-mirror.git
-	branch = codex/turnip-xr-fdm2
+	branch = feature/malos/xrgame-wine-icd
 	shallow = true
 [submodule "references/JavaSteam"]
 	path = references/JavaSteam
-	url = https://github.com/joshuatam/JavaSteam.git
+	url = https://github.com/tencentmalos/JavaSteam.git
 	branch = gamenative-latest
 [submodule "references/Pluvia"]
 	path = references/Pluvia
-	url = https://github.com/oxters168/Pluvia.git
+	url = https://github.com/tencentmalos/Pluvia.git
 [submodule "references/DepotDownloader"]
 	path = references/DepotDownloader
-	url = https://github.com/SteamRE/DepotDownloader.git
+	url = https://github.com/tencentmalos/DepotDownloader.git
 [submodule "references/SteamKit"]
 	path = references/SteamKit
-	url = https://github.com/SteamRE/SteamKit.git
+	url = https://github.com/tencentmalos/SteamKit.git
 	shallow = true
 [submodule "references/gbe_fork"]
 	path = references/gbe_fork
-	url = https://github.com/Detanup01/gbe_fork.git
-	branch = dev
+	url = https://github.com/tencentmalos/gbe_fork.git
+	branch = feature/malos/xrgame-loader
 	shallow = true
+[submodule "foundation"]
+	path = foundation
+	url = git@github.com:tencentmalos/foundation.git
+	branch = main

@@ -152,8 +152,11 @@ public class DRI3Extension implements Extension {
 
     private void pixmapFromHardwareBuffer(XClient client, int pixmapId, short width, short height, byte depth, int fd) throws IOException, XRequestError {
         try {
-            NativeTexture image = Drawable.IS_ASR() ? new AHBImage(fd) : new GPUImage(fd);
-            Drawable drawable = client.xServer.drawableManager.createDrawable(pixmapId, image.getStride(), height, depth);
+            NativeTexture image = Drawable.IS_ASR() ? new AHBImage(fd) : new GPUImage(fd, app.gamenative.BuildConfig.XRGAME);
+            if (image instanceof GPUImage && ((GPUImage)image).getHardwareBufferPtr() == 0)
+                throw new BadAlloc();
+            Drawable drawable = client.xServer.drawableManager.createDrawable(pixmapId,
+                app.gamenative.BuildConfig.XRGAME ? width : image.getStride(), height, depth);
             drawable.setTexture(image);
 
             client.xServer.pixmapManager.createPixmap(drawable);

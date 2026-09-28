@@ -46,6 +46,17 @@ object ContainerUtils {
         listOf(WRAPPER_TURNIP_CAPABLE, WRAPPER_ADRENO_8ELITE_GEN5, WRAPPER_ADRENO_8ELITE, WRAPPER_ADRENO_A12)
 
     fun setContainerDefaults(context: Context) {
+        if (BuildConfig.XRGAME) {
+            DefaultVersion.VARIANT = Container.BIONIC
+            DefaultVersion.WINE_VERSION = app.gamenative.xrgame.XrGameRuntimeVersions.WINE
+            DefaultVersion.DEFAULT_GRAPHICS_DRIVER = "turnip"
+            DefaultVersion.DXVK = app.gamenative.xrgame.XrGameRuntimeVersions.DXVK
+            DefaultVersion.VKD3D = app.gamenative.xrgame.XrGameRuntimeVersions.VKD3D
+            DefaultVersion.WRAPPER = app.gamenative.xrgame.XrGameRuntimeVersions.TURNIP
+            DefaultVersion.STEAM_TYPE = Container.STEAM_TYPE_NORMAL
+            DefaultVersion.ASYNC_CACHE = "0"
+            return
+        }
         // Override default driver and DXVK version based on Turnip capability
         if (GPUInformation.isTurnipCapable(context)) {
             DefaultVersion.VARIANT = Container.BIONIC

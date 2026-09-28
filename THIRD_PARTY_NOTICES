@@ -2,6 +2,61 @@
 
 This file contains notices for third-party assets and libraries used in this project.
 
+## XRGame picoXr build (2026-09-26)
+
+The inherited notices below also describe upstream flavors. `picoXr` excludes
+the proprietary redirect, KGSL shim, Qualcomm driver bundles, Steam host stubs,
+Vulkan wrapper and Samsung SDK. Exclusion is checked by `tools/audit-apk`.
+`tools/xrgame/apk-sources.json` records the source and license of each packaged
+native library and asset, including exact hashes for official dependencies.
+
+| Component | Source/version | License |
+|---|---|---|
+| Android runtime/JNI and XR bridge | Sources in this repository; `tools/build-picoxr-*.sh` | GPL-3.0-or-later; included adrenotools retains MIT |
+| sevenzx / LZMA SDK | `app/src/main/cpp/sevenzx`, SDK 18.05 | Repository wrapper GPL-3.0-or-later; SDK public domain |
+| PulseAudio Android | [Build source 178f0a3](https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39), PulseAudio 4166ad3 | LGPL-2.1-or-later; includes libsndfile, libltdl and AAudio sink |
+| OpenXR loader | Khronos official Android AAR 1.1.61 | Apache-2.0 OR MIT |
+| AndroidX native helpers | DataStore 1.1.2, graphics-path 1.0.1 | Apache-2.0 |
+| libarchive Android JNI | me.zhanghai.android.libarchive 1.1.6 | Apache-2.0 wrapper; libarchive BSD-2-Clause |
+| zstd-jni | 1.5.7-5 | BSD-2-Clause wrapper; Zstandard BSD-3-Clause |
+| libc++ | Android NDK r27d | Apache-2.0 WITH LLVM-exception |
+| Public Suffix List | Packaged by OkHttp Android 5.3.2 | MPL-2.0 |
+
+External runtime packages are built by `tools/xrgame/`. Their source pins,
+per-file hashes and top-level license texts are included in each package.
+The base image includes Termux package versions and license documents under
+`usr/share/licenses`, with provenance in `xrgame-imagefs.json`. Its libxcb is
+built separately with the XRGame X11 socket path (MIT, version 1.17.0).
+The Turnip X11/AHardwareBuffer package also carries the source-built DRI3 and
+Present XCB client libraries, their MIT notice and source archive hashes.
+`collect-runtime-sources.py` now archives pinned runtime sources, initialized
+build dependencies and local patches. `termux-sources.lock.json` and the
+dependency source bundle cover the base image's version-matched sources and
+recipes. The original snapshot's individual build commits, additional build-time
+source dependencies and complete notices still require verification; these local
+validation packages are not release-ready.
+No APK or runtime release has been published by this work.
+
+The internal media runtime adds GStreamer gst-libav 1.28.0 (LGPL-2.1-or-later),
+from `tencentmalos/gstreamer` at `9058212f43074ef7df229e73cea135c4ea96e0d6`,
+originally `GStreamer/gstreamer`. `tools/xrgame/build-gst-libav.sh` records the
+build and omits the optional libavfilter deinterlace/comparison elements.
+It uses the pinned FFmpeg 8.0.1 and GStreamer 1.28 dependency snapshot. The
+imagefs includes the selected base/good playback plugins, their license files,
+and mandatory ELF dependencies, including libglvnd EGL even with Wine GL video
+disabled. Corresponding-source/publication gates above remain open.
+
+Private P2 validation can additionally bundle GBE Fork (Goldberg Emulator,
+LGPL-3.0-or-later), maintained at `https://github.com/tencentmalos/gbe_fork`.
+`tools/xrgame/package-steamclient-validation.py` pins source-built client/extra
+DLLs at `7a319f0bedad260f952b0fb367b27f255fd952c5` and an upstream comparison
+loader from `2026_09_16_2` (`8479ddbc096f7d8a418ec28f463c829b77f66911`).
+The archive includes its LICENSE and per-file provenance. The loader is not
+claimed as a local source build. Complete dependency notices and a reproducible
+source loader remain prerequisites for publication; this package is internal only.
+The Hades II profile disables client networking, overlay injection and automatic
+DLC unlocking. It does not replace the installed game's Steam API DLLs.
+
 ---
 
 ## Scope and Completeness
@@ -456,3 +511,14 @@ This project bundles `app/src/main/lib/perfsdk-v1.0.0.jar`, the Samsung Performa
 power-control feature. The SDK is proprietary to Samsung Electronics and is NOT covered by
 this project's GPL-3.0 license; it is used under the terms of Samsung's SDK license
 agreement. If you redistribute this project, verify your right to redistribute the SDK.
+
+
+Spatial Foundation — internal debug builds only
+-----------------------------------------------
+Source: private https://github.com/tencentmalos/foundation
+Pinned revision: d487242023e6899f680717d263cf35c7c1f9e6c2 (shared main)
+Selected source: modules/debugbus/DebugCommandRegistry, linked into libxrgame_debugbus.so.
+No top-level redistribution license is declared by this dependency. The owner authorized
+local submodule integration on 2026-09-27; this does not claim a GPL grant or public
+redistribution permission. The private checkout and debug APK are not publication artifacts.
+The XRGame JNI/Android adapters retain this repository's GPL-3.0-or-later terms.

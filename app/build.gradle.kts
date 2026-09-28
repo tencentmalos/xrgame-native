@@ -1,5 +1,8 @@
 import java.util.Properties
 import java.io.FileInputStream
+import java.net.URI
+import java.security.MessageDigest
+import com.android.build.api.artifact.SingleArtifact
 
 plugins {
     alias(libs.plugins.android.application)
@@ -46,6 +49,8 @@ val copyDebugManifest by tasks.registering(Copy::class) {
     from(rootProject.file("manifest.json"))
     into(layout.buildDirectory.dir("generated/debugManifest"))
 }
+
+val xrGameOpenxrLoader by configurations.creating { isTransitive = false }
 
 android {
     namespace = "app.gamenative"
@@ -278,6 +283,9 @@ android {
 
     // Configure Assets to be used in different variants
     sourceSets {
+        listOf("legacy", "legacyXr", "modern", "modernXr").forEach { flavor ->
+            getByName(flavor).java.srcDir("src/nonPico/java")
+        }
         getByName("legacy") {
             java.srcDir("src/nonXr/java")
             assets {
@@ -485,6 +493,7 @@ dependencies {
     // Official Khronos OpenXR loader (Apache-2.0) for the Meta Quest immersive launch mode's
     // native module (app/src/main/cpp/xrimmersive) — not a Winlator/GameNativeXR dependency.
     "modernXrImplementation"("org.khronos.openxr:openxr_loader_for_android:1.1.61")
+    xrGameOpenxrLoader("org.khronos.openxr:openxr_loader_for_android:1.1.61@aar")
 
     // Winlator
     implementation(libs.bundles.winlator)
@@ -550,7 +559,9 @@ dependencies {
     implementation("com.auth0.android:jwtdecode:2.0.2")
 
     // Samsung Performance SDK
-    implementation(files("src/main/lib/perfsdk-v1.0.0.jar"))
+    listOf("legacy", "legacyXr", "modern", "modernXr").forEach { flavor ->
+        add("${flavor}Implementation", files("src/main/lib/perfsdk-v1.0.0.jar"))
+    }
 
     "modernXrImplementation"("com.meta.horizon.platform.sdk:core-kotlin:0.2.2")
     "modernXrImplementation"("com.meta.horizon.platform.sdk:iap-kotlin:0.2.2")
@@ -674,4 +685,175 @@ androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi
         buildInfo.set(layout.buildDirectory.file("outputs/gndownload/${variant.name}/BUILD_INFO.txt"))
     }
     variant.sources.jniLibs?.addGeneratedSourceDirectory(task, CargoNdkBuildTask::outputDir)
+}
+
+abstract class PicoNativeBuildTask : DefaultTask() {
+    @get:Input abstract val buildProbes: Property<Boolean>
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nativeSources: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val openxrLoaderAar: RegularFileProperty
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val pulseDir: DirectoryProperty
+    @get:Input abstract val sdkDir: Property<String>
+    @get:Input abstract val ndkDir: Property<String>
+    @get:Internal abstract val repositoryDir: DirectoryProperty
+    @get:Internal abstract val cmakeBuildDir: DirectoryProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:OutputDirectory abstract val runtimeAssets: DirectoryProperty
+    @get:javax.inject.Inject abstract val execOps: ExecOperations
+
+    @TaskAction fun build() {
+        execOps.exec {
+            workingDir = repositoryDir.get().asFile
+            environment("ANDROID_HOME", sdkDir.get())
+            environment("ANDROID_NDK_HOME", ndkDir.get())
+            environment("XRGAME_NATIVE_BUILD", cmakeBuildDir.get().asFile.absolutePath)
+            environment("XRGAME_OPENXR_AAR", openxrLoaderAar.get().asFile.absolutePath)
+            environment("XRGAME_PULSE_DIR", pulseDir.get().asFile.absolutePath)
+            environment("XRGAME_BUILD_PROBES", if (buildProbes.get()) "ON" else "OFF")
+            commandLine("bash", "tools/build-picoxr-native.sh", outputDir.get().asFile.absolutePath)
+        }
+        execOps.exec {
+            workingDir = repositoryDir.get().asFile
+            environment("ANDROID_HOME", sdkDir.get())
+            environment("ANDROID_NDK_HOME", ndkDir.get())
+            environment("XRGAME_NATIVE_BUILD", cmakeBuildDir.get().asFile.absolutePath)
+            environment("XRGAME_PULSE_DIR", pulseDir.get().asFile.absolutePath)
+            commandLine("bash", "tools/build-picoxr-xr-payload.sh", runtimeAssets.get().asFile.absolutePath)
+        }
+    }
+}
+
+abstract class PicoAssetsTask : DefaultTask() {
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val inputDir: DirectoryProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val validationCatalog: RegularFileProperty
+    @get:Optional @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val runtimeBundle: DirectoryProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val runtimeVersions: RegularFileProperty
+
+    @TaskAction fun filter() {
+        check(runtimeBundle.isPresent) {
+            "picoXr requires its complete bundled runtime. Run tools/xrgame/prepare-runtime-bundle.py before building."
+        }
+        val src = inputDir.get().asFile
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        src.walkTopDown().filter { it.isFile }.forEach { file ->
+            val path = file.relativeTo(src).invariantSeparatorsPath
+            val name = file.name.lowercase()
+            val prohibited = name.startsWith("libredirect") || name == "redirect.tzst" ||
+                name.contains("steamless") || name.startsWith("steamhost") ||
+                name.startsWith("eahost") || name.startsWith("rgschost") || name.startsWith("libkgslshim") ||
+                path == "manifest.json" ||
+                ((path.startsWith("box86_64/") || path.startsWith("wowbox64/") ||
+                    path.startsWith("fexcore/") || path.startsWith("dxwrapper/")) && name.endsWith(".tzst")) ||
+                path.startsWith("steampipe/") || name.endsWith("_input_dlls.tzst") ||
+                name == "pulseaudio-gamenative-20260612.tzst"
+            if (!prohibited) {
+                val dest = File(out, path)
+                dest.parentFile.mkdirs()
+                file.copyTo(dest, overwrite = true)
+            }
+        }
+        if (validationCatalog.isPresent) {
+            val dest = File(out, "xrgame/manifest.json")
+            dest.parentFile.mkdirs()
+            validationCatalog.get().asFile.copyTo(dest, overwrite = true)
+        }
+        if (runtimeBundle.isPresent) {
+            val bundle = runtimeBundle.get().asFile
+            if (validationCatalog.isPresent) {
+                check(bundle.resolve("manifest.json").readBytes().contentEquals(validationCatalog.get().asFile.readBytes())) {
+                    "Bundled runtime and validation catalog must match"
+                }
+            }
+            val manifest = groovy.json.JsonSlurper().parse(bundle.resolve("manifest.json")) as Map<*, *>
+            val items = manifest["items"] as Map<*, *>
+            val versions = Regex("String (\\w+) = \"([^\"]+)\"").findAll(runtimeVersions.get().asFile.readText())
+                .associate { it.groupValues[1] to it.groupValues[2] }
+            for ((kind, constant) in mapOf("proton" to "WINE", "fexcore" to "FEX", "dxvk" to "DXVK", "vkd3d" to "VKD3D", "driver" to "TURNIP")) {
+                check((items[kind] as? List<*>)?.any { (it as Map<*, *>)["id"] == versions[constant] } == true) {
+                    "Bundled runtime is missing default $kind: ${versions[constant]}"
+                }
+            }
+            check((items["imagefs"] as? List<*>)?.size == 1 && (items["steamclient"] as? List<*>)?.size == 1) {
+                "Bundled runtime must include the base filesystem and Steam client"
+            }
+            val entries = items.values.flatMap { it as List<*> }.map { it as Map<*, *> }
+            check(entries.isNotEmpty()) { "Runtime bundle catalog is empty" }
+            for (entry in entries) {
+                val name = URI(entry["url"] as String).path.substringAfterLast('/')
+                check(name.matches(Regex("[A-Za-z0-9._-]+"))) { "Invalid bundled component filename" }
+                val source = bundle.resolve("components/$name")
+                val digest = MessageDigest.getInstance("SHA-256")
+                source.inputStream().use { input ->
+                    val bytes = ByteArray(65536)
+                    while (true) {
+                        val n = input.read(bytes)
+                        if (n < 0) break
+                        digest.update(bytes, 0, n)
+                    }
+                }
+                check(digest.digest().joinToString("") { "%02x".format(it) } == entry["sha256"]) {
+                    "Bundled component SHA-256 mismatch: $name"
+                }
+                val dest = out.resolve("xrgame/components/$name")
+                dest.parentFile.mkdirs()
+                source.copyTo(dest, overwrite = true)
+            }
+            bundle.resolve("manifest.json").copyTo(out.resolve("xrgame/manifest.json"), overwrite = true)
+        }
+    }
+}
+
+androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->
+    val suffix = variant.name.replaceFirstChar { it.uppercase() }
+    val native = tasks.register<PicoNativeBuildTask>("buildXrGameNative$suffix") {
+        buildProbes.set(variant.buildType == "debug")
+        repositoryDir.set(rootProject.layout.projectDirectory)
+        nativeSources.from(fileTree("src/picoXr/cpp"), fileTree("src/main/cpp") {
+            exclude("**/.git/**", "gn-download/**", "**/build/**")
+        }, fileTree("src/main/windows/openxr_runtime"), rootProject.file("tools/build-picoxr-native.sh"),
+            rootProject.file("tools/build-picoxr-xr-payload.sh"))
+        if (variant.buildType == "debug") {
+            nativeSources.from(rootProject.fileTree("foundation/modules/debugbus"))
+            listOf("modules/profiler_ring", "basic/underlying/core", "third_party/profiler_sdk/sdk",
+                "third_party/lz4", "third_party/nlohmann_json/include").forEach {
+                nativeSources.from(rootProject.fileTree("foundation/$it"))
+            }
+            inputs.property("foundationRevision", providers.provider {
+                providers.exec { commandLine("git", "-C", rootProject.file("foundation"), "rev-parse", "HEAD") }
+                    .standardOutput.asText.get().trim()
+            })
+        }
+        sdkDir.set(androidComponents.sdkComponents.sdkDirectory.map { it.asFile.absolutePath })
+        ndkDir.set(androidComponents.sdkComponents.ndkDirectory.map { it.asFile.absolutePath })
+        openxrLoaderAar.set(layout.file(xrGameOpenxrLoader.elements.map { it.single().asFile }))
+        pulseDir.set(rootProject.layout.projectDirectory.dir("build/xrgame-runtime/pulseaudio"))
+        cmakeBuildDir.set(layout.buildDirectory.dir("xrgame-native"))
+    }
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(native, PicoNativeBuildTask::outputDir)
+    variant.sources.assets?.addGeneratedSourceDirectory(native, PicoNativeBuildTask::runtimeAssets)
+    variant.packaging.jniLibs.excludes.addAll(
+        "**/libsteambootstrap.so", "**/libkgslshim.so", "**/libvortekrenderer.so", "**/libvulkan_wrapper.so",
+        "**/libpatchelf.so", "**/libvirglrenderer.so", "**/liblsfg-vk-layer.so",
+    )
+    val assets = tasks.register<PicoAssetsTask>("filterXrGameAssets$suffix") {
+        runtimeVersions.set(rootProject.layout.projectDirectory.file("app/src/main/java/app/gamenative/xrgame/XrGameRuntimeVersions.java"))
+        val bundle = rootProject.file(providers.gradleProperty("xrGameRuntimeBundle").getOrElse("build/xrgame-runtime/bundle"))
+        if (bundle.isDirectory || providers.gradleProperty("xrGameRuntimeBundle").isPresent) runtimeBundle.set(bundle)
+        if (variant.buildType == "debug") {
+            providers.gradleProperty("xrGameValidationCatalog").orNull?.let {
+                validationCatalog.set(rootProject.file(it))
+            }
+        }
+    }
+    variant.artifacts.use(assets).wiredWithDirectories(PicoAssetsTask::inputDir, PicoAssetsTask::outputDir)
+        .toTransform(SingleArtifact.ASSETS)
 }

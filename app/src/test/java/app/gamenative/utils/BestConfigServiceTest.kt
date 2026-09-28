@@ -5,6 +5,9 @@ import android.content.res.Resources
 import androidx.test.core.app.ApplicationProvider
 import app.gamenative.BuildConfig
 import app.gamenative.PrefManager
+import io.mockk.coEvery
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -13,6 +16,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeFalse
 import org.junit.Before
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.*
@@ -78,11 +82,14 @@ class BestConfigServiceTest {
             File(workingDir, "manifest.json"),
             File(workingDir.parentFile, "manifest.json"),
         ).firstOrNull { it.exists() }
-        if (manifestFile != null) {
-            PrefManager.componentManifestJson = manifestFile.readText()
-            PrefManager.componentManifestFetchedAt = System.currentTimeMillis()
-        }
+        val manifest = requireNotNull(ManifestRepository.parseManifest(requireNotNull(manifestFile).readText()))
+        // Parser tests use the checked-in fixture, independent of asynchronous preference writes or networking.
+        mockkObject(ManifestRepository)
+        coEvery { ManifestRepository.loadManifest(any()) } returns manifest
     }
+
+    @After
+    fun restoreManifestRepository() = unmockkObject(ManifestRepository)
 
     /**
      * Helper function to parse JSON response and extract bestConfig
@@ -1093,4 +1100,3 @@ class BestConfigServiceTest {
         }
     }
 }
-

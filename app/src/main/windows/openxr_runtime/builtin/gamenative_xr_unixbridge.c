@@ -3,27 +3,24 @@
 
 
 
-typedef unsigned int gn_dword;
-typedef int gn_bool;
-typedef unsigned long long gn_unixlib_handle_t;
-typedef int (*gn_unix_call_dispatcher_t)(
-    gn_unixlib_handle_t handle, unsigned int code, void *args);
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <stdarg.h>
+#include "windef.h"
+#include "winbase.h"
+#include "winternl.h"
+#include "wine/unixlib.h"
 
-extern gn_unixlib_handle_t __wine_unixlib_handle;
-extern gn_unix_call_dispatcher_t __wine_unix_call_dispatcher;
-extern int __wine_init_unix_call(void);
-
-__declspec(dllexport)
-int gnWineUnixCall(unsigned int code, void *args)
+/* Wine supplies the ARM64EC dispatch thunk and the i386 stdcall declarations. */
+NTSTATUS WINAPI gnWineUnixCall(unsigned int code, void *args)
 {
-    return __wine_unix_call_dispatcher(__wine_unixlib_handle, code, args);
+    return WINE_UNIX_CALL(code, args);
 }
 
-gn_bool DllMain(void *instance, gn_dword reason, void *reserved)
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
 {
     (void)instance;
     (void)reserved;
-    if (reason == 1                         )
+    if (reason == DLL_PROCESS_ATTACH)
         return __wine_init_unix_call() == 0;
-    return 1;
+    return TRUE;
 }

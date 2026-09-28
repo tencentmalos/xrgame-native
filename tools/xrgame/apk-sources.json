@@ -1,0 +1,841 @@
+{
+  "version": 1,
+  "required": [
+    "assets/xrgame/manifest.json",
+    "lib/arm64-v8a/libwinlator.so",
+    "lib/arm64-v8a/libwinlator_11.so",
+    "lib/arm64-v8a/libextras.so",
+    "lib/arm64-v8a/libevshim.so",
+    "lib/arm64-v8a/libgamenative_dns_v4mapped.so",
+    "lib/arm64-v8a/libvulkan_renderer.so",
+    "lib/arm64-v8a/libasurface_renderer.so",
+    "lib/arm64-v8a/libahbimage.so",
+    "lib/arm64-v8a/libdrawable.so",
+    "lib/arm64-v8a/libxconnectorpatch.so",
+    "lib/arm64-v8a/libxrimmersive.so",
+    "lib/arm64-v8a/libmain_hook.so",
+    "lib/arm64-v8a/libhook_impl.so",
+    "lib/arm64-v8a/libgndownload.so"
+  ],
+  "rules": [
+    {
+      "pattern": "assets/xrgame/components/*",
+      "kind": "repository-component-build",
+      "license": "Per pinned component catalog",
+      "source": "tools/xrgame/",
+      "catalogComponent": true
+    },
+    {
+      "pattern": "lib/arm64-v8a/libxrgame_debugbus.so",
+      "kind": "repository-build",
+      "license": "Host adapter GPL-3.0-or-later; private Foundation, internal validation only (no public license declared)",
+      "source": "app/src/picoXr/cpp/debugbus.cpp; foundation/modules/debugbus @ d487242023e6899f680717d263cf35c7c1f9e6c2",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxrgame_debugbus.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libxrgame_exec_probe.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/picoXr/cpp/exec_probe.c",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxrgame_exec_probe.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libwinlator.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/winlator",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libwinlator.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libwinlator_11.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/asurfacerenderer/drawable.c; app/src/main/cpp/winlator",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libwinlator_11.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libextras.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/extras",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libextras.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libevshim.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/evshim",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libevshim.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libgamenative_dns_v4mapped.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/gamenative_dns_v4mapped.c",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libgamenative_dns_v4mapped.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libvulkan_renderer.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/winlator; app/src/main/cpp/lsfg",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libvulkan_renderer.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libasurface_renderer.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/asurfacerenderer",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libasurface_renderer.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libahbimage.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/asurfacerenderer",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libahbimage.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libdrawable.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/asurfacerenderer",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libdrawable.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libxconnectorpatch.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/xconnectorpatch",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxconnectorpatch.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libxrimmersive.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/xrimmersive",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxrimmersive.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libmain_hook.so",
+      "kind": "repository-build",
+      "license": "MIT",
+      "source": "app/src/main/cpp/extras/adrenotools",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libmain_hook.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libhook_impl.so",
+      "kind": "repository-build",
+      "license": "MIT",
+      "source": "app/src/main/cpp/extras/adrenotools",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libhook_impl.so"
+    },
+    {
+      "pattern": "assets/box64_env_vars.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/box64_env_vars.json",
+      "artifact": "app/src/main/assets/box64_env_vars.json"
+    },
+    {
+      "pattern": "assets/box86_64/rcfiles/box86_64rc-1.rcp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/box86_64/rcfiles/box86_64rc-1.rcp",
+      "artifact": "app/src/main/assets/box86_64/rcfiles/box86_64rc-1.rcp"
+    },
+    {
+      "pattern": "assets/box86_env_vars.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/box86_env_vars.json",
+      "artifact": "app/src/main/assets/box86_env_vars.json"
+    },
+    {
+      "pattern": "assets/common_dlls.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/common_dlls.json",
+      "artifact": "app/src/main/assets/common_dlls.json"
+    },
+    {
+      "pattern": "assets/container_files_download.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/container_files_download.json",
+      "artifact": "app/src/main/assets/container_files_download.json"
+    },
+    {
+      "pattern": "assets/core_drivers_download.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/core_drivers_download.json",
+      "artifact": "app/src/main/assets/core_drivers_download.json"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/bilinear.glsl",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/bilinear.glsl",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/bilinear.glsl"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/catmull-rom-bilinear.glsl",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/catmull-rom-bilinear.glsl",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/catmull-rom-bilinear.glsl"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/fsr.glsl",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/fsr.glsl",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/fsr.glsl"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/fsr.glsl.pass1",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/fsr.glsl.pass1",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/fsr.glsl.pass1"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/jinc2-dedither.glsl",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/jinc2-dedither.glsl",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/jinc2-dedither.glsl"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/lanczos2-sharp.glsl",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/lanczos2-sharp.glsl",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/interpolation/lanczos2-sharp.glsl"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/Shaders/nearest-neighbor.glsl",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/nearest-neighbor.glsl",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/Shaders/nearest-neighbor.glsl"
+    },
+    {
+      "pattern": "assets/dxwrapper/cnc-ddraw-6.6/ddraw.ini",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/ddraw.ini",
+      "artifact": "app/src/main/assets/dxwrapper/cnc-ddraw-6.6/ddraw.ini"
+    },
+    {
+      "pattern": "assets/dxwrapper_download.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/dxwrapper_download.json",
+      "artifact": "app/src/main/assets/dxwrapper_download.json"
+    },
+    {
+      "pattern": "assets/fexcore_env_vars.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/fexcore_env_vars.json",
+      "artifact": "app/src/main/assets/fexcore_env_vars.json"
+    },
+    {
+      "pattern": "assets/gpu_cards.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/gpu_cards.json",
+      "artifact": "app/src/main/assets/gpu_cards.json"
+    },
+    {
+      "pattern": "assets/graphics_driver_download.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/graphics_driver_download.json",
+      "artifact": "app/src/main/assets/graphics_driver_download.json"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/0.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/0.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/0.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/1.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/1.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/1.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/10.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/10.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/10.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/11.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/11.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/11.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/12.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/12.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/12.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/13.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/13.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/13.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/14.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/14.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/14.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/15.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/15.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/15.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/16.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/16.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/16.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/17.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/17.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/17.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/18.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/18.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/18.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/19.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/19.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/19.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/2.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/2.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/2.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/20.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/20.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/20.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/21.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/21.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/21.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/22.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/22.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/22.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/23.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/23.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/23.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/24.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/24.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/24.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/25.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/25.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/25.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/26.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/26.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/26.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/27.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/27.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/27.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/28.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/28.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/28.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/29.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/29.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/29.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/3.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/3.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/3.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/30.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/30.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/30.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/31.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/31.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/31.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/32.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/32.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/32.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/33.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/33.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/33.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/34.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/34.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/34.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/35.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/35.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/35.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/36.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/36.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/36.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/37.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/37.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/37.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/38.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/38.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/38.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/39.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/39.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/39.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/4.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/4.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/4.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/5.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/5.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/5.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/6.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/6.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/6.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/7.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/7.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/7.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/8.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/8.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/8.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/icons/9.png",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/icons/9.png",
+      "artifact": "app/src/main/assets/inputcontrols/icons/9.png"
+    },
+    {
+      "pattern": "assets/inputcontrols/profiles/controls-0.icp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/profiles/controls-0.icp",
+      "artifact": "app/src/main/assets/inputcontrols/profiles/controls-0.icp"
+    },
+    {
+      "pattern": "assets/inputcontrols/profiles/controls-1.icp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/profiles/controls-1.icp",
+      "artifact": "app/src/main/assets/inputcontrols/profiles/controls-1.icp"
+    },
+    {
+      "pattern": "assets/inputcontrols/profiles/controls-2.icp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/profiles/controls-2.icp",
+      "artifact": "app/src/main/assets/inputcontrols/profiles/controls-2.icp"
+    },
+    {
+      "pattern": "assets/inputcontrols/profiles/controls-3.icp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/profiles/controls-3.icp",
+      "artifact": "app/src/main/assets/inputcontrols/profiles/controls-3.icp"
+    },
+    {
+      "pattern": "assets/inputcontrols/profiles/controls-4.icp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/profiles/controls-4.icp",
+      "artifact": "app/src/main/assets/inputcontrols/profiles/controls-4.icp"
+    },
+    {
+      "pattern": "assets/inputcontrols/profiles/controls-5.icp",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/inputcontrols/profiles/controls-5.icp",
+      "artifact": "app/src/main/assets/inputcontrols/profiles/controls-5.icp"
+    },
+    {
+      "pattern": "assets/lsfg_vk/android_arm64_v8a/VkLayer_LS_frame_generation.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/lsfg_vk/android_arm64_v8a/VkLayer_LS_frame_generation.json",
+      "artifact": "app/src/main/assets/lsfg_vk/android_arm64_v8a/VkLayer_LS_frame_generation.json"
+    },
+    {
+      "pattern": "assets/steam_regions.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/steam_regions.json",
+      "artifact": "app/src/main/assets/steam_regions.json"
+    },
+    {
+      "pattern": "assets/steaminput/controller_xboxone_gamepad_fps.vdf",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/steaminput/controller_xboxone_gamepad_fps.vdf",
+      "artifact": "app/src/main/assets/steaminput/controller_xboxone_gamepad_fps.vdf"
+    },
+    {
+      "pattern": "assets/steaminput/controller_xboxone_wasd.vdf",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/steaminput/controller_xboxone_wasd.vdf",
+      "artifact": "app/src/main/assets/steaminput/controller_xboxone_wasd.vdf"
+    },
+    {
+      "pattern": "assets/steaminput/gamepad+mouse.vdf",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/steaminput/gamepad+mouse.vdf",
+      "artifact": "app/src/main/assets/steaminput/gamepad+mouse.vdf"
+    },
+    {
+      "pattern": "assets/steaminput/gamepad_joystick.vdf",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/steaminput/gamepad_joystick.vdf",
+      "artifact": "app/src/main/assets/steaminput/gamepad_joystick.vdf"
+    },
+    {
+      "pattern": "assets/wincomponents/README_openal.md",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/wincomponents/README_openal.md",
+      "artifact": "app/src/main/assets/wincomponents/README_openal.md"
+    },
+    {
+      "pattern": "assets/wincomponents/wincomponents.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/wincomponents/wincomponents.json",
+      "artifact": "app/src/main/assets/wincomponents/wincomponents.json"
+    },
+    {
+      "pattern": "assets/wincomponents_download.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/wincomponents_download.json",
+      "artifact": "app/src/main/assets/wincomponents_download.json"
+    },
+    {
+      "pattern": "assets/wine_debug_channels.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/wine_debug_channels.json",
+      "artifact": "app/src/main/assets/wine_debug_channels.json"
+    },
+    {
+      "pattern": "assets/wine_startmenu.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/wine_startmenu.json",
+      "artifact": "app/src/main/assets/wine_startmenu.json"
+    },
+    {
+      "pattern": "assets/xrgame/manifest.json",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/picoXr/assets/xrgame/manifest.json",
+      "artifact": "app/src/picoXr/assets/xrgame/manifest.json"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libgndownload.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/cpp/gn-download/rust",
+      "artifact": "app/build/generated/jniLibs/buildGnDownloadPicoXrDebug/arm64-v8a/libgndownload.so"
+    },
+    {
+      "pattern": "assets/box86_64/default.box64rc",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/box86_64/default.box64rc",
+      "artifact": "app/src/main/assets/box86_64/default.box64rc"
+    },
+    {
+      "pattern": "assets/box86_64/lightsteam.box64rc",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/box86_64/lightsteam.box64rc",
+      "artifact": "app/src/main/assets/box86_64/lightsteam.box64rc"
+    },
+    {
+      "pattern": "assets/box86_64/ultralightsteam.box64rc",
+      "kind": "repository-asset",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/assets/box86_64/ultralightsteam.box64rc",
+      "artifact": "app/src/main/assets/box86_64/ultralightsteam.box64rc"
+    },
+    {
+      "pattern": "assets/gamenative_openxr_runtime32.dll",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/windows/openxr_runtime; tools/build-picoxr-xr-payload.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/gamenative_openxr_runtime32.dll"
+    },
+    {
+      "pattern": "assets/gamenative_openxr_runtime64.dll",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/windows/openxr_runtime; tools/build-picoxr-xr-payload.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/gamenative_openxr_runtime64.dll"
+    },
+    {
+      "pattern": "assets/gamenative_xr_unixbridge.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/windows/openxr_runtime; tools/build-picoxr-xr-payload.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/gamenative_xr_unixbridge.so"
+    },
+    {
+      "pattern": "assets/payload.version",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/windows/openxr_runtime; tools/build-picoxr-xr-payload.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/payload.version"
+    },
+    {
+      "pattern": "assets/xrgame-payload.json",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/main/windows/openxr_runtime; tools/build-picoxr-xr-payload.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/xrgame-payload.json"
+    },
+    {
+      "pattern": "assets/pulseaudio-xrgame-20260926.tzst",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/pulseaudio-xrgame-20260926.tzst"
+    },
+    {
+      "pattern": "assets/xrgame-pulse-build.json",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/xrgame-pulse-build.json"
+    },
+    {
+      "pattern": "lib/arm64-v8a/lib7zx.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later AND LicenseRef-Public-Domain",
+      "source": "app/src/main/cpp/sevenzx",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/lib7zx.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libpulseaudio.so",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libpulseaudio.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libpulse.so",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libpulse.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libpulsecommon-13.0.so",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libpulsecommon-13.0.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libpulsecore-13.0.so",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libpulsecore-13.0.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libsndfile.so",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libsndfile.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libltdl.so",
+      "kind": "repository-build",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39; tools/xrgame/build-pulseaudio.sh",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libltdl.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libdatastore_shared_counter.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0",
+      "source": "androidx.datastore:datastore-core-android:1.1.2",
+      "sha256": "d3e48717c9aa147e0ab21063ba0e8e0211cabf8bf40b222640829519edbf58e1"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0",
+      "source": "androidx.graphics:graphics-path:1.0.1",
+      "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libarchive-jni.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0 AND BSD-2-Clause",
+      "source": "me.zhanghai.android.libarchive:library:1.1.6",
+      "sha256": "92332de41e661c2a5ce05df65c8a0a6367a99a2cb201e3b3eec7039c9cbc669e"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libopenxr_loader.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0 OR MIT",
+      "source": "org.khronos.openxr:openxr_loader_for_android:1.1.61",
+      "sha256": "763141820ead68e92543db0fefadca3dc5687e893072add86ab2fada7f95b3ff"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libzstd-jni-1.5.7-5.so",
+      "kind": "official-dependency",
+      "license": "BSD-2-Clause AND BSD-3-Clause",
+      "source": "com.github.luben:zstd-jni:1.5.7-5; NDK r27d --strip-unneeded",
+      "sha256": "9f4a912cb337867de6f729a544aaa91aaa8cf50e9dd06ae862e0a3dd16c5fdf0"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libc++_shared.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "source": "Android NDK 27.3.13750724 (r27d), AGP stripped",
+      "sha256": "f4e1e97c1943e60311e47e8b024d78f5b3b7229b3ccc65feb33af83d6025a670"
+    },
+    {
+      "pattern": "assets/PublicSuffixDatabase.list",
+      "kind": "official-dependency",
+      "license": "MPL-2.0",
+      "source": "Public Suffix List distributed by com.squareup.okhttp3:okhttp-android:5.3.2",
+      "sha256": "c75ab827afd7ffff59a51b14729c25dbfc3b45237eb40ccf02bec7b7d44304a4"
+    }
+  ]
+}

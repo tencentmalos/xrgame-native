@@ -112,9 +112,81 @@ pub(crate) fn resolve_existing_case(base: &str, rel: &str) -> String {
     out
 }
 
+/// A read-only preparation pass may resolve thousands of missing siblings. Scanning their
+/// parent for every miss is quadratic (especially costly through Android's storage FUSE).
+/// Cache each directory listing for this pass only; discard before mutating the layout or
+/// starting another depot. Exact matches still win, including files created after a scan.
+#[derive(Default)]
+pub(crate) struct ExistingCaseResolver {
+    directories: std::collections::HashMap<
+        std::path::PathBuf, std::collections::HashMap<String, String>,
+    >,
+    #[cfg(test)]
+    scans: usize,
+}
+
+impl ExistingCaseResolver {
+    pub(crate) fn resolve(&mut self, base: &str, rel: &str) -> String {
+        let mut current = std::path::PathBuf::from(base);
+        let mut out = String::new();
+        let mut missing = false;
+        for seg in rel.replace('\\', "/").split('/').filter(|s| !s.is_empty()) {
+            let mut chosen = seg.to_string();
+            if !missing && !current.join(seg).exists() {
+                let names = self.directories.entry(current.clone()).or_insert_with(|| {
+                    #[cfg(test)]
+                    { self.scans += 1; }
+                    let mut names = std::collections::HashMap::new();
+                    if let Ok(entries) = std::fs::read_dir(&current) {
+                        for entry in entries.flatten() {
+                            let name = entry.file_name().to_string_lossy().into_owned();
+                            names.entry(name.to_lowercase()).or_insert(name);
+                        }
+                    }
+                    names
+                });
+                match names.get(&seg.to_lowercase()) {
+                    Some(found) => chosen = found.clone(),
+                    None => missing = true,
+                }
+            }
+            if !out.is_empty() { out.push('/'); }
+            out.push_str(&chosen);
+            current.push(chosen);
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{canonicalize_case_paths, rel_path_is_safe, resolve_existing_case};
+
+    #[test]
+    fn missing_siblings_scan_the_parent_once_per_pass() {
+        let dir = std::env::temp_dir().join(format!("case-batch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Data")).unwrap();
+        std::fs::write(dir.join("Data/Old.BIN"), b"x").unwrap();
+        let base = dir.to_string_lossy();
+        let mut resolver = super::ExistingCaseResolver::default();
+        for i in 0..2048 {
+            let rel = format!("Data/missing-{i}.bin");
+            assert_eq!(resolver.resolve(&base, &rel), rel);
+        }
+        assert_eq!(resolver.scans, 1, "missing siblings must not rescan a large directory");
+        assert_eq!(resolver.resolve(&base, "Data/Old.BIN"), "Data/Old.BIN");
+        // A new pass must observe names added by a preceding depot/layout change.
+        std::fs::write(dir.join("Data/Added.BIN"), b"x").unwrap();
+        let mut next = super::ExistingCaseResolver::default();
+        assert_eq!(next.resolve(&base, "Data/Added.BIN"), "Data/Added.BIN");
+        // Case-sensitive hosts exercise the fallback; macOS/Android exact lookup may hit.
+        if !dir.join("Data/old.bin").exists() {
+            assert_eq!(resolver.resolve(&base, "data/old.bin"), "Data/Old.BIN");
+            assert_eq!(next.resolve(&base, "data/added.bin"), "Data/Added.BIN");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn rel_path_is_safe_rules() {

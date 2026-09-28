@@ -1,5 +1,7 @@
 package app.gamenative.service.download
 
+import app.gamenative.xrgame.XrGameSteamRequest
+import kotlinx.coroutines.CancellationException
 import app.gamenative.data.DepotInfo
 import app.gamenative.R
 import app.gamenative.data.DownloadInfo
@@ -102,7 +104,12 @@ object GameDownloadService {
             ?: throw DownloadFailedException("SteamContent handler not available")
 
         // ── 1. Resolve the CDN server list (JavaSteam CM call) ──────────────────
-        val servers = resolveCdnServers(steamContent, parentScope)
+        val servers = if (BuildConfig.XRGAME) {
+            Timber.tag(TAG).i("Steam preparation app=$appId stage=servers begin")
+            XrGameSteamRequest.run("servers") { resolveCdnServers(steamContent, this) }.also {
+                Timber.tag(TAG).i("Steam preparation app=$appId stage=servers done count=${it.size}")
+            }
+        } else resolveCdnServers(steamContent, parentScope)
         if (servers.isEmpty()) throw DownloadFailedException("No CDN servers available")
 
         // ── 2. Resolve per-depot (gid, depot key, manifest request code) ────────
@@ -111,7 +118,14 @@ object GameDownloadService {
         val resolvedDepots = coroutineScope {
             selectedDepots.toSortedMap().map { (depotId, depot) ->
                 async {
-                    resolveDepotForDownload(
+                    if (BuildConfig.XRGAME) {
+                        Timber.tag(TAG).i("Steam preparation app=$appId depot=$depotId begin")
+                        XrGameSteamRequest.run("depot $depotId") {
+                            resolveDepotForDownload(
+                                steamApps, steamContent, appId, depotId, depot, branch, branchPassword, this,
+                            )
+                        }.also { Timber.tag(TAG).i("Steam preparation app=$appId depot=$depotId done") }
+                    } else resolveDepotForDownload(
                         steamApps, steamContent, appId, depotId, depot, branch, branchPassword, parentScope,
                     )
                 }
@@ -150,6 +164,7 @@ object GameDownloadService {
             .toString()
 
         // ── 3. Run the native engine, mapping callbacks onto DownloadInfo ────────
+        if (BuildConfig.XRGAME) Timber.tag(TAG).i("Steam preparation app=$appId stage=native-start")
         runNativeSteamDownload(
             plan = plan,
             appId = appId,
@@ -360,6 +375,8 @@ object GameDownloadService {
                 maxNumServers = 20,
                 parentScope = parentScope,
             ).await()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "GetServersForSteamPipe failed")
             emptyList()
@@ -404,6 +421,8 @@ object GameDownloadService {
                 branchPasswordHash = null,
                 parentScope = parentScope,
             ).await()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "getManifestRequestCode failed for depot $depotId")
             0L
