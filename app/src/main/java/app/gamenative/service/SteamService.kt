@@ -1479,10 +1479,17 @@ class SteamService : Service(), IChallengeUrlChanged {
                     return@runCatching 0
                 }
 
+                val accessTokens = runCatching {
+                    service._steamApps
+                        ?.picsGetAccessTokens(appIds = missingAppIds.toList(), packageIds = emptyList())
+                        ?.await()
+                        ?.appTokens
+                }.getOrNull() ?: emptyMap()
+
                 missingAppIds
                     .chunked(MAX_PICS_BUFFER)
                     .forEach { chunk ->
-                        val requests = chunk.map { PICSRequest(id = it) }
+                        val requests = chunk.map { PICSRequest(id = it, accessToken = accessTokens[it] ?: 0L) }
                         service.appPicsChannel.send(requests)
                     }
 
@@ -1623,7 +1630,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             val appInfo = getAppInfoOf(appId) ?: return emptyMap()
             val ownedDlc = runBlocking { getOwnedAppDlc(appId) }
             val hasSteamUnlockedBranch = runBlocking { getSteamUnlockedBranches(appId).isNotEmpty() }
-            val licensedDepots = getLicensedDepotIds(appId).orEmpty().toMutableSet()
+            val licensedDepots = getLicensedDepotIds(appId)?.toMutableSet()
 
             // Use the dlcAppID of the ownedDlc, to find the licensed depotIds from steam_license
             val mainPackageDepotIds = getPkgInfoOf(appId)?.depotIds.orEmpty().toSet()
@@ -1632,7 +1639,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                 val dlcDepotIds = getPkgInfoOf(dlcAppId)?.depotIds.orEmpty()
 
                 // Make sure licensedDepots contains the dlc depots
-                licensedDepots.addAll(dlcDepotIds)
+                licensedDepots?.addAll(dlcDepotIds)
 
                 if (mainPackageDepotIds.isEmpty()) return@forEach
 
@@ -1676,7 +1683,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             val appInfo = getAppInfoOf(appId) ?: return emptyMap()
             val ownedDlc = runBlocking { getOwnedAppDlc(appId) }
             val hasSteamUnlockedBranch = runBlocking { getSteamUnlockedBranches(appId).isNotEmpty() }
-            val licensedDepots = getLicensedDepotIds(appId).orEmpty().toMutableSet()
+            val licensedDepots = getLicensedDepotIds(appId)
 
             val map = getMainAppDepots(appId, preferredLanguage).toMutableMap()
 
