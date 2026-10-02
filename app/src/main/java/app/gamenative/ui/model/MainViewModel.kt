@@ -656,7 +656,17 @@ class MainViewModel @Inject constructor(
 
             val container = apiJob.await()
 
-            if (app.gamenative.BuildConfig.XR_BUILD &&
+            if (app.gamenative.BuildConfig.XRGAME && container.getExtra("windowsVrEnabled", "false").toBoolean()) {
+                bootingSplashTimeoutJob?.cancel()
+                bootingSplashTimeoutJob = null
+                setShowBootingSplash(false)
+                SteamService.keepAlive = true
+                val activity = if (container.getExtra("xrPresentationMode", "sbs") == "openxr")
+                    "app.gamenative.ui.screen.xr.ImmersiveXrActivity"
+                else "app.gamenative.ui.screen.xr.sbs.SbsVrActivity"
+                context.startActivity(android.content.Intent().setClassName(context, activity)
+                    .putExtra("app_id", appId).putExtra("is_offline", _offline.value))
+            } else if (app.gamenative.BuildConfig.XR_BUILD &&
                 container.isLaunchImmersiveMode() &&
                 app.gamenative.MainActivity.isHeadset(context)
             ) {
@@ -672,6 +682,10 @@ class MainViewModel @Inject constructor(
     }
 
     fun exitSteamApp(context: Context, appId: String, onComplete: (() -> Unit)? = null) {
+        exitSteamApp(context, appId, allowUiPrompts = true, onComplete = onComplete)
+    }
+
+    fun exitSteamApp(context: Context, appId: String, allowUiPrompts: Boolean, onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
             try {
                 Timber.tag("Exit").i("Exiting, getting feedback for appId: $appId")
@@ -704,6 +718,13 @@ class MainViewModel @Inject constructor(
                 }
                 val sessionLongEnough = sessionLengthMs >= MIN_WARM_PITCH_SESSION_MS
                 gameSessionStartTime = 0L
+
+                // Standalone VR activities do not host PluviaMain's feedback consumer.
+                // Finish cloud sync and completion without blocking on a rendezvous UI event.
+                if (!allowUiPrompts) {
+                    setDebugRun(false)
+                    return@launch
+                }
 
                 if (_state.value.debugRun) {
                     setDebugRun(false)

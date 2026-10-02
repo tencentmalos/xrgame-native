@@ -10,6 +10,7 @@ import app.gamenative.data.SaveFilePattern
 import app.gamenative.data.SteamApp
 import app.gamenative.data.SteamFileHashCache
 import app.gamenative.data.UFS
+import app.gamenative.data.UserFileInfo
 import app.gamenative.db.PluviaDatabase
 import app.gamenative.enums.AppType
 import app.gamenative.enums.OS
@@ -331,6 +332,36 @@ class SteamAutoCloudTest {
         assertEquals("Should upload 5 files (4 from pattern 2 + 1 from pattern 3)", 5, result!!.filesUploaded)
         assertTrue("Uploads should be completed", result.uploadsCompleted)
         assertEquals("Should have 5 files managed", 5, result.filesManaged)
+    }
+
+    @Test
+    fun rejectedUploadCommitDoesNotAdvanceCacheOrReportUploadedFiles() = runBlocking {
+        org.junit.Assume.assumeTrue(app.gamenative.BuildConfig.XRGAME)
+        val stale = UserFileInfo(root = PathType.WinMyDocuments, path = "__stale__",
+            filename = "__placeholder__", timestamp = 0L, sha = ByteArray(20))
+        db.appFileChangeListsDao().insert(steamAppId, listOf(stale))
+        every { mockSteamCloud.commitFileUpload(any(), any(), any(), any(), any()) } returns
+            CompletableFuture.completedFuture(false)
+        val before = saveFilesDir.listFiles()!!.associate { it.name to it.readBytes().toList() }
+        val result = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = { prefix ->
+                if (prefix == "WinMyDocuments")
+                    File(ImageFs.find(context).wineprefix, "dosdevices/c:/users/xuser/Documents").absolutePath
+                else tempDir.absolutePath
+            },
+        ).await()!!
+        assertEquals(SyncResult.UpdateFail, result.syncResult)
+        assertFalse(result.uploadsCompleted)
+        assertEquals(0, result.filesUploaded)
+        assertEquals(0L, result.bytesUploaded)
+        assertEquals(before, saveFilesDir.listFiles()!!.associate { it.name to it.readBytes().toList() })
+        assertEquals(listOf("__placeholder__"), db.appFileChangeListsDao().getByAppId(steamAppId)!!.userFileInfo.map { it.filename })
+        io.mockk.verify(exactly = before.size) { mockSteamCloud.commitFileUpload(any(), any(), any(), any(), any()) }
     }
 
     @Test

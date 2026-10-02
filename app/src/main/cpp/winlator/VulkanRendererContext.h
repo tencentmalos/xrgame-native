@@ -1,4 +1,5 @@
 #pragma once
+#include "PresentCopyQueue.h"
 #include <vulkan/vulkan.h>
 #include <list>
 #include <vulkan/vulkan_android.h>
@@ -163,7 +164,11 @@ public:
     void setTransform(float ox, float oy, float sx, float sy);
     void updatePointerPosition(short x, short y);
     void updateWindowContent(int64_t id, void* pixels, short w, short h, short stride, int x, int y);
-    bool copyWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame);
+    bool copyWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame,
+                              const PresentCopyQueue::Ticket& ticket = {});
+    bool queueWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame,
+                               PresentCopyQueue::Completion complete);
+    void cancelWindowCopies(int64_t id) { presentCopies.invalidate(id); }
     bool sampleWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame);
     bool retireSampledWindow(int64_t id);
     void updateWindowContentAHB(int64_t id, AHardwareBuffer* ahb, short w, short h, int x, int y);
@@ -421,6 +426,9 @@ private:
     std::mutex        dirtyMutex;
     std::condition_variable dirtyCV;
     std::shared_mutex frameMutex;
+    PresentCopyQueue presentCopies;
+    std::vector<std::shared_ptr<AHardwareBuffer>> failedCopyBuffers;
+    std::vector<std::pair<VkCommandBuffer, VkFence>> failedCopySubmissions;
 
     void createInstance();
     void createSurface();

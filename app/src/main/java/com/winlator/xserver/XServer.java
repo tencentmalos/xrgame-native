@@ -287,6 +287,14 @@ public class XServer {
         }
     }
 
+    /** Send releases while the guest can still drain its X socket, before SIGSTOP. */
+    public void releasePressedKeys() {
+        try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
+            inputDeviceManager.stopKeyRepeat();
+            keyboard.releaseAllKeys();
+        }
+    }
+
     private void registerExtension(Extension ext, int[] nextEventId, int[] nextErrorId) {
         if (ext.getNumEvents() > 0) {
             ext.setFirstEventId((byte) nextEventId[0]);

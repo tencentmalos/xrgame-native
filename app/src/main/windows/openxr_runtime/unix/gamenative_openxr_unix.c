@@ -372,6 +372,15 @@ static void close_transport(void)
 {
     if (transport_fd >= 0) close(transport_fd);
     transport_fd = -1;
+    // Android may recreate its EGL output after backgrounding. The new receiver
+    // has no buffer registrations even though guest swapchains still exist.
+    for (uint32_t slot=0; slot<GN_UNIX_MAX_SWAPCHAINS; ++slot) {
+        for (uint32_t image=0; image<swapchains[slot].image_count; ++image) {
+            struct gn_image *entry=&swapchains[slot].images[image];
+            entry->registered_eye_mask=0;
+            for (uint32_t eye=0; eye<2; ++eye) entry->transport[eye].registered=0;
+        }
+    }
 }
 
 static int ensure_transport(void)
@@ -415,12 +424,12 @@ static int ensure_transport(void)
 
 static int transact_line(const char *line, char *response, size_t response_size)
 {
-    if (!ensure_transport() || !write_all(transport_fd, line, strlen(line)) ||
-        !read_line(transport_fd, response, response_size)) {
+    for (int attempt=0; attempt<2; ++attempt) {
+        if (ensure_transport() && write_all(transport_fd, line, strlen(line)) &&
+            read_line(transport_fd, response, response_size)) return 1;
         close_transport();
-        return 0;
     }
-    return 1;
+    return 0;
 }
 
 static void load_vulkan_functions(void)
@@ -1038,7 +1047,7 @@ next_candidate:
         goto next_candidate;
     const char *enabled[16];
     uint32_t enabled_count = 0;
-    int have_ahb = 0, have_dmabuf = 0, have_fd = 0;
+    int have_ahb = 0, have_dmabuf = 0, have_fd = 0, have_foreign = 0;
     relay_can_export_fence = 0;
     for (uint32_t w = 0; w < sizeof(wanted) / sizeof(wanted[0]); ++w) {
         for (uint32_t i = 0; i < supported_count; ++i) {
@@ -1047,15 +1056,16 @@ next_candidate:
                 if (w == 0) have_ahb = 1;
                 if (w == 1) have_dmabuf = 1;
                 if (w == 2) have_fd = 1;
+                if (w == 3) have_foreign = 1;
                 if (w == 5) relay_can_export_fence = 1;
                 break;
             }
         }
     }
-    if (!have_ahb || !have_dmabuf || !have_fd) {
+    if (!have_ahb || !have_dmabuf || !have_fd || !have_foreign) {
         char trace[128];
-        snprintf(trace, sizeof(trace), "relay: missing extensions ahb=%d dmabuf=%d fd=%d",
-                 have_ahb, have_dmabuf, have_fd);
+        snprintf(trace, sizeof(trace), "relay: missing extensions ahb=%d dmabuf=%d fd=%d foreign=%d",
+                 have_ahb, have_dmabuf, have_fd, have_foreign);
         log_line(trace);
         goto next_candidate;
     }
@@ -1320,10 +1330,10 @@ static int relay_record_copy(
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .srcAccessMask = 0,
             .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
             .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL,
+            .dstQueueFamilyIndex = relay_queue_family,
             .image = image->relay_source_image,
             .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, array_index, 1}
         },
@@ -1331,10 +1341,10 @@ static int relay_record_copy(
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .srcAccessMask = 0,
             .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .oldLayout = transport->initialized ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED,
             .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .srcQueueFamilyIndex = transport->initialized ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = transport->initialized ? relay_queue_family : VK_QUEUE_FAMILY_IGNORED,
             .image = transport->image,
             .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
         }
@@ -1360,15 +1370,22 @@ static int relay_record_copy(
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_GENERAL,
         .srcQueueFamilyIndex = relay_queue_family,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_FOREIGN_EXT,
         .image = transport->image,
         .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
     };
     r_vkCmdPipelineBarrier(
         transport->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &after);
+    VkImageMemoryBarrier source_release = before[0];
+    source_release.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    source_release.dstAccessMask = 0;
+    source_release.srcQueueFamilyIndex = relay_queue_family;
+    source_release.dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
+    r_vkCmdPipelineBarrier(transport->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &source_release);
     if (r_vkEndCommandBuffer(transport->command_buffer) != VK_SUCCESS) return 0;
-    transport->steady_recorded = 1;
+    transport->steady_recorded = transport->initialized;
     return 1;
 }
 
@@ -1829,6 +1846,8 @@ static int register_image(uint32_t slot, uint32_t image_index, uint32_t eye,
         image->transport_kind[eye] = GN_TRANSPORT_DMABUF;
     }
     if (image->transport_kind[eye] == GN_TRANSPORT_RELAY) {
+        if (!image->transport[eye].registered && !relay_register(slot, image_index, eye)) return 0;
+        image->registered_eye_mask |= bit;
         if (image->registered_array_index[eye] != array_index) {
             image->transport[eye].steady_recorded = 0;
         }

@@ -15,6 +15,9 @@ native library and asset, including exact hashes for official dependencies.
 | Android runtime/JNI and XR bridge | Sources in this repository; `tools/build-picoxr-*.sh` | GPL-3.0-or-later; included adrenotools retains MIT |
 | sevenzx / LZMA SDK | `app/src/main/cpp/sevenzx`, SDK 18.05 | Repository wrapper GPL-3.0-or-later; SDK public domain |
 | PulseAudio Android | [Build source 178f0a3](https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39), PulseAudio 4166ad3 | LGPL-2.1-or-later; includes libsndfile, libltdl and AAudio sink |
+| SBS inertial tracking | shadPS4 `85a39824d9c7062233032a1edc370ad38eb42d20`, guest_vr_sensor / VrGyroAxes | GPL-2.0-or-later |
+| OpenComposite | [Owned recipe fork](https://github.com/tencentmalos/opencomposite/tree/7fd3276ac0ffda518a7f5a9157620f292e2032e6), OpenOVR `a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d` + recorded patches; picoXr source build pinned in `tools/xrgame/opencomposite-pin.json` | GPL-3.0-only |
+| OpenVR 2.15.6 SDK header (OpenComposite ABI patch) | Valve `0924064316de3effbcd1acf1e309182a2deb1c05`; `references/opencomposite/vendor/openvr-2.15.6` | BSD-3-Clause; unmodified header and license |
 | OpenXR loader | Khronos official Android AAR 1.1.61 | Apache-2.0 OR MIT |
 | AndroidX native helpers | DataStore 1.1.2, graphics-path 1.0.1 | Apache-2.0 |
 | libarchive Android JNI | me.zhanghai.android.libarchive 1.1.6 | Apache-2.0 wrapper; libarchive BSD-2-Clause |
@@ -522,3 +525,11 @@ No top-level redistribution license is declared by this dependency. The owner au
 local submodule integration on 2026-09-27; this does not claim a GPL grant or public
 redistribution permission. The private checkout and debug APK are not publication artifacts.
 The XRGame JNI/Android adapters retain this repository's GPL-3.0-or-later terms.
+
+OpenComposite's internal Windows source build uses Khronos Vulkan-Headers
+(`tencentmalos/Vulkan-Headers`, `ee3b5caaa7e372715873c7b9c390ee1c3ca5db25`,
+Apache-2.0 OR MIT) and the Vulkan-Loader import definition
+(`tencentmalos/Vulkan-Loader`, `466498bc64eb77955c3b782f0127520548224de0`,
+Apache-2.0). Their copyright/license headers are retained in the build source
+snapshot. The import library only supplies symbol bindings; runtime Vulkan is
+provided by Wine and the separately source-pinned Turnip driver.

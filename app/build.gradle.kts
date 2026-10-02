@@ -820,7 +820,11 @@ androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi
         nativeSources.from(fileTree("src/picoXr/cpp"), fileTree("src/main/cpp") {
             exclude("**/.git/**", "gn-download/**", "**/build/**")
         }, fileTree("src/main/windows/openxr_runtime"), rootProject.file("tools/build-picoxr-native.sh"),
-            rootProject.file("tools/build-picoxr-xr-payload.sh"))
+            rootProject.file("tools/build-picoxr-xr-payload.sh"),
+            rootProject.file("build/xrgame-runtime/opencomposite/opencomposite_x64.dll"),
+            rootProject.file("tools/xrgame/opencomposite-pin.json"),
+            rootProject.fileTree("references/opencomposite/patches"),
+            rootProject.fileTree("references/opencomposite/vendor"))
         if (variant.buildType == "debug") {
             nativeSources.from(rootProject.fileTree("foundation/modules/debugbus"))
             listOf("modules/profiler_ring", "basic/underlying/core", "third_party/profiler_sdk/sdk",

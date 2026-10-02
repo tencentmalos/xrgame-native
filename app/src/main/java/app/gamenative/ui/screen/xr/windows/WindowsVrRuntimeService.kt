@@ -10,11 +10,14 @@ import java.io.Closeable
 import java.io.File
 import timber.log.Timber
 
-class WindowsVrRuntimeService(context: Context) : Closeable {
+class WindowsVrRuntimeService(
+    context: Context,
+    private val snapshots: WindowsVrFrameSource = WindowsVrSnapshotProvider(),
+    private val transportEndpoint: String? = null,
+) : Closeable {
     private val applicationContext = context.applicationContext
     private val diagnostics = WindowsVrDiagnostics(applicationContext)
     private val payloadManager = WindowsVrPayloadManager(applicationContext, diagnostics)
-    private val snapshots = WindowsVrSnapshotProvider()
     private var config: WindowsVrRuntimeConfig? = null
     private var controlServer: WindowsVrControlServer? = null
     private var presentationState = ""
@@ -23,10 +26,12 @@ class WindowsVrRuntimeService(context: Context) : Closeable {
 
     fun beforeWineSystemSetup(container: Container) {
         this.container = container
-        config = WindowsVrRuntimeConfig.from(container)
+        config = WindowsVrRuntimeConfig.from(container).let {
+            if (transportEndpoint != null) it.copy(transportEndpoint = transportEndpoint) else it
+        }
         if (config?.enabled != true) return
         diagnostics.begin(container.id, container.executablePath, container.execArgs)
-        diagnostics.record("activity", "Immersive VR host active")
+        diagnostics.record("activity", "VR host=${snapshots.javaClass.simpleName}")
         diagnostics.record("configuration", "enabled=${config?.enabled} openComposite=${config?.openCompositeEnabled}")
         diagnostics.record("emulation", WindowsVrEmulationDiagnostics.snapshot(container))
     }
@@ -39,7 +44,8 @@ class WindowsVrRuntimeService(context: Context) : Closeable {
             check(container.wineVersion.contains("arm64ec", ignoreCase = true)) {
                 "Windows VR requires a supported ARM64EC Wine or Proton build"
             }
-            check(container.dxWrapper.contains("dxvk", ignoreCase = true)) {
+            check(container.dxWrapper.contains("dxvk", ignoreCase = true) ||
+                app.gamenative.BuildConfig.XRGAME && container.dxWrapper.contains("vkd3d", ignoreCase = true)) {
                 "Windows VR D3D11 requires DXVK native interop"
             }
             diagnostics.record("launch", "Preparing Windows OpenXR payload")
@@ -66,11 +72,17 @@ class WindowsVrRuntimeService(context: Context) : Closeable {
             controlServer = null
             runCatching { payloadManager.restore() }
             config = active.copy(enabled = false)
+            if (app.gamenative.BuildConfig.XRGAME) throw IllegalStateException("VR setup failed: $reason", e)
             return
         }
         runtimeLogDirectory = payload.prefixDirectory
         listOf("runtime.log", "unix.log").forEach { payload.prefixDirectory.resolve(it).delete() }
         env.put("XR_RUNTIME_JSON", active.runtimeManifest)
+        if (app.gamenative.BuildConfig.XRGAME) {
+            // Our runtime owns image sharing. DXVK's SteamVR extension discovery can
+            // re-enter OpenComposite while its temporary DXGI device is being created.
+            env.put("DXVK_NO_VR", "1")
+        }
         env.put("GAMENATIVE_XR", "1")
         env.put("GAMENATIVE_XR_LOG", "1")
         env.put("GAMENATIVE_XR_SOCKET", active.transportEndpoint)
@@ -141,7 +153,7 @@ class WindowsVrRuntimeService(context: Context) : Closeable {
     }
 
     fun attachSession(handle: Long) {
-        snapshots.attach(handle)
+        (snapshots as? WindowsVrSnapshotProvider)?.attach(handle)
         diagnostics.record("openxr", "Immersive session attached handle=$handle")
     }
 

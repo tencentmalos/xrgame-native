@@ -174,6 +174,32 @@ continue resumes all threads; an explicit Hc selection is honored.
 The original-spec mapping and next debugger milestones are in
 [`spec-observability-review-20260926.md`](../../docs/validation/spec-observability-review-20260926.md).
 
+## Offline local Steam IPC validation
+
+The private GBE client build uses `7a319f0bedad260f952b0fb367b27f255fd952c5`
+plus `patches/gbe-offline-local-ipc.patch`. The patch keeps same-process message
+queues and callbacks working with `disable_networking=1`; remote sockets and
+announcements remain disabled. It fixes Alyx's local client/server handshake
+returning `k_EResultFail` during map loading. See the
+[VR validation](../../docs/validation/vr-sbs-20261002.md) for device scope.
+
+Apply the patch to the pinned source (not the later maintenance branch), then
+rebuild the existing `steamclient_experimental` x64 Release MSVC project. Preserve
+the original dependency/source build identity, baseline `dll/network.cpp` SHA,
+patch SHA and output DLL SHA in the private `source-built-offline-local-ipc` build
+record. `package-steamclient-validation.py --client-build-record <record>` checks
+the base/patched identity and embeds this record into the component provenance.
+The separately recorded loader and extra DLL remain unchanged.
+
+`probes/steam-local-ipc.cpp` loads the client through `SteamClient020` and tests
+`SteamNetworkingSockets012`: socket pair, poll group, zero/23/65536-byte payloads,
+message numbers, reverse traffic and peer closure. Build against
+`references/gbe_fork/sdk`, then run in an isolated directory whose
+`steam_settings/configs.main.ini` sets `offline=1`, `disable_networking=1` and
+`disable_overlay=1` (the last key belongs to `[main::general]`). Use the original
+and patched DLL with the same probe; retain both results. This is local IPC
+validation, not multiplayer or Steam authentication acceptance.
+
 ## Private source-built Steam loader
 
 Export the fixed loader source subset, then transfer it and the build recipe to

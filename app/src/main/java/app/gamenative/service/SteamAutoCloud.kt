@@ -5,6 +5,7 @@ import app.gamenative.PrefManager
 import app.gamenative.BuildConfig
 import app.gamenative.xrgame.XrGameEgress
 import app.gamenative.xrgame.XrGameCloudFiles
+import app.gamenative.xrgame.XrGameCloudTransfers
 import app.gamenative.R
 import app.gamenative.data.PostSyncInfo
 import app.gamenative.data.SaveFilePattern
@@ -710,14 +711,16 @@ object SteamAutoCloud {
                             Timber.i("Sending request to ${request.url} using\n$request")
 
                             withTimeout(SteamService.requestTimeout) {
-                                val response = httpClient.newCall(request).execute()
+                                val uploaded = if (BuildConfig.XRGAME) {
+                                    XrGameCloudTransfers.uploadBlock(httpClient, request)
+                                } else {
+                                    httpClient.newCall(request).execute().use { it.isSuccessful }
+                                }
 
-                                if (!response.isSuccessful) {
+                                if (!uploaded) {
                                     Timber.w(
-                                        "Failed to upload part of %s: %s, %s",
+                                        "Failed to upload part of %s",
                                         file.prefixPath,
-                                        response.message,
-                                        response?.body.toString(),
                                     )
 
                                     uploadFileSuccess = false
@@ -736,11 +739,6 @@ object SteamAutoCloud {
                                 }
                             }
                         }
-                    }
-
-                    if (uploadFileSuccess) {
-                        filesUploaded++
-                        bytesUploaded += fileSize
                     }
 
                     val commitSuccess = steamCloud.commitFileUpload(
@@ -765,6 +763,14 @@ object SteamAutoCloud {
                     ).await()
 
                     Timber.i("File ${file.prefixPath} commit success: $commitSuccess")
+                    if (BuildConfig.XRGAME && !commitSuccess) {
+                        uploadFileSuccess = false
+                        uploadBatchSuccess = false
+                    }
+                    if (uploadFileSuccess) {
+                        filesUploaded++
+                        bytesUploaded += fileSize
+                    }
                 }
 
                 steamCloud.completeAppUploadBatch(

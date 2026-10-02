@@ -63,6 +63,10 @@ public class Keyboard {
         }
     }
 
+    public void releaseAllKeys() {
+        for (Byte keycode : pressedKeys.toArray(new Byte[0])) setKeyRelease(keycode);
+    }
+
     public void addOnKeyboardListener(OnKeyboardListener onKeyboardListener) {
         onKeyboardListeners.add(onKeyboardListener);
     }

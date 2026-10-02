@@ -26,13 +26,18 @@ public class XRequestError extends Exception  {
     }
 
     public void sendError(XClient client, byte opcode) throws IOException {
+        sendError(client, opcode, client.getSequenceNumber(), client.getRequestData());
+    }
+
+    /** Deferred work must retain the original request identity. */
+    public void sendError(XClient client, byte opcode, short sequence, byte requestData) throws IOException {
         XOutputStream outputStream = client.getOutputStream();
         try (XStreamLock lock = outputStream.lock()) {
             outputStream.writeByte(RESPONSE_CODE_ERROR);
             outputStream.writeByte(code);
-            outputStream.writeShort(client.getSequenceNumber());
+            outputStream.writeShort(sequence);
             outputStream.writeInt(data);
-            outputStream.writeShort(client.getRequestData());
+            outputStream.writeShort(requestData);
             outputStream.writeByte(opcode);
             outputStream.writePad(21);
         }

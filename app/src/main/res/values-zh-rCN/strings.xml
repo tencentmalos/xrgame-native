@@ -2626,4 +2626,6 @@
     <string name="nexus_apply_failure_title">上次模组安装失败</string>
     <string name="nexus_apply_failure_description">该模组未被标记为已安装。对于能够安全核实的更改，已尝试回滚。请查看下方的文件错误，然后返回放置页面进行修正或重试。</string>
     <string name="nexus_apply_failure_details">文件错误：%1$d</string>
+    <string name="xrgame_async_present">异步呈现（实验性）</string>
+    <string name="xrgame_async_present_description">减少呈现等待，可能提高帧率。需使用 Vulkan、开启 DRI3，并关闭快捷菜单中的 FPS 限制器；游戏内限帧可保留。重启游戏后生效。</string>
 </resources>

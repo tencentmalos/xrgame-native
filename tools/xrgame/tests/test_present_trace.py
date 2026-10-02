@@ -53,6 +53,18 @@ class PresentTraceTest(unittest.TestCase):
         lines[-1] = lines[-1].replace("generation=7", "generation=8")
         self.assertEqual(1, len(trace.analyze(lines)["diagnostics"]))
 
+    def test_async_dequeue_can_precede_admission_return(self):
+        lines = self.lines()
+        lines[2] += " mode=async"
+        lines += ["XRGamePresentTrace event=copy_dequeue frame=1 mono_ns=105",
+                  "XRGamePresentTrace event=enqueue_return frame=1 mono_ns=112"]
+        result = trace.analyze(lines)
+        self.assertEqual([], result["diagnostics"])
+        self.assertEqual(12, result["summary"]["receive_to_enqueue_return_ns"]["mean"])
+        self.assertEqual(5, result["summary"]["receive_to_dequeue_ns"]["mean"])
+        lines[3] = lines[3].replace("180", "140")
+        self.assertEqual(0, trace.analyze(lines)["completeFrames"])
+
 
 if __name__ == "__main__":
     unittest.main()

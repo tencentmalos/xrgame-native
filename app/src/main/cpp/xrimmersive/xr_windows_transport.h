@@ -20,6 +20,7 @@
 #include <android/hardware_buffer.h>
 
 #include <atomic>
+#include <array>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -63,6 +64,7 @@ struct EyeFrame {
     int32_t acquireFenceFd{-1};
     uint64_t registrationSerial{0};
     uint64_t serial{0};
+    uint64_t frameId{0};
 };
 
 class WindowsFrameTransport {
@@ -81,6 +83,8 @@ public:
     void stop();
 
     EyeFrame pollEye(int eye);
+    // Claim both new eyes together. A redraw must not re-read a released guest image.
+    bool pollStereo(const std::array<uint64_t, 2>& after, std::array<EyeFrame, 2>& frames);
 
     void publishReleaseFence(int eye, int imageIndex, int releaseFenceFd);
 
@@ -102,6 +106,7 @@ private:
     void releaseEye(int eye);
     void resetEye(int eye);
     void dropRetainedLocked(int eye);
+    EyeFrame pollEyeLocked(int eye);
 
     std::string socketPath_;
     std::atomic<bool> running_{false};

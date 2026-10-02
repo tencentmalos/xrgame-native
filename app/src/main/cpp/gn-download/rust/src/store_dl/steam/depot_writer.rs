@@ -1436,12 +1436,16 @@ impl DepotFiles {
                     .map_err(|err| format!("write_depot: final sync '{}': {err}", slot.path))?;
             } else if !st.opened {
                 // 0-chunk regular file (never touched by a worker): ensure it exists at exact size.
+                // Its parents may also be absent: manifests need not list directory entries,
+                // and no chunk worker called acquire() to create them for this file.
+                make_parent_dirs(Path::new(&slot.path))?;
                 let file = OpenOptions::new()
                     .create(true)
                     .write(true)
                     .truncate(false)
                     .open(&slot.path)
                     .map_err(|err| format!("write_depot: final open '{}': {err}", slot.path))?;
+                set_file_mode(Path::new(&slot.path), slot.mode)?;
                 file.set_len(slot.size).map_err(|err| {
                     format!("write_depot: final truncate '{}': {err}", slot.path)
                 })?;
@@ -4021,6 +4025,75 @@ mod tests {
         assert!(result.ok(), "{}", result.error);
         assert_eq!(result.bytes_written, 18);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn writer_finalizes_nested_empty_files_without_directory_entries() {
+        // Empty files have no chunk jobs, so neither fresh nor resumed downloads visit acquire().
+        // Exercise both the single writer and the parallel verify-only path, without a CDN fetch.
+        for (workers, with_data) in [(1, false), (1, true), (4, true)] {
+            let dir = temp_dir("nested_empty_files");
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("stale-empty.bin"), b"old bytes").unwrap();
+            let mut manifest = three_chunk_manifest();
+            if with_data {
+                fs::write(dir.join("data.bin"), b"abcdefghi").unwrap();
+            } else {
+                manifest.files.clear();
+            }
+            manifest.files.extend([
+                crate::store_dl::steam::content_manifest::FileMapping {
+                    filename: "game/cfg/new/empty.json".into(),
+                    flags: DEPOT_FILE_FLAG_EXECUTABLE,
+                    ..Default::default()
+                },
+                crate::store_dl::steam::content_manifest::FileMapping {
+                    filename: "stale-empty.bin".into(),
+                    ..Default::default()
+                },
+            ]);
+            let server = CContentServerDirectoryServerInfo {
+                host: "127.0.0.1:1".into(),
+                ..Default::default()
+            };
+            let result = write_depot_sequential(
+                &manifest,
+                &[3u8; 32],
+                &CdnClient::new(""),
+                &[server],
+                dir.to_str().unwrap(),
+                DepotWriteOptions {
+                    max_workers: workers,
+                    max_process_workers: 2,
+                    ..Default::default()
+                },
+            );
+            assert!(
+                result.ok(),
+                "workers={workers}, data={with_data}: {}",
+                result.error
+            );
+            assert_eq!(result.bytes_written, if with_data { 9 } else { 0 });
+            assert_eq!(result.files_written, if with_data { 3 } else { 2 });
+            for name in ["game/cfg/new/empty.json", "stale-empty.bin"] {
+                let metadata = fs::metadata(dir.join(name)).unwrap();
+                assert!(metadata.is_file());
+                assert_eq!(metadata.len(), 0);
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(dir.join("game/cfg/new/empty.json"))
+                        .unwrap().permissions().mode() & 0o777,
+                    0o755
+                );
+            }
+            if with_data {
+                assert_eq!(fs::read(dir.join("data.bin")).unwrap(), b"abcdefghi");
+            }
+            fs::remove_dir_all(&dir).unwrap();
+        }
     }
 
     #[test]

@@ -19,6 +19,9 @@ class WindowsProjectionPresenter {
 public:
     bool initialize(XrSession session, int64_t format, uint32_t width, uint32_t height, EGLDisplay display);
     bool render(WindowsFrameTransport &transport, XrSpace space, XrCompositionLayerProjection *layer);
+    bool initializeSbs(EGLDisplay display);
+    bool renderSbs(WindowsFrameTransport &transport, uint32_t width, uint32_t height);
+    uint64_t sbsFrameCount() const { return sbsFrameCount_; }
     void shutdown();
 
 private:
@@ -29,7 +32,11 @@ private:
     int createReleaseFence();
     bool uploadLinearDmabufToTexture(uint32_t eye, int imageIndex, const EyeFrame &frame,
                                     GLuint &texture, uint64_t &cachedRegistration);
-    bool importEyeBuffer(WindowsFrameTransport &transport, uint32_t eye, EyeFrame &frame, bool &fresh);
+    bool importEyeBuffer(WindowsFrameTransport &transport, uint32_t eye, EyeFrame &frame, bool &fresh,
+                         bool poll = true);
+    void drawSource(uint32_t eye, const EyeFrame &source);
+    void releaseFresh(WindowsFrameTransport &transport, const std::array<EyeFrame, 2> &frames,
+                      const std::array<bool, 2> &fresh);
     void drawEye(uint32_t eye, const EyeFrame &source, uint32_t imageIndex);
     void discardFresh(WindowsFrameTransport &transport, const std::array<EyeFrame, 2> &frames,
                       const std::array<bool, 2> &fresh);
@@ -57,6 +64,9 @@ private:
     GLuint vertexBuffer_ = 0;
     GLuint vertexArray_ = 0;
     GLint uvTransformLocation_ = -1;
+    GLuint sbsTexture_ = 0;
+    bool sbsReady_ = false;
+    uint64_t sbsFrameCount_ = 0;
 };
 
 }

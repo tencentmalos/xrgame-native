@@ -9,7 +9,14 @@ data class WindowsVrRuntimeSnapshot(
     val flags: IntArray,
 )
 
-class WindowsVrSnapshotProvider {
+interface WindowsVrFrameSource {
+    fun waitFrame(afterSerial: Long, timeoutMs: Int): WindowsVrRuntimeSnapshot?
+    fun latest(): WindowsVrRuntimeSnapshot?
+    fun applyHaptic(hand: Int, amplitude: Float, duration: Long, frequency: Float): Boolean
+    fun detach()
+}
+
+class WindowsVrSnapshotProvider : WindowsVrFrameSource {
     @Volatile
     private var handle = 0L
     @Volatile
@@ -21,14 +28,14 @@ class WindowsVrSnapshotProvider {
         synchronized(lock) { this.handle = handle }
     }
 
-    fun detach() {
+    override fun detach() {
         synchronized(lock) {
             handle = 0L
             latest = null
         }
     }
 
-    fun waitFrame(afterSerial: Long, timeoutMs: Int): WindowsVrRuntimeSnapshot? {
+    override fun waitFrame(afterSerial: Long, timeoutMs: Int): WindowsVrRuntimeSnapshot? {
         val activeHandle = handle
         if (activeHandle == 0L) return null
         val snapshot = WindowsVrRuntimeSnapshot(LongArray(12), FloatArray(22), FloatArray(36), IntArray(3))
@@ -49,9 +56,9 @@ class WindowsVrSnapshotProvider {
         return snapshot
     }
 
-    fun latest(): WindowsVrRuntimeSnapshot? = latest
+    override fun latest(): WindowsVrRuntimeSnapshot? = latest
 
-    fun applyHaptic(hand: Int, amplitude: Float, duration: Long, frequency: Float): Boolean {
+    override fun applyHaptic(hand: Int, amplitude: Float, duration: Long, frequency: Float): Boolean {
         val activeHandle = handle
         return activeHandle != 0L && XrNative.nativeApplyWindowsHaptic(
             activeHandle,

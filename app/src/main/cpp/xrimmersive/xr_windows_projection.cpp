@@ -83,7 +83,7 @@ bool WindowsProjectionPresenter::ensureProgram() {
         "out vec2 uv;uniform vec4 u;void main(){uv=u.xy+t*u.zw;gl_Position=vec4(p,0,1);}";
     static const char *fragmentSource =
         "#version 300 es\nprecision mediump float;in vec2 uv;uniform sampler2D s;"
-        "out vec4 c;void main(){c=texture(s,uv);}";
+        "uniform bool opaqueOutput;out vec4 c;void main(){c=texture(s,uv);if(opaqueOutput)c.a=1.0;}";
     const GLuint vertex = compileShader(GL_VERTEX_SHADER, vertexSource);
     const GLuint fragment = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
     if (vertex == 0 || fragment == 0) return false;
@@ -287,8 +287,8 @@ bool WindowsProjectionPresenter::uploadLinearDmabufToTexture(
 }
 
 bool WindowsProjectionPresenter::importEyeBuffer(WindowsFrameTransport &transport, uint32_t eye,
-                                                 EyeFrame &frame, bool &fresh) {
-    frame = transport.pollEye(static_cast<int>(eye));
+                                                 EyeFrame &frame, bool &fresh, bool poll) {
+    if (poll) frame = transport.pollEye(static_cast<int>(eye));
     if (frame.kind == BufferKind::None) return false;
     fresh = frame.serial != renderedSerials_[eye];
     if (!waitForAcquireFence(frame.acquireFenceFd)) {
@@ -368,6 +368,10 @@ void WindowsProjectionPresenter::drawEye(uint32_t eye, const EyeFrame &source,
                                          uint32_t imageIndex) {
     glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, images_[imageIndex].image, 0, eye);
     glViewport(0, 0, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_));
+    drawSource(eye, source);
+}
+
+void WindowsProjectionPresenter::drawSource(uint32_t eye, const EyeFrame &source) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textures_[eye][source.imageIndex]);
     const float sourceWidth = source.sourceWidth > 0 ? source.sourceWidth : source.width;
@@ -443,6 +447,19 @@ bool WindowsProjectionPresenter::render(WindowsFrameTransport &transport, XrSpac
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    releaseFresh(transport, frames, fresh);
+    XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    if (XR_FAILED(xrReleaseSwapchainImage(swapchain_, &release))) return false;
+    *layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    layer->space = space;
+    layer->viewCount = 2;
+    layer->views = views_.data();
+    return true;
+}
+
+void WindowsProjectionPresenter::releaseFresh(WindowsFrameTransport &transport,
+                                               const std::array<EyeFrame, 2> &frames,
+                                               const std::array<bool, 2> &fresh) {
     const uint32_t freshCount = static_cast<uint32_t>(fresh[0]) + static_cast<uint32_t>(fresh[1]);
     int sharedFence = freshCount > 0 ? createReleaseFence() : -1;
     if (freshCount == 0) glFlush();
@@ -466,13 +483,81 @@ bool WindowsProjectionPresenter::render(WindowsFrameTransport &transport, XrSpac
                                       releaseFences[eye]);
         renderedSerials_[eye] = frames[eye].serial;
     }
-    XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    if (XR_FAILED(xrReleaseSwapchainImage(swapchain_, &release))) return false;
-    *layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-    layer->space = space;
-    layer->viewCount = 2;
-    layer->views = views_.data();
-    return true;
+}
+
+bool WindowsProjectionPresenter::initializeSbs(EGLDisplay display) {
+    display_ = display;
+    for (auto &eye : eglImages_) eye.fill(EGL_NO_IMAGE_KHR);
+    glGenFramebuffers(1, &framebuffer_);
+    glGenTextures(1, &sbsTexture_);
+    return ensureProgram();
+}
+
+bool WindowsProjectionPresenter::renderSbs(WindowsFrameTransport &transport,
+                                           uint32_t width, uint32_t height) {
+    if (width < 2 || height == 0 || width > 8192 || height > 8192) return false;
+    // Keep a host-owned stereo image for redraws. Release fences permit the producer to
+    // reuse its images immediately after this GPU copy, including while Android pauses.
+    if (width != width_ || height != height_) {
+        width_ = width;
+        height_ = height;
+        sbsReady_ = false;
+        glBindTexture(GL_TEXTURE_2D, sbsTexture_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sbsTexture_, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            return false;
+        }
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    std::array<EyeFrame, 2> frames{};
+    if (transport.pollStereo(renderedSerials_, frames)) {
+        std::array<bool, 2> fresh{true, true};
+        bool imported = true;
+        for (uint32_t eye = 0; eye < 2; ++eye) {
+            if (!importEyeBuffer(transport, eye, frames[eye], fresh[eye], false)) imported = false;
+        }
+        if (imported) {
+            glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+            glDisable(GL_SCISSOR_TEST);
+            glUseProgram(program_);
+            glUniform1i(glGetUniformLocation(program_, "opaqueOutput"), 1);
+            glBindVertexArray(vertexArray_);
+            for (uint32_t eye = 0; eye < 2; ++eye) {
+                const uint32_t x = eye == 0 ? 0 : width / 2;
+                const uint32_t w = eye == 0 ? width / 2 : width - width / 2;
+                glViewport(x, 0, w, height);
+                drawSource(eye, frames[eye]);
+            }
+            glBindVertexArray(0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            releaseFresh(transport, frames, fresh);
+            sbsReady_ = true;
+            ++sbsFrameCount_;
+            if (sbsFrameCount_ == 1 || sbsFrameCount_ % 300 == 0) {
+                LOGI("SBS eyes presented frames=%llu left=%dx%d right=%dx%d output=%ux%u",
+                     static_cast<unsigned long long>(sbsFrameCount_), frames[0].width, frames[0].height,
+                     frames[1].width, frames[1].height, width, height);
+            }
+        } else {
+            discardFresh(transport, frames, fresh);
+        }
+    }
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glViewport(0, 0, width, height);
+    if (sbsReady_) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer_);
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    } else {
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return sbsReady_;
 }
 
 void WindowsProjectionPresenter::shutdown() {
@@ -495,12 +580,15 @@ void WindowsProjectionPresenter::shutdown() {
     if (vertexBuffer_ != 0) glDeleteBuffers(1, &vertexBuffer_);
     if (program_ != 0) glDeleteProgram(program_);
     if (framebuffer_ != 0) glDeleteFramebuffers(1, &framebuffer_);
+    if (sbsTexture_ != 0) glDeleteTextures(1, &sbsTexture_);
     if (swapchain_ != XR_NULL_HANDLE) xrDestroySwapchain(swapchain_);
     vertexArray_ = 0;
     vertexBuffer_ = 0;
     program_ = 0;
     framebuffer_ = 0;
     swapchain_ = XR_NULL_HANDLE;
+    sbsTexture_ = 0;
+    sbsReady_ = false;
 }
 
 }

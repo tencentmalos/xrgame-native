@@ -129,13 +129,16 @@ class DebugBusService : Service() {
     }
 
     private fun present(args: Array<String>): JSONObject {
-        require(args.isEmpty() || (args.size == 2 && args[0] == "trace" && args[1].toIntOrNull() in 0..3600)) {
-            "usage: present [trace 0..3600]"
+        require(args.isEmpty() || (args.size == 2 &&
+            ((args[0] == "trace" && args[1].toIntOrNull() in 0..3600) ||
+             (args[0] == "async_copy" && args[1] in listOf("0", "1"))))) {
+            "usage: present [trace 0..3600 | async_copy 0|1]"
         }
         val view = PluviaApp.xServerView
         val extension = view?.getxServer()?.getExtensionByName("Present") as? PresentExtension
         if (extension == null) return JSONObject().put("active", false)
-        if (args.isNotEmpty()) extension.setTraceFrames(args[1].toInt())
+        if (args.firstOrNull() == "trace") extension.setTraceFrames(args[1].toInt())
+        if (args.firstOrNull() == "async_copy") extension.setAsyncCopy(args[1] == "1")
         return JSONObject(extension.diagnosticSnapshot()).put("active", true)
             .put("renderer", view.renderer.javaClass.simpleName)
             .put("scope", "host_present_queue_not_guest_or_gpu_execution")

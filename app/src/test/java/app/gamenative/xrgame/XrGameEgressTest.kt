@@ -13,6 +13,22 @@ import org.junit.Test
 
 class XrGameEgressTest {
 
+    @Test fun tokyoCloudStorageIsAllowedOnlyForItsAuthenticatedHttpsOrigin() {
+        val host = "steamcloud-tyo.s3.dualstack.ap-northeast-1.amazonaws.com"
+        val base = OkHttpClient()
+        val client = XrGameEgress.steamCloudClient(base, "https://$host/signed-save")
+        assertFalse(XrGameEgress.isAllowed(host))
+        assertFalse(client.followRedirects)
+        assertFalse(client.followSslRedirects)
+        assertEquals(XrGameEgress.componentProxySelector().select(URI("https://$host/save")),
+            client.proxySelector.select(URI("https://$host/save")))
+        for (url in listOf("https://other.s3.dualstack.ap-northeast-1.amazonaws.com/save",
+            "https://$host.evil.example/save", "http://$host/save", "https://$host:444/save")) {
+            assertEquals(9, (client.proxySelector.select(URI(url)).single().address() as InetSocketAddress).port)
+            assertSame(base, XrGameEgress.steamCloudClient(base, url))
+        }
+    }
+
     @Test fun steamCloudStorageExceptionIsLimitedToOneAuthenticatedReplyOrigin() {
         val host = "steamcloud-hkg.oss-accelerate.aliyuncs.com"
         val base = OkHttpClient()

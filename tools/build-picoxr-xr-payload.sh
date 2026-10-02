@@ -41,6 +41,19 @@ assert hashlib.sha256((src/name).read_bytes()).hexdigest() == record['sha256'][n
 shutil.copy2(src/name, out/name)
 shutil.copy2(src/'xrgame-pulse-build.json', out/'xrgame-pulse-build.json')
 PY
+# Source-built OpenComposite for the newer OpenVR ABI; keep upstream flavor assets separate.
+python3 - "$repository" "$output" <<'PY'
+import hashlib, json, pathlib, shutil, sys
+repo, out = map(pathlib.Path, sys.argv[1:])
+pin = json.loads((repo/'tools/xrgame/opencomposite-pin.json').read_text())
+source = repo/pin['artifact']
+if not source.is_file():
+    raise SystemExit('Stage the pinned OpenComposite source build at ' + str(source))
+assert hashlib.sha256(source.read_bytes()).hexdigest() == pin['sha256'], 'OpenComposite build checksum mismatch'
+for name, digest in pin['recipeFiles'].items():
+    assert hashlib.sha256((repo/name).read_bytes()).hexdigest() == digest, 'OpenComposite source changed: ' + name
+shutil.copy2(source, out/source.name)
+PY
 python3 - "$output" <<'PY'
 import hashlib, json, pathlib, sys
 out = pathlib.Path(sys.argv[1])

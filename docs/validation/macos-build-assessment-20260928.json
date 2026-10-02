@@ -1,0 +1,1610 @@
+{
+  "schema": 1,
+  "date": "2026-09-28",
+  "purpose": "macOS build feasibility and prebuilt storage assessment; not component or device acceptance",
+  "host": "macOS arm64; native arm64 toolchain slice available",
+  "sourceRevisions": {
+    ".": "2ac13287bb3b5d6becd5287ce8a615f445ae3773",
+    "references/FEX": "3f1f30a060b633980ed8e7674eb8d8997457edad",
+    "references/mesa-turnip": "dd74a5cf48f95f7a3561654404ea32b207a3b7e0",
+    "references/proton-wine": "a0200a752bb3623a5e716a1f340652d643ba26bf",
+    "references/gbe_fork": "c1ca5f8fb94e639b260a0f37fe3b1b79fa557b8c",
+    "foundation": "c1d339c3a9b231ad23d02e4fd982e3e7120f7ef5"
+  },
+  "workingTree": "pre-existing MHR/MHW changes retained; this assessment changes documentation only",
+  "catalogSha256": "e8619cda78b93fbde4e3f509157476f08db3ecb04749215e1fa4eb885984f353",
+  "selectedComponents": [
+    {
+      "kind": "driver",
+      "id": "turnip-d15b7c0-xrg5",
+      "file": "turnip-d15b7c0-xrg5.zip",
+      "sizeBytes": 2957396,
+      "sha256": "62d633aec42784f3ed4fd973addedea8af0e501f52a84a0909af514b633bddc8",
+      "catalogLicense": "MIT",
+      "releaseReady": false
+    },
+    {
+      "kind": "dxvk",
+      "id": "11.0-a676404-arm64ec-xrg2",
+      "file": "dxvk-11.0-a676404-arm64ec-xrg2.wcp",
+      "sizeBytes": 5353864,
+      "sha256": "c2b801c2e584b793c93deb678bee5c7138740dd5916c37bad324caebc005deee",
+      "catalogLicense": "Zlib",
+      "releaseReady": false
+    },
+    {
+      "kind": "fexcore",
+      "id": "2608-3f1f30a-xrg5",
+      "file": "fexcore-2608-3f1f30a-xrg5.wcp",
+      "sizeBytes": 1314124,
+      "sha256": "cb315ffd4ae8decf1bb39aac7e88059d5bb34b565196a652238543d5954b781b",
+      "catalogLicense": "MIT",
+      "releaseReady": false
+    },
+    {
+      "kind": "imagefs",
+      "id": "imagefs-bionic-20260927-media1",
+      "file": "imagefs_bionic.txz",
+      "sizeBytes": 45766516,
+      "sha256": "7f0901ab3ca2dd0a61dba63baeed4da38f18391d5d87741bc5e7f7ce59fd1092",
+      "catalogLicense": "Mixed open-source licenses; see xrgame-imagefs.json and usr/share/licenses",
+      "releaseReady": false
+    },
+    {
+      "kind": "proton",
+      "id": "proton-11.0-2-arm64ec",
+      "file": "proton-11.0-2-arm64ec-xrg3.wcp",
+      "sizeBytes": 80556080,
+      "sha256": "9f3382ec66f86bfa8ba7ef2b96929b916b1b2d6d4c21bd96df90965e10f66dbc",
+      "catalogLicense": "LGPL-2.1-or-later AND LGPL-3.0-only AND GPL-3.0-or-later",
+      "releaseReady": false
+    },
+    {
+      "kind": "steamclient",
+      "id": "steamclient-7a319f0-source-validation8",
+      "file": "steamclient-7a319f0-source-validation8.zip",
+      "sizeBytes": 9201615,
+      "sha256": "51550f4d5d4278bed3c05b585a8a85513289801909390ca2342c04f88f3275ef",
+      "catalogLicense": "LGPL-3.0-or-later",
+      "releaseReady": false
+    },
+    {
+      "kind": "vkd3d",
+      "id": "11.0-212991f-arm64ec-xrg1",
+      "file": "vkd3d-proton-11.0-212991f-arm64ec-xrg1.wcp",
+      "sizeBytes": 1848776,
+      "sha256": "e50a148e0abbcd3321a1bf6cc3912b9463298b47ded1a0c35eeedbe3f7cb0b42",
+      "catalogLicense": "LGPL-2.1-or-later",
+      "releaseReady": false
+    }
+  ],
+  "selectedComponentsTotalBytes": 146998371,
+  "termuxSourceLockSha256": "d2e792a6eed94c05c0402714fe9199d0915512fef6f5995c2d2a6ef664b72956",
+  "termuxSourceLockCount": 82,
+  "termuxCompleteCorrespondingSource": false,
+  "termuxAttribution": "Recipes matched to installed package versions; the prebuilt snapshot does not attest individual package build commits.",
+  "imagefsPackageCount": 81,
+  "imagefsRecordedFileCount": 579,
+  "mediaPluginRoots": [
+    "libgstapp.so",
+    "libgstaudioconvert.so",
+    "libgstaudioparsers.so",
+    "libgstaudioresample.so",
+    "libgstavi.so",
+    "libgstcoreelements.so",
+    "libgstdebug.so",
+    "libgstdeinterlace.so",
+    "libgstisomp4.so",
+    "libgstlibav.so",
+    "libgstmatroska.so",
+    "libgstogg.so",
+    "libgstplayback.so",
+    "libgstrawparse.so",
+    "libgsttypefindfunctions.so",
+    "libgstvideoconvertscale.so",
+    "libgstvideofilter.so",
+    "libgstwavparse.so"
+  ],
+  "dependencies": [
+    {
+      "name": "alsa-lib",
+      "version": "1.2.15.3",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/alsa-lib/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "brotli",
+      "version": "1.2.0",
+      "licenseAsRecorded": "MIT",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/brotli/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "dbus",
+      "version": "1.16.2-2",
+      "licenseAsRecorded": "GPL-2.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/dbus/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "ffmpeg",
+      "version": "8.0.1-5",
+      "licenseAsRecorded": "GPL-3.0",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/ffmpeg/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "fontconfig",
+      "version": "2.17.1-1",
+      "licenseAsRecorded": "MIT",
+      "group": "host-generators-fonts",
+      "inSelectedImagefs": true,
+      "recipe": "packages/fontconfig/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "freetype",
+      "version": "2.14.1",
+      "licenseAsRecorded": "GPL-2.0",
+      "group": "host-generators-fonts",
+      "inSelectedImagefs": true,
+      "recipe": "packages/freetype/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "game-music-emu",
+      "version": "0.6.4-1",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/game-music-emu/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "glib",
+      "version": "2.86.4",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "host-generators-fonts",
+      "inSelectedImagefs": true,
+      "recipe": "packages/glib/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "glslang",
+      "version": "16.2.0",
+      "licenseAsRecorded": "BSD",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/glslang/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "gst-plugins-base",
+      "version": "1.28.0-1",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/gst-plugins-base/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "gst-plugins-good",
+      "version": "1.28.0-1",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/gst-plugins-good/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "gstreamer",
+      "version": "1.28.0-1",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/gstreamer/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-execinfo",
+      "version": "0.1-3",
+      "licenseAsRecorded": "BSD 2-Clause",
+      "group": "android-compat",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libandroid-execinfo/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 0,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-glob",
+      "version": "0.6-3",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "android-compat",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libandroid-glob/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 0,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-posix-semaphore",
+      "version": "0.1-4",
+      "licenseAsRecorded": "MIT",
+      "group": "android-compat",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libandroid-posix-semaphore/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 0,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-shmem",
+      "version": "0.7",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "android-compat",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libandroid-shmem/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-stub",
+      "version": "29-1",
+      "licenseAsRecorded": "NCSA",
+      "group": "android-compat",
+      "inSelectedImagefs": false,
+      "recipe": "packages/libandroid-stub/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 0,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-support",
+      "version": "29-1",
+      "licenseAsRecorded": "Apache-2.0, MIT",
+      "group": "android-compat",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libandroid-support/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 2,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libandroid-sysv-semaphore",
+      "version": "0.1-1",
+      "licenseAsRecorded": "BSD 2-Clause",
+      "group": "android-compat",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libandroid-sysv-semaphore/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 0,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libaom",
+      "version": "3.13.1-1",
+      "licenseAsRecorded": "BSD 2-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libaom/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libbluray",
+      "version": "1.4.0",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libbluray/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libbz2",
+      "version": "1.0.8-8",
+      "licenseAsRecorded": "BSD",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libbz2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libdav1d",
+      "version": "1.5.3",
+      "licenseAsRecorded": "BSD 2-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libdav1d/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libdecor",
+      "version": "0.2.5",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "x11-packages/libdecor/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libexpat",
+      "version": "2.7.4",
+      "licenseAsRecorded": "MIT",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libexpat/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libffi",
+      "version": "3.4.7-1",
+      "licenseAsRecorded": "MIT",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libffi/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libflac",
+      "version": "1.5.0-1",
+      "licenseAsRecorded": "GPL-2.0, LGPL-2.1, BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libflac/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libglvnd",
+      "version": "1.7.0-1",
+      "licenseAsRecorded": "custom",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libglvnd/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libgmp",
+      "version": "6.3.0-2",
+      "licenseAsRecorded": "LGPL-3.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libgmp/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libgnutls",
+      "version": "3.8.11",
+      "licenseAsRecorded": "LGPL-2.1, GPL-3.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libgnutls/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libiconv",
+      "version": "1.18-1",
+      "licenseAsRecorded": "LGPL-2.1, GPL-3.0",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libiconv/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libicu",
+      "version": "78.2",
+      "licenseAsRecorded": "custom",
+      "group": "host-generators-fonts",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libicu/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libidn2",
+      "version": "2.3.8-1",
+      "licenseAsRecorded": "LGPL-3.0, GPL-2.0, GPL-3.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libidn2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "liblzma",
+      "version": "5.8.2",
+      "licenseAsRecorded": "LGPL-2.1, GPL-2.0, GPL-3.0",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/liblzma/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libmp3lame",
+      "version": "3.100-7",
+      "licenseAsRecorded": "LGPL-2.0",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libmp3lame/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libmpg123",
+      "version": "1.33.3",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libmpg123/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libnettle",
+      "version": "4.0+really3.10.2",
+      "licenseAsRecorded": "GPL-2.0, LGPL-3.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libnettle/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libogg",
+      "version": "1.3.6-1",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libogg/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libopencore-amr",
+      "version": "0.1.6-1",
+      "licenseAsRecorded": "Apache-2.0",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libopencore-amr/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libopenmpt",
+      "version": "0.8.4",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libopenmpt/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libopus",
+      "version": "1.6.1",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libopus/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.55",
+      "licenseAsRecorded": "Libpng",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libpng/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "librav1e",
+      "version": "0.8.1",
+      "licenseAsRecorded": "BSD 2-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/librav1e/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libsndfile",
+      "version": "1.2.2-2",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libsndfile/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libsodium",
+      "version": "1.0.21",
+      "licenseAsRecorded": "ISC",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libsodium/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libsoxr",
+      "version": "0.1.3-8",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libsoxr/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libsrt",
+      "version": "1.5.4-2",
+      "licenseAsRecorded": "MPL-2.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libsrt/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libssh",
+      "version": "0.12.0",
+      "licenseAsRecorded": "LGPL-2.1, BSD 2-Clause",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libssh/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libtheora",
+      "version": "1.2.0-1",
+      "licenseAsRecorded": "BSD",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libtheora/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libudfread",
+      "version": "1.2.0",
+      "licenseAsRecorded": "LGPL-2.1",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libudfread/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libunistring",
+      "version": "1.3-1",
+      "licenseAsRecorded": "LGPL-3.0, GPL-2.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libunistring/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libvo-amrwbenc",
+      "version": "0.1.3-2",
+      "licenseAsRecorded": "Apache-2.0",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libvo-amrwbenc/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libvorbis",
+      "version": "1.3.7-4",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libvorbis/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libvpx",
+      "version": "1:1.16.0",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libvpx/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libwayland",
+      "version": "1.24.0",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libwayland/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libwebp",
+      "version": "1.6.0-rc1-0",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libwebp/build.sh",
+      "recipeCommit": "b279d510b0ee2d35ba76c8928e736532edb340a9",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libx11",
+      "version": "1.8.13",
+      "licenseAsRecorded": "MIT, X11",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libx11/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libx264",
+      "version": "1:0.164.3191-1",
+      "licenseAsRecorded": "GPL-2.0",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libx264/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libx265",
+      "version": "4.1-3",
+      "licenseAsRecorded": "GPL-2.0",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libx265/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxau",
+      "version": "1.0.12-2",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxau/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxcursor",
+      "version": "1.2.3",
+      "licenseAsRecorded": "HPND",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxcursor/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxdmcp",
+      "version": "1.1.5-2",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxdmcp/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxext",
+      "version": "1.3.7",
+      "licenseAsRecorded": "MIT, HPND, ISC",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxext/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxfixes",
+      "version": "6.0.2",
+      "licenseAsRecorded": "HPND, MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxfixes/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxi",
+      "version": "1.8.2-1",
+      "licenseAsRecorded": "MIT, HPND",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxi/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxkbcommon",
+      "version": "1.13.1",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "x11-packages/libxkbcommon/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxml2",
+      "version": "2.15.1-1",
+      "licenseAsRecorded": "MIT",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxml2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxrandr",
+      "version": "1.5.5",
+      "licenseAsRecorded": "HPND",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxrandr/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxrender",
+      "version": "0.9.12-1",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxrender/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libxss",
+      "version": "1.2.5",
+      "licenseAsRecorded": "MIT",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libxss/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "libzmq",
+      "version": "4.3.5-2",
+      "licenseAsRecorded": "LGPL-2.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/libzmq/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "littlecms",
+      "version": "2.18",
+      "licenseAsRecorded": "MIT",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/littlecms/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "ocl-icd",
+      "version": "2.3.4",
+      "licenseAsRecorded": "BSD 2-Clause",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/ocl-icd/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "openssl",
+      "version": "1:3.6.1",
+      "licenseAsRecorded": "Apache-2.0",
+      "group": "network-system",
+      "inSelectedImagefs": true,
+      "recipe": "packages/openssl/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "pcre2",
+      "version": "10.47",
+      "licenseAsRecorded": "BSD 3-Clause",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/pcre2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "pulseaudio",
+      "version": "17.0-1",
+      "licenseAsRecorded": "GPL-2.0",
+      "group": "media-framework",
+      "inSelectedImagefs": true,
+      "recipe": "packages/pulseaudio/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "sdl2",
+      "version": "2.32.10",
+      "licenseAsRecorded": "ZLIB",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "x11-packages/sdl2/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "svt-av1",
+      "version": "4.0.1",
+      "licenseAsRecorded": "custom",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/svt-av1/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "ttf-dejavu",
+      "version": "2.37-8",
+      "licenseAsRecorded": "MIT",
+      "group": "host-generators-fonts",
+      "inSelectedImagefs": true,
+      "recipe": "packages/ttf-dejavu/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "vulkan-loader-generic",
+      "version": "1.4.343",
+      "licenseAsRecorded": "Apache-2.0",
+      "group": "window-graphics",
+      "inSelectedImagefs": true,
+      "recipe": "packages/vulkan-loader-generic/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "xvidcore",
+      "version": "1.3.7-1",
+      "licenseAsRecorded": "GPL-2.0",
+      "group": "codecs",
+      "inSelectedImagefs": true,
+      "recipe": "packages/xvidcore/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    },
+    {
+      "name": "zlib",
+      "version": "1.3.2",
+      "licenseAsRecorded": "ZLIB",
+      "group": "base",
+      "inSelectedImagefs": true,
+      "recipe": "packages/zlib/build.sh",
+      "recipeCommit": "5bedd47b96c23524ef53894ebcc055c71ef2bef2",
+      "standaloneSourceArchiveCount": 1,
+      "macosSourceBuildStatus": "not-tested",
+      "assessment": "candidate-for-port; M may retain explicit prebuilt; no claim of Ubuntu requirement"
+    }
+  ],
+  "officialBinaryInputs": [
+    {
+      "pattern": "lib/arm64-v8a/libdatastore_shared_counter.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0",
+      "source": "androidx.datastore:datastore-core-android:1.1.2",
+      "sha256": "d3e48717c9aa147e0ab21063ba0e8e0211cabf8bf40b222640829519edbf58e1"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0",
+      "source": "androidx.graphics:graphics-path:1.0.1",
+      "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libarchive-jni.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0 AND BSD-2-Clause",
+      "source": "me.zhanghai.android.libarchive:library:1.1.6",
+      "sha256": "92332de41e661c2a5ce05df65c8a0a6367a99a2cb201e3b3eec7039c9cbc669e"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libopenxr_loader.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0 OR MIT",
+      "source": "org.khronos.openxr:openxr_loader_for_android:1.1.61",
+      "sha256": "763141820ead68e92543db0fefadca3dc5687e893072add86ab2fada7f95b3ff"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libzstd-jni-1.5.7-5.so",
+      "kind": "official-dependency",
+      "license": "BSD-2-Clause AND BSD-3-Clause",
+      "source": "com.github.luben:zstd-jni:1.5.7-5; NDK r27d --strip-unneeded",
+      "sha256": "9f4a912cb337867de6f729a544aaa91aaa8cf50e9dd06ae862e0a3dd16c5fdf0"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libc++_shared.so",
+      "kind": "official-dependency",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "source": "Android NDK 27.3.13750724 (r27d), AGP stripped",
+      "sha256": "f4e1e97c1943e60311e47e8b024d78f5b3b7229b3ccc65feb33af83d6025a670"
+    },
+    {
+      "pattern": "assets/PublicSuffixDatabase.list",
+      "kind": "official-dependency",
+      "license": "MPL-2.0",
+      "source": "Public Suffix List distributed by com.squareup.okhttp3:okhttp-android:5.3.2",
+      "sha256": "c75ab827afd7ffff59a51b14729c25dbfc3b45237eb40ccf02bec7b7d44304a4"
+    }
+  ],
+  "gbe": {
+    "clientBuild": "MSVC source build; source-build-identity.json in private evidence",
+    "clientCommit": "7a319f0bedad260f952b0fb367b27f255fd952c5",
+    "license": "LGPL-3.0-or-later; complete dependency notices remain a release prerequisite",
+    "releaseReady": false
+  },
+  "toolchainArchives": [
+    {
+      "metadataUrl": "https://api.github.com/repos/bylaws/llvm-mingw/releases/tags/20250920",
+      "tag": "20250920",
+      "asset": "llvm-mingw-20250920-ucrt-macos-universal.tar.xz",
+      "url": "https://github.com/bylaws/llvm-mingw/releases/download/20250920/llvm-mingw-20250920-ucrt-macos-universal.tar.xz",
+      "sizeBytes": 118750648,
+      "sha256": "30681fa016b4a8a5dad4918193f5f4f99a01361b9f44810cf2337cf74fdbf81c",
+      "publisherDigestMatched": true
+    },
+    {
+      "metadataUrl": "https://api.github.com/repos/mstorsjo/llvm-mingw/releases/tags/20260922",
+      "tag": "20260922",
+      "asset": "llvm-mingw-20260922-ucrt-macos-universal.tar.xz",
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-macos-universal.tar.xz",
+      "sizeBytes": 124289672,
+      "sha256": "52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3",
+      "publisherDigestMatched": true
+    }
+  ],
+  "probeSources": {
+    "minimal.c": {
+      "text": "__declspec(dllexport) int probe(int a) { return a+1; }\n",
+      "sha256": "2b2969a4a712a2ce45a9a0ffd1c0dbc97f84ebdac97b3a636ba85be19ae982e5"
+    },
+    "windows-header.c": {
+      "text": "#include <windows.h>\nint probe(void) { return 0; }\n",
+      "sha256": "675a26ebf91b993f40a3f0fa8c62401e9b62e6ff8854fd50570ffecc3b66f8a4"
+    },
+    "windows-cpp.cpp": {
+      "text": "#include <windows.h>\n#include <stdexcept>\n#include <vector>\nthread_local int value=1;\nextern \"C\" __declspec(dllexport) int probe(int a) { try { std::vector<int> v(2,a); if (!a) throw std::runtime_error(\"zero\"); return v[0]+value; } catch (...) { return -1; } }\n",
+      "sha256": "13fb779ef4d256f1545fe0c56e528077df68e930b9fb8ad5dd010fc4a3481d49"
+    }
+  },
+  "probeResults": {
+    "ndk-probes.json": [
+      {
+        "ndk": "27.3.13750724",
+        "kind": "coff",
+        "command": [
+          "$ANDROID_HOME/ndk/27.3.13750724/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=arm64ec-w64-windows-gnu",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/27.3.13750724-coff.obj"
+        ],
+        "exit": 0,
+        "stderr": ""
+      },
+      {
+        "ndk": "27.3.13750724",
+        "kind": "arm64x",
+        "command": [
+          "$ANDROID_HOME/ndk/27.3.13750724/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=aarch64-w64-windows-gnu",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/27.3.13750724-arm64x.obj"
+        ],
+        "exit": 1,
+        "stderr": "clang: error: unknown argument: '-marm64x'"
+      },
+      {
+        "ndk": "27.3.13750724",
+        "kind": "header",
+        "command": [
+          "$ANDROID_HOME/ndk/27.3.13750724/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=x86_64-w64-windows-gnu",
+          "-c",
+          "$REPO/build/macos-spec-assessment/windows-header.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/27.3.13750724-header.obj"
+        ],
+        "exit": 1,
+        "stderr": "$REPO/build/macos-spec-assessment/windows-header.c:1:10: fatal error: 'windows.h' file not found\n    1 | #include <windows.h>\n      |          ^~~~~~~~~~~\n1 error generated."
+      },
+      {
+        "ndk": "29.0.14206865",
+        "kind": "coff",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=arm64ec-w64-windows-gnu",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/29.0.14206865-coff.obj"
+        ],
+        "exit": 0,
+        "stderr": ""
+      },
+      {
+        "ndk": "29.0.14206865",
+        "kind": "arm64x",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=aarch64-w64-windows-gnu",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/29.0.14206865-arm64x.obj"
+        ],
+        "exit": 1,
+        "stderr": "clang: error: unsupported option '-marm64x' for target 'aarch64-w64-windows-gnu'"
+      },
+      {
+        "ndk": "29.0.14206865",
+        "kind": "header",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=x86_64-w64-windows-gnu",
+          "-c",
+          "$REPO/build/macos-spec-assessment/windows-header.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/29.0.14206865-header.obj"
+        ],
+        "exit": 1,
+        "stderr": "$REPO/build/macos-spec-assessment/windows-header.c:1:10: fatal error: 'windows.h' file not found\n    1 | #include <windows.h>\n      |          ^~~~~~~~~~~\n1 error generated."
+      }
+    ],
+    "toolchain-probes.json": [
+      {
+        "toolchain": "20250920",
+        "kind": "cpp-dll",
+        "arch": "x86_64",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/x86_64-w64-mingw32-clang++",
+          "-shared",
+          "-std=c++20",
+          "$REPO/build/macos-spec-assessment/windows-cpp.cpp",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20250920-x86_64.dll"
+        ],
+        "headers": "\nFile: $REPO/build/macos-spec-assessment/20250920-x86_64.dll\nFormat: COFF-x86-64\nArch: x86_64\nAddressSize: 64bit\nImageFileHeader {\n  Machine: IMAGE_FILE_MACHINE_AMD64 (0x8664)\n  SectionCount: 14\n  TimeDateStamp: 2026-09-28 12:31:14 (0x6ABA5E12)\n  PointerToSymbolTable: 0x10800\n  SymbolCount: 256\n  StringTableSize: 6762\n  OptionalHeaderSize: 240\n  Characteristics [ (0x2022)\n    IMAGE_FILE_DLL (0x2000)\n    IMAGE_FILE_EXECUTABLE_IMAGE (0x2)\n    IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20)\n  ]\n}\nImageOptionalHeader {\n  Magic: 0x20B\n  MajorLinkerVersion: 14\n  MinorLinkerVersion: 0\n  SizeOfCode: 9216\n  SizeOfInitializedData: 57344\n  SizeOfUninitializedData: 0\n  AddressOfEntryPoint: 0x11E0\n  BaseOfCode: 0x1000\n  ImageBase: 0x180000000\n  SectionAlignment: 4096\n  FileAlignment: 512\n  MajorOperatingSystemVersion: 6\n  MinorOperatingSystemVersion: 0\n  MajorImageVersion: 0\n  MinorImageVersion: 0\n  MajorSubsystemVersion: 6\n  MinorSubsystemVersion: 0\n  SizeOfImage: 110592\n  SizeOfHeaders: 1024\n  CheckSum: 0x0\n  Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)\n  Characteristics [ (0x160)\n    IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE (0x40)\n    IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA (0x20)\n    IMAGE_DLL_CHARACTERISTICS_NX_COMPAT (0x100)\n  ]\n  SizeOfStackReserve: 1048576\n  SizeOfStackCommit: 4096\n  SizeOfHeapReserve: 1048576\n  SizeOfHeapCommit: 4096\n  NumberOfRvaAndSize: 16\n  DataDirectory {\n    ExportTableRVA: 0x4598\n    ExportTableSize: 0x4C\n    ImportTableRVA: 0x45E4\n    ImportTableSize: 0xB4\n    ResourceTableRVA: 0x0\n    ResourceTableSize: 0x0\n    ExceptionTableRVA: 0x8000\n    ExceptionTableSize: 0x33C\n    CertificateTableRVA: 0x0\n    CertificateTableSize: 0x0\n    BaseRelocationTableRVA: 0xA000\n    BaseRelocationTableSize: 0x68\n    DebugRVA: 0x6000\n    DebugSize: 0x1C\n    ArchitectureRVA: 0x0\n    ArchitectureSize: 0x0\n    GlobalPtrRVA: 0x0\n    GlobalPtrSize: 0x0\n    TLSTableRVA: 0x4160\n    TLSTableSize: 0x28\n    LoadConfigTableRVA: 0x4388\n    LoadConfigTableSize: 0x138\n    BoundImportRVA: 0x0\n    BoundImportSize: 0x0\n    IATRVA: 0x4838\n    IATSize: 0x1A0\n    DelayImportDescriptorRVA: 0x0\n    DelayImportDescriptorSize: 0x0\n    CLRRuntimeHeaderRVA: 0x0\n    CLRRuntimeHeaderSize: 0x0\n    ReservedRVA: 0x0\n    ReservedSize: 0x0\n  }\n}\nDOSHeader {\n  Magic: MZ\n  UsedBytesInTheLastPage: 120\n  FileSizeInPages: 1\n  NumberOfRelocationItems: 0\n  HeaderSizeInParagraphs: 4\n  MinimumExtraParagraphs: 0\n  MaximumExtraParagraphs: 0\n  InitialRelativeSS: 0\n  InitialSP: 0\n  Checksum: 0\n  InitialIP: 0\n  InitialRelativeCS: 0\n  AddressOfRelocationTable: 64\n  OverlayNumber: 0\n  OEMid: 0\n  OEMinfo: 0\n  AddressOfNewExeHeader: 120\n}\n"
+      },
+      {
+        "toolchain": "20250920",
+        "kind": "cpp-dll",
+        "arch": "aarch64",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang++",
+          "-shared",
+          "-std=c++20",
+          "$REPO/build/macos-spec-assessment/windows-cpp.cpp",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20250920-aarch64.dll"
+        ],
+        "headers": "\nFile: $REPO/build/macos-spec-assessment/20250920-aarch64.dll\nFormat: COFF-ARM64\nArch: aarch64\nAddressSize: 64bit\nImageFileHeader {\n  Machine: IMAGE_FILE_MACHINE_ARM64 (0xAA64)\n  SectionCount: 13\n  TimeDateStamp: 2026-09-28 12:31:16 (0x6ABA5E14)\n  PointerToSymbolTable: 0x10200\n  SymbolCount: 254\n  StringTableSize: 6692\n  OptionalHeaderSize: 240\n  Characteristics [ (0x2022)\n    IMAGE_FILE_DLL (0x2000)\n    IMAGE_FILE_EXECUTABLE_IMAGE (0x2)\n    IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20)\n  ]\n}\nImageOptionalHeader {\n  Magic: 0x20B\n  MajorLinkerVersion: 14\n  MinorLinkerVersion: 0\n  SizeOfCode: 9216\n  SizeOfInitializedData: 55808\n  SizeOfUninitializedData: 0\n  AddressOfEntryPoint: 0x1260\n  BaseOfCode: 0x1000\n  ImageBase: 0x180000000\n  SectionAlignment: 4096\n  FileAlignment: 512\n  MajorOperatingSystemVersion: 6\n  MinorOperatingSystemVersion: 0\n  MajorImageVersion: 0\n  MinorImageVersion: 0\n  MajorSubsystemVersion: 6\n  MinorSubsystemVersion: 0\n  SizeOfImage: 106496\n  SizeOfHeaders: 1024\n  CheckSum: 0x0\n  Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)\n  Characteristics [ (0x160)\n    IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE (0x40)\n    IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA (0x20)\n    IMAGE_DLL_CHARACTERISTICS_NX_COMPAT (0x100)\n  ]\n  SizeOfStackReserve: 1048576\n  SizeOfStackCommit: 4096\n  SizeOfHeapReserve: 1048576\n  SizeOfHeapCommit: 4096\n  NumberOfRvaAndSize: 16\n  DataDirectory {\n    ExportTableRVA: 0x4560\n    ExportTableSize: 0x4D\n    ImportTableRVA: 0x45B0\n    ImportTableSize: 0xB4\n    ResourceTableRVA: 0x0\n    ResourceTableSize: 0x0\n    ExceptionTableRVA: 0x8000\n    ExceptionTableSize: 0x220\n    CertificateTableRVA: 0x0\n    CertificateTableSize: 0x0\n    BaseRelocationTableRVA: 0xA000\n    BaseRelocationTableSize: 0x64\n    DebugRVA: 0x6000\n    DebugSize: 0x1C\n    ArchitectureRVA: 0x0\n    ArchitectureSize: 0x0\n    GlobalPtrRVA: 0x0\n    GlobalPtrSize: 0x0\n    TLSTableRVA: 0x4160\n    TLSTableSize: 0x28\n    LoadConfigTableRVA: 0x4358\n    LoadConfigTableSize: 0x138\n    BoundImportRVA: 0x0\n    BoundImportSize: 0x0\n    IATRVA: 0x4810\n    IATSize: 0x1A8\n    DelayImportDescriptorRVA: 0x0\n    DelayImportDescriptorSize: 0x0\n    CLRRuntimeHeaderRVA: 0x0\n    CLRRuntimeHeaderSize: 0x0\n    ReservedRVA: 0x0\n    ReservedSize: 0x0\n  }\n}\nDOSHeader {\n  Magic: MZ\n  UsedBytesInTheLastPage: 120\n  FileSizeInPages: 1\n  NumberOfRelocationItems: 0\n  HeaderSizeInParagraphs: 4\n  MinimumExtraParagraphs: 0\n  MaximumExtraParagraphs: 0\n  InitialRelativeSS: 0\n  InitialSP: 0\n  Checksum: 0\n  InitialIP: 0\n  InitialRelativeCS: 0\n  AddressOfRelocationTable: 64\n  OverlayNumber: 0\n  OEMid: 0\n  OEMinfo: 0\n  AddressOfNewExeHeader: 120\n}\n"
+      },
+      {
+        "toolchain": "20250920",
+        "kind": "cpp-dll",
+        "arch": "arm64ec",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang++",
+          "-shared",
+          "-std=c++20",
+          "$REPO/build/macos-spec-assessment/windows-cpp.cpp",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20250920-arm64ec.dll"
+        ],
+        "headers": "\nFile: $REPO/build/macos-spec-assessment/20250920-arm64ec.dll\nFormat: COFF-ARM64EC\nArch: aarch64\nAddressSize: 64bit\nImageFileHeader {\n  Machine: IMAGE_FILE_MACHINE_ARM64EC (0xA641)\n  SectionCount: 16\n  TimeDateStamp: 2026-09-28 12:31:17 (0x6ABA5E15)\n  PointerToSymbolTable: 0x15C00\n  SymbolCount: 498\n  StringTableSize: 10827\n  OptionalHeaderSize: 240\n  Characteristics [ (0x2022)\n    IMAGE_FILE_DLL (0x2000)\n    IMAGE_FILE_EXECUTABLE_IMAGE (0x2)\n    IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20)\n  ]\n}\nImageOptionalHeader {\n  Magic: 0x20B\n  MajorLinkerVersion: 14\n  MinorLinkerVersion: 0\n  SizeOfCode: 17408\n  SizeOfInitializedData: 70144\n  SizeOfUninitializedData: 0\n  AddressOfEntryPoint: 0x6000\n  BaseOfCode: 0x1000\n  ImageBase: 0x180000000\n  SectionAlignment: 4096\n  FileAlignment: 512\n  MajorOperatingSystemVersion: 6\n  MinorOperatingSystemVersion: 0\n  MajorImageVersion: 0\n  MinorImageVersion: 0\n  MajorSubsystemVersion: 6\n  MinorSubsystemVersion: 0\n  SizeOfImage: 135168\n  SizeOfHeaders: 1024\n  CheckSum: 0x0\n  Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)\n  Characteristics [ (0x160)\n    IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE (0x40)\n    IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA (0x20)\n    IMAGE_DLL_CHARACTERISTICS_NX_COMPAT (0x100)\n  ]\n  SizeOfStackReserve: 1048576\n  SizeOfStackCommit: 4096\n  SizeOfHeapReserve: 1048576\n  SizeOfHeapCommit: 4096\n  NumberOfRvaAndSize: 16\n  DataDirectory {\n    ExportTableRVA: 0x86B0\n    ExportTableSize: 0x4D\n    ImportTableRVA: 0x8700\n    ImportTableSize: 0xB4\n    ResourceTableRVA: 0x0\n    ResourceTableSize: 0x0\n    ExceptionTableRVA: 0x0\n    ExceptionTableSize: 0x0\n    CertificateTableRVA: 0x0\n    CertificateTableSize: 0x0\n    BaseRelocationTableRVA: 0x10000\n    BaseRelocationTableSize: 0x120\n    DebugRVA: 0xB000\n    DebugSize: 0x1C\n    ArchitectureRVA: 0x0\n    ArchitectureSize: 0x0\n    GlobalPtrRVA: 0x0\n    GlobalPtrSize: 0x0\n    TLSTableRVA: 0x8320\n    TLSTableSize: 0x28\n    LoadConfigTableRVA: 0x83E8\n    LoadConfigTableSize: 0x138\n    BoundImportRVA: 0x0\n    BoundImportSize: 0x0\n    IATRVA: 0x7000\n    IATSize: 0x1000\n    DelayImportDescriptorRVA: 0x0\n    DelayImportDescriptorSize: 0x0\n    CLRRuntimeHeaderRVA: 0x0\n    CLRRuntimeHeaderSize: 0x0\n    ReservedRVA: 0x0\n    ReservedSize: 0x0\n  }\n}\nDOSHeader {\n  Magic: MZ\n  UsedBytesInTheLastPage: 120\n  FileSizeInPages: 1\n  NumberOfRelocationItems: 0\n  HeaderSizeInParagraphs: 4\n  MinimumExtraParagraphs: 0\n  MaximumExtraParagraphs: 0\n  InitialRelativeSS: 0\n  InitialSP: 0\n  Checksum: 0\n  InitialIP: 0\n  InitialRelativeCS: 0\n  AddressOfRelocationTable: 64\n  OverlayNumber: 0\n  OEMid: 0\n  OEMinfo: 0\n  AddressOfNewExeHeader: 120\n}\n"
+      },
+      {
+        "toolchain": "20250920",
+        "kind": "arm64x-object",
+        "arch": "aarch64",
+        "exit": 1,
+        "stderr": "clang: error: unsupported option '-marm64x' for target 'aarch64-w64-mingw32'",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20250920-aarch64-hybrid.obj"
+        ]
+      },
+      {
+        "toolchain": "20250920",
+        "kind": "arm64x-object",
+        "arch": "arm64ec",
+        "exit": 1,
+        "stderr": "clang: error: unsupported option '-marm64x' for target 'arm64ec-w64-mingw32'",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20250920-arm64ec-hybrid.obj"
+        ]
+      },
+      {
+        "toolchain": "20260922",
+        "kind": "cpp-dll",
+        "arch": "x86_64",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/x86_64-w64-mingw32-clang++",
+          "-shared",
+          "-std=c++20",
+          "$REPO/build/macos-spec-assessment/windows-cpp.cpp",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20260922-x86_64.dll"
+        ],
+        "headers": "\nFile: $REPO/build/macos-spec-assessment/20260922-x86_64.dll\nFormat: COFF-x86-64\nArch: x86_64\nAddressSize: 64bit\nImageFileHeader {\n  Machine: IMAGE_FILE_MACHINE_AMD64 (0x8664)\n  SectionCount: 14\n  TimeDateStamp: 2026-09-28 12:31:19 (0x6ABA5E17)\n  PointerToSymbolTable: 0xC800\n  SymbolCount: 217\n  StringTableSize: 6960\n  OptionalHeaderSize: 240\n  Characteristics [ (0x2022)\n    IMAGE_FILE_DLL (0x2000)\n    IMAGE_FILE_EXECUTABLE_IMAGE (0x2)\n    IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20)\n  ]\n}\nImageOptionalHeader {\n  Magic: 0x20B\n  MajorLinkerVersion: 14\n  MinorLinkerVersion: 0\n  SizeOfCode: 7680\n  SizeOfInitializedData: 42496\n  SizeOfUninitializedData: 0\n  AddressOfEntryPoint: 0x12E0\n  BaseOfCode: 0x1000\n  ImageBase: 0x180000000\n  SectionAlignment: 4096\n  FileAlignment: 512\n  MajorOperatingSystemVersion: 6\n  MinorOperatingSystemVersion: 0\n  MajorImageVersion: 0\n  MinorImageVersion: 0\n  MajorSubsystemVersion: 6\n  MinorSubsystemVersion: 0\n  SizeOfImage: 94208\n  SizeOfHeaders: 1024\n  CheckSum: 0x0\n  Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)\n  Characteristics [ (0x160)\n    IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE (0x40)\n    IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA (0x20)\n    IMAGE_DLL_CHARACTERISTICS_NX_COMPAT (0x100)\n  ]\n  SizeOfStackReserve: 1048576\n  SizeOfStackCommit: 4096\n  SizeOfHeapReserve: 1048576\n  SizeOfHeapCommit: 4096\n  NumberOfRvaAndSize: 16\n  DataDirectory {\n    ExportTableRVA: 0x3500\n    ExportTableSize: 0x4C\n    ImportTableRVA: 0x354C\n    ImportTableSize: 0x8C\n    ResourceTableRVA: 0x0\n    ResourceTableSize: 0x0\n    ExceptionTableRVA: 0x7000\n    ExceptionTableSize: 0x348\n    CertificateTableRVA: 0x0\n    CertificateTableSize: 0x0\n    BaseRelocationTableRVA: 0x9000\n    BaseRelocationTableSize: 0x60\n    DebugRVA: 0x5000\n    DebugSize: 0x1C\n    ArchitectureRVA: 0x0\n    ArchitectureSize: 0x0\n    GlobalPtrRVA: 0x0\n    GlobalPtrSize: 0x0\n    TLSTableRVA: 0x34B8\n    TLSTableSize: 0x28\n    LoadConfigTableRVA: 0x32E8\n    LoadConfigTableSize: 0x138\n    BoundImportRVA: 0x0\n    BoundImportSize: 0x0\n    IATRVA: 0x3700\n    IATSize: 0x128\n    DelayImportDescriptorRVA: 0x0\n    DelayImportDescriptorSize: 0x0\n    CLRRuntimeHeaderRVA: 0x0\n    CLRRuntimeHeaderSize: 0x0\n    ReservedRVA: 0x0\n    ReservedSize: 0x0\n  }\n}\nDOSHeader {\n  Magic: MZ\n  UsedBytesInTheLastPage: 120\n  FileSizeInPages: 1\n  NumberOfRelocationItems: 0\n  HeaderSizeInParagraphs: 4\n  MinimumExtraParagraphs: 0\n  MaximumExtraParagraphs: 0\n  InitialRelativeSS: 0\n  InitialSP: 0\n  Checksum: 0\n  InitialIP: 0\n  InitialRelativeCS: 0\n  AddressOfRelocationTable: 64\n  OverlayNumber: 0\n  OEMid: 0\n  OEMinfo: 0\n  AddressOfNewExeHeader: 120\n}\n"
+      },
+      {
+        "toolchain": "20260922",
+        "kind": "cpp-dll",
+        "arch": "aarch64",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang++",
+          "-shared",
+          "-std=c++20",
+          "$REPO/build/macos-spec-assessment/windows-cpp.cpp",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20260922-aarch64.dll"
+        ],
+        "headers": "\nFile: $REPO/build/macos-spec-assessment/20260922-aarch64.dll\nFormat: COFF-ARM64\nArch: aarch64\nAddressSize: 64bit\nImageFileHeader {\n  Machine: IMAGE_FILE_MACHINE_ARM64 (0xAA64)\n  SectionCount: 13\n  TimeDateStamp: 2026-09-28 12:31:21 (0x6ABA5E19)\n  PointerToSymbolTable: 0xC400\n  SymbolCount: 215\n  StringTableSize: 6875\n  OptionalHeaderSize: 240\n  Characteristics [ (0x2022)\n    IMAGE_FILE_DLL (0x2000)\n    IMAGE_FILE_EXECUTABLE_IMAGE (0x2)\n    IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20)\n  ]\n}\nImageOptionalHeader {\n  Magic: 0x20B\n  MajorLinkerVersion: 14\n  MinorLinkerVersion: 0\n  SizeOfCode: 7680\n  SizeOfInitializedData: 41472\n  SizeOfUninitializedData: 0\n  AddressOfEntryPoint: 0x13B4\n  BaseOfCode: 0x1000\n  ImageBase: 0x180000000\n  SectionAlignment: 4096\n  FileAlignment: 512\n  MajorOperatingSystemVersion: 6\n  MinorOperatingSystemVersion: 0\n  MajorImageVersion: 0\n  MinorImageVersion: 0\n  MajorSubsystemVersion: 6\n  MinorSubsystemVersion: 0\n  SizeOfImage: 86016\n  SizeOfHeaders: 1024\n  CheckSum: 0x0\n  Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)\n  Characteristics [ (0x160)\n    IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE (0x40)\n    IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA (0x20)\n    IMAGE_DLL_CHARACTERISTICS_NX_COMPAT (0x100)\n  ]\n  SizeOfStackReserve: 1048576\n  SizeOfStackCommit: 4096\n  SizeOfHeapReserve: 1048576\n  SizeOfHeapCommit: 4096\n  NumberOfRvaAndSize: 16\n  DataDirectory {\n    ExportTableRVA: 0x34E8\n    ExportTableSize: 0x4D\n    ImportTableRVA: 0x3538\n    ImportTableSize: 0x8C\n    ResourceTableRVA: 0x0\n    ResourceTableSize: 0x0\n    ExceptionTableRVA: 0x6000\n    ExceptionTableSize: 0x230\n    CertificateTableRVA: 0x0\n    CertificateTableSize: 0x0\n    BaseRelocationTableRVA: 0x8000\n    BaseRelocationTableSize: 0x5C\n    DebugRVA: 0x4000\n    DebugSize: 0x1C\n    ArchitectureRVA: 0x0\n    ArchitectureSize: 0x0\n    GlobalPtrRVA: 0x0\n    GlobalPtrSize: 0x0\n    TLSTableRVA: 0x34A0\n    TLSTableSize: 0x28\n    LoadConfigTableRVA: 0x32D8\n    LoadConfigTableSize: 0x138\n    BoundImportRVA: 0x0\n    BoundImportSize: 0x0\n    IATRVA: 0x36F0\n    IATSize: 0x128\n    DelayImportDescriptorRVA: 0x0\n    DelayImportDescriptorSize: 0x0\n    CLRRuntimeHeaderRVA: 0x0\n    CLRRuntimeHeaderSize: 0x0\n    ReservedRVA: 0x0\n    ReservedSize: 0x0\n  }\n}\nDOSHeader {\n  Magic: MZ\n  UsedBytesInTheLastPage: 120\n  FileSizeInPages: 1\n  NumberOfRelocationItems: 0\n  HeaderSizeInParagraphs: 4\n  MinimumExtraParagraphs: 0\n  MaximumExtraParagraphs: 0\n  InitialRelativeSS: 0\n  InitialSP: 0\n  Checksum: 0\n  InitialIP: 0\n  InitialRelativeCS: 0\n  AddressOfRelocationTable: 64\n  OverlayNumber: 0\n  OEMid: 0\n  OEMinfo: 0\n  AddressOfNewExeHeader: 120\n}\n"
+      },
+      {
+        "toolchain": "20260922",
+        "kind": "cpp-dll",
+        "arch": "arm64ec",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang++",
+          "-shared",
+          "-std=c++20",
+          "$REPO/build/macos-spec-assessment/windows-cpp.cpp",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20260922-arm64ec.dll"
+        ],
+        "headers": "\nFile: $REPO/build/macos-spec-assessment/20260922-arm64ec.dll\nFormat: COFF-ARM64EC\nArch: aarch64\nAddressSize: 64bit\nImageFileHeader {\n  Machine: IMAGE_FILE_MACHINE_ARM64EC (0xA641)\n  SectionCount: 16\n  TimeDateStamp: 2026-09-28 12:31:22 (0x6ABA5E1A)\n  PointerToSymbolTable: 0x10E00\n  SymbolCount: 425\n  StringTableSize: 10487\n  OptionalHeaderSize: 240\n  Characteristics [ (0x2022)\n    IMAGE_FILE_DLL (0x2000)\n    IMAGE_FILE_EXECUTABLE_IMAGE (0x2)\n    IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20)\n  ]\n}\nImageOptionalHeader {\n  Magic: 0x20B\n  MajorLinkerVersion: 14\n  MinorLinkerVersion: 0\n  SizeOfCode: 12800\n  SizeOfInitializedData: 54784\n  SizeOfUninitializedData: 0\n  AddressOfEntryPoint: 0x5000\n  BaseOfCode: 0x1000\n  ImageBase: 0x180000000\n  SectionAlignment: 4096\n  FileAlignment: 512\n  MajorOperatingSystemVersion: 6\n  MinorOperatingSystemVersion: 0\n  MajorImageVersion: 0\n  MinorImageVersion: 0\n  MajorSubsystemVersion: 6\n  MinorSubsystemVersion: 0\n  SizeOfImage: 118784\n  SizeOfHeaders: 1024\n  CheckSum: 0x0\n  Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)\n  Characteristics [ (0x160)\n    IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE (0x40)\n    IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA (0x20)\n    IMAGE_DLL_CHARACTERISTICS_NX_COMPAT (0x100)\n  ]\n  SizeOfStackReserve: 1048576\n  SizeOfStackCommit: 4096\n  SizeOfHeapReserve: 1048576\n  SizeOfHeapCommit: 4096\n  NumberOfRvaAndSize: 16\n  DataDirectory {\n    ExportTableRVA: 0x7638\n    ExportTableSize: 0x4D\n    ImportTableRVA: 0x7688\n    ImportTableSize: 0x8C\n    ResourceTableRVA: 0x0\n    ResourceTableSize: 0x0\n    ExceptionTableRVA: 0x0\n    ExceptionTableSize: 0x0\n    CertificateTableRVA: 0x0\n    CertificateTableSize: 0x0\n    BaseRelocationTableRVA: 0xF000\n    BaseRelocationTableSize: 0xE0\n    DebugRVA: 0xA000\n    DebugSize: 0x1C\n    ArchitectureRVA: 0x0\n    ArchitectureSize: 0x0\n    GlobalPtrRVA: 0x0\n    GlobalPtrSize: 0x0\n    TLSTableRVA: 0x75D0\n    TLSTableSize: 0x28\n    LoadConfigTableRVA: 0x7368\n    LoadConfigTableSize: 0x138\n    BoundImportRVA: 0x0\n    BoundImportSize: 0x0\n    IATRVA: 0x6000\n    IATSize: 0x1000\n    DelayImportDescriptorRVA: 0x0\n    DelayImportDescriptorSize: 0x0\n    CLRRuntimeHeaderRVA: 0x0\n    CLRRuntimeHeaderSize: 0x0\n    ReservedRVA: 0x0\n    ReservedSize: 0x0\n  }\n}\nDOSHeader {\n  Magic: MZ\n  UsedBytesInTheLastPage: 120\n  FileSizeInPages: 1\n  NumberOfRelocationItems: 0\n  HeaderSizeInParagraphs: 4\n  MinimumExtraParagraphs: 0\n  MaximumExtraParagraphs: 0\n  InitialRelativeSS: 0\n  InitialSP: 0\n  Checksum: 0\n  InitialIP: 0\n  InitialRelativeCS: 0\n  AddressOfRelocationTable: 64\n  OverlayNumber: 0\n  OEMid: 0\n  OEMinfo: 0\n  AddressOfNewExeHeader: 120\n}\n"
+      },
+      {
+        "toolchain": "20260922",
+        "kind": "arm64x-object",
+        "arch": "aarch64",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20260922-aarch64-hybrid.obj"
+        ]
+      },
+      {
+        "toolchain": "20260922",
+        "kind": "arm64x-object",
+        "arch": "arm64ec",
+        "exit": 0,
+        "stderr": "",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/20260922-arm64ec-hybrid.obj"
+        ]
+      },
+      {
+        "toolchain": "ndk-27.3.13750724",
+        "kind": "arm64x-object",
+        "arch": "arm64ec",
+        "exit": 1,
+        "stderr": "clang: error: unknown argument: '-marm64x'",
+        "command": [
+          "$ANDROID_HOME/ndk/27.3.13750724/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=arm64ec-w64-windows-gnu",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/27.3.13750724-arm64ec-hybrid.obj"
+        ]
+      },
+      {
+        "toolchain": "ndk-29.0.14206865",
+        "kind": "arm64x-object",
+        "arch": "arm64ec",
+        "exit": 1,
+        "stderr": "clang: error: unsupported option '-marm64x' for target 'arm64ec-w64-windows-gnu'",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=arm64ec-w64-windows-gnu",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/29.0.14206865-arm64ec-hybrid.obj"
+        ]
+      }
+    ],
+    "wine-target-probes.json": [
+      {
+        "compiler": "bylaws-20250920",
+        "target": "arm64ec-windows",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/clang",
+          "--target=arm64ec-windows",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/bylaws-20250920-arm64ec-windows.obj"
+        ],
+        "exit": 0,
+        "stderr": "clang: warning: argument unused during compilation: '-marm64x' [-Wunused-command-line-argument]"
+      },
+      {
+        "compiler": "bylaws-20250920",
+        "target": "arm64ec-windows-msvc",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/clang",
+          "--target=arm64ec-windows-msvc",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/bylaws-20250920-arm64ec-windows-msvc.obj"
+        ],
+        "exit": 0,
+        "stderr": "clang: warning: argument unused during compilation: '-marm64x' [-Wunused-command-line-argument]"
+      },
+      {
+        "compiler": "bylaws-20250920",
+        "target": "aarch64-windows",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20250920-ucrt-macos-universal/bin/clang",
+          "--target=aarch64-windows",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/bylaws-20250920-aarch64-windows.obj"
+        ],
+        "exit": 0,
+        "stderr": "clang: warning: argument unused during compilation: '-marm64x' [-Wunused-command-line-argument]"
+      },
+      {
+        "compiler": "upstream-20260922",
+        "target": "arm64ec-windows",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/clang",
+          "--target=arm64ec-windows",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/upstream-20260922-arm64ec-windows.obj"
+        ],
+        "exit": 0,
+        "stderr": ""
+      },
+      {
+        "compiler": "upstream-20260922",
+        "target": "arm64ec-windows-msvc",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/clang",
+          "--target=arm64ec-windows-msvc",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/upstream-20260922-arm64ec-windows-msvc.obj"
+        ],
+        "exit": 0,
+        "stderr": ""
+      },
+      {
+        "compiler": "upstream-20260922",
+        "target": "aarch64-windows",
+        "command": [
+          "$REPO/build/macos-spec-assessment/llvm-mingw-20260922-ucrt-macos-universal/bin/clang",
+          "--target=aarch64-windows",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/upstream-20260922-aarch64-windows.obj"
+        ],
+        "exit": 0,
+        "stderr": ""
+      },
+      {
+        "compiler": "ndk29",
+        "target": "arm64ec-windows",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=arm64ec-windows",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/ndk29-arm64ec-windows.obj"
+        ],
+        "exit": 0,
+        "stderr": "clang: warning: argument unused during compilation: '-marm64x' [-Wunused-command-line-argument]"
+      },
+      {
+        "compiler": "ndk29",
+        "target": "arm64ec-windows-msvc",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=arm64ec-windows-msvc",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/ndk29-arm64ec-windows-msvc.obj"
+        ],
+        "exit": 0,
+        "stderr": "clang: warning: argument unused during compilation: '-marm64x' [-Wunused-command-line-argument]"
+      },
+      {
+        "compiler": "ndk29",
+        "target": "aarch64-windows",
+        "command": [
+          "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+          "--target=aarch64-windows",
+          "-marm64x",
+          "-c",
+          "$REPO/build/macos-spec-assessment/minimal.c",
+          "-o",
+          "$REPO/build/macos-spec-assessment/ndk29-aarch64-windows.obj"
+        ],
+        "exit": 0,
+        "stderr": "clang: warning: argument unused during compilation: '-marm64x' [-Wunused-command-line-argument]"
+      }
+    ]
+  },
+  "limitations": [
+    "No full Wine/FEX/DXVK/VKD3D/Turnip/GBE rebuild in this assessment.",
+    "Compiled and linked test DLLs were inspected, not executed under Wine.",
+    "Direct clang -marm64x probes do not test the Wine winegcc hybrid link path; failed and unused-argument observations are retained.",
+    "Package groups are static risk assessments, not successful per-package builds.",
+    "Byte totals exclude SDKs, symbols, source archives, APK, Maven inputs and separate PulseAudio artifacts.",
+    "No binaries were committed, uploaded or installed on a device."
+  ]
+}

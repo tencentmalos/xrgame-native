@@ -28,6 +28,9 @@ def analyze(lines):
     for frame_id, events in frames.items():
         sampled = "sample_ready" in events or events.get("complete", {}).get("mode") == "sample"
         required = ("receive", "sample_ready", "complete", "sample_retired", "idle") if sampled else ("receive", "copy_done", "complete", "idle")
+        asynchronous = events.get("complete", {}).get("mode") == "async"
+        if asynchronous:
+            required += ("enqueue_return", "copy_dequeue")
         missing = sorted(set(required) - events.keys())
         if missing:
             incomplete.append({"frame": frame_id, "missing": missing})
@@ -57,15 +60,26 @@ def analyze(lines):
             for event in (complete, idle):
                 if any(receive[k] != event[k] for k in ("generation", "window", "pixmap", "serial")):
                     raise ValueError("frame identity changed")
-            samples.append({"frame": frame_id, "generation": receive["generation"],
+            sample = {"frame": frame_id, "generation": receive["generation"],
                             "window": receive["window"], "pixmap": receive["pixmap"],
+                            "path": "async_copy" if asynchronous else "copy",
                             "copy_wall_ns": times[5] - times[1], "lock_wait_ns": times[2] - times[1],
-                            "fence_wait_ns": times[4] - times[3], "receive_to_idle_ns": times[7] - times[0]})
+                            "fence_wait_ns": times[4] - times[3], "receive_to_idle_ns": times[7] - times[0]}
+            if asynchronous:
+                returned = int(events["enqueue_return"]["mono_ns"])
+                dequeued = int(events["copy_dequeue"]["mono_ns"])
+                if returned < times[0] or not times[0] <= dequeued <= times[1]:
+                    raise ValueError("invalid asynchronous admission timeline")
+                # Dequeue can precede JNI's return; these are concurrent threads.
+                sample["receive_to_enqueue_return_ns"] = returned - times[0]
+                sample["receive_to_dequeue_ns"] = dequeued - times[0]
+            samples.append(sample)
         except (KeyError, ValueError) as error:
             diagnostics.append({"frame": frame_id, "error": str(error)})
 
     summary = {}
-    for key in ("copy_wall_ns", "lock_wait_ns", "fence_wait_ns", "sample_accept_ns", "lease_ns", "receive_to_idle_ns"):
+    for key in ("copy_wall_ns", "lock_wait_ns", "fence_wait_ns", "sample_accept_ns", "lease_ns", "receive_to_idle_ns",
+                "receive_to_enqueue_return_ns", "receive_to_dequeue_ns"):
         values = sorted(sample[key] for sample in samples if key in sample)
         if values:
             summary[key] = {"mean": statistics.mean(values), "p50": statistics.median(values),

@@ -89,6 +89,10 @@ public class InputDeviceManager implements Pointer.OnPointerMotionListener, Keyb
         return pointWindow;
     }
 
+    public void stopKeyRepeat() {
+        autoRepeatHandler.removeCallbacks(autoRepeatRunnable);
+    }
+
     private void sendEvent(Window window, int eventId, Event event) {
         Window grabWindow = xServer.grabManager.getWindow();
         if (grabWindow != null && grabWindow.attributes.isEnabled()) {

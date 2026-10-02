@@ -437,6 +437,7 @@ bool WindowsFrameTransport::handleFrameLine(int clientFd, const std::string& lin
         }
         latest_[eye].acquireFenceFd = acquireFenceFd;
         latest_[eye].serial = nextSerial_++;
+        latest_[eye].frameId = static_cast<uint64_t>(std::max(0LL, parseKey(line, "frame", 0)));
         latestClaimed_[eye] = false;
         if (releaseFenceFds_[eye][index] >= 0) {
             ::close(releaseFenceFds_[eye][index]);
@@ -589,6 +590,22 @@ void WindowsFrameTransport::dropRetainedLocked(int eye) {
 EyeFrame WindowsFrameTransport::pollEye(int eye) {
     if (eye < 0 || eye >= kEyeCount) return EyeFrame{};
     std::lock_guard<std::mutex> lock(eyesMutex_);
+    return pollEyeLocked(eye);
+}
+
+bool WindowsFrameTransport::pollStereo(const std::array<uint64_t, 2>& after,
+                                       std::array<EyeFrame, 2>& frames) {
+    std::lock_guard<std::mutex> lock(eyesMutex_);
+    for (int eye = 0; eye < kEyeCount; ++eye) {
+        if (latest_[eye].kind == BufferKind::None || latest_[eye].serial <= after[eye]) return false;
+    }
+    // Both eyes must belong to the same guest submission, never adjacent frames.
+    if (latest_[0].frameId != latest_[1].frameId) return false;
+    for (int eye = 0; eye < kEyeCount; ++eye) frames[eye] = pollEyeLocked(eye);
+    return true;
+}
+
+EyeFrame WindowsFrameTransport::pollEyeLocked(int eye) {
     EyeFrame snapshot = latest_[eye];
     latest_[eye].acquireFenceFd = -1;
     if (snapshot.kind == BufferKind::None) return snapshot;

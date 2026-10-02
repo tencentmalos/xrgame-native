@@ -52,7 +52,7 @@ public class GPUImage extends NativeTexture {
     }
 
     @Override
-    public void allocateTexture(short width, short height, ByteBuffer data) {
+    public synchronized void allocateTexture(short width, short height, ByteBuffer data) {
         if (isAllocated()) return;
         super.allocateTexture(width, height, null);
         if (hardwareBufferPtr != 0) {
@@ -85,7 +85,7 @@ public class GPUImage extends NativeTexture {
     }
 
     @Override
-    public void destroy() {
+    public synchronized void destroy() {
         if (imageKHRPtr != 0) {
             destroyImageKHR(imageKHRPtr);
             imageKHRPtr = 0;

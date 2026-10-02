@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll",
+  "sha256": "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5",
+  "status": "internal-device-candidate",
+  "recipeRepository": "https://github.com/tencentmalos/opencomposite",
+  "recipeBase": "7fd3276ac0ffda518a7f5a9157620f292e2032e6",
+  "recipeCommit": "96a2388c5f9911273321dc731cd5bcc54232d751",
+  "recipeBranch": "feature/malos/xrgame-sbs-openvr26",
+  "upstream": "https://gitlab.com/znixian/OpenOVR",
+  "upstreamCommit": "a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d",
+  "recipeFiles": {
+    "references/opencomposite/UPSTREAM_COMMIT": "defe43ebf5f3a6815e3e75f2049643763102e48621084a1b971a979842f4a6a3",
+    "references/opencomposite/patches/background-support.patch": "52c9ebc0343a28ea07270fb6808261e85137101daad61e59ea0c67d90d121921",
+    "references/opencomposite/patches/openvr-system-026.patch": "30d0fd551b3085a24249bd877869cd38755799b806c263305645aa9a8f33aabe",
+    "references/opencomposite/vendor/openvr-2.15.6/openvr.h": "1e6ed57199896cc1f7c5484e50fa18955e97be15be690beb28d998c877ead7fd"
+  },
+  "dependencies": {
+    "glm": "bf71a834948186f4097caa076cd2663c69a10e1e",
+    "openxr-sdk": "91a8a8d9d70f4b469bca0726122c3b5a6096010e",
+    "openvr": "0924064316de3effbcd1acf1e309182a2deb1c05",
+    "vulkan-headers": {
+      "repository": "https://github.com/tencentmalos/Vulkan-Headers",
+      "commit": "ee3b5caaa7e372715873c7b9c390ee1c3ca5db25"
+    },
+    "vulkan-import-definition": {
+      "repository": "https://github.com/tencentmalos/Vulkan-Loader",
+      "commit": "466498bc64eb77955c3b782f0127520548224de0",
+      "file": "loader/vulkan-1.def"
+    }
+  },
+  "build": {
+    "host": "Windows x64",
+    "compiler": "MSVC 19.44.35228.0",
+    "windowsSdk": "10.0.26100.0",
+    "configuration": "Release x64 /MD",
+    "target": "OCOVR",
+    "ocVersion": "a27e7e6-xrgame-openvr2156",
+    "vulkanImportLibrary": "MSVC lib.exe /machine:x64 from pinned Vulkan-Loader definition; runtime uses Wine Vulkan",
+    "evidence": "docs/validation/vr-sbs-20261002.md"
+  }
+}

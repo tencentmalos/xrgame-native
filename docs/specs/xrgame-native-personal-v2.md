@@ -2,7 +2,14 @@
 
 状态：**用户已要求推进 P1、P2、P3；实施中，尚未验收**。2026-09-27。
 
+2026-10-02 当前增量：[Android SBS 与 Swan VR 接线规划](xrgame-native-vr-sbs-v1.md)。先用 AYN 验证独立双眼 VR 提交和模拟追踪，Swan 实机验收仍延后。
+
 最新逐项结果与缺口见 [2026-09-27 实施状态](../validation/personal-status-20260927.md)。
+
+2026-09-28 新增[Mac 独立构建与预编译依赖规格](xrgame-native-macos-build-v1.md)：
+**用户同日已暂停该构建迁移（ROI 低）**；保留评估，后续按需恢复。当前优先将
+Present fence 等待移出 X 请求线程及全局锁，按 [MHW profiling](../validation/mhw-profiling-20260928.md)
+做改造与同场景对照。该调整不改变下文 P1–P3、Swan 延后及设备验收边界。
 
 2026-09-27 用户补充：Steam 客户端、DXVK、VKD3D 及 D3D10/11 配套 DLL 必须作为
 默认随包运行时，新建与已有容器都在启动前校验并自动修复。游戏专用参数仍按需覆盖，

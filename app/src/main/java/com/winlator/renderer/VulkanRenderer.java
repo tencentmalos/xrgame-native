@@ -47,6 +47,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private long nativeHandle = 0;
     private boolean sampleHardwareBuffers = false;
     private final HardwareBufferLeases hardwareLeases = new HardwareBufferLeases();
+    private final java.util.HashMap<Integer, Long> copyDrawables = new java.util.HashMap<>();
 
     public void setSampleHardwareBuffers(boolean enabled) {
         sampleHardwareBuffers = app.gamenative.BuildConfig.XRGAME && app.gamenative.BuildConfig.DEBUG && enabled;
@@ -643,6 +644,50 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     private native boolean nativeCopyWindowContentAHB(long handle, long id, long ahbPtr, long traceFrame);
 
+    @androidx.annotation.Keep
+    public interface CopyCompletion {
+        // 0: GPU read complete; 1: safely skipped; -1: no retirement proof.
+        @androidx.annotation.Keep void onComplete(int result);
+    }
+
+    public boolean queueHardwarePixmap(Window window, GPUImage image, long traceFrame, CopyCompletion completion) {
+        synchronized (lock) {
+            // Do not retire an experimental sampling lease on the X request thread.
+            if (nativeHandle == 0 || hardwareLeases.get(window.id) != null) return false;
+            synchronized (image) {
+                long buffer = image.getHardwareBufferPtr();
+                if (buffer == 0) return false;
+                long drawable = did(window.getContent());
+                copyDrawables.put(window.id, drawable);
+                // Native acquires its own AHB reference before we release image's monitor.
+                return nativeQueueWindowContentAHB(nativeHandle, drawable, buffer, traceFrame,
+                        result -> {
+                            if (result == 0 && hudRef != null) hudRef.update();
+                            completion.onComplete(result);
+                        });
+            }
+        }
+    }
+
+    private native boolean nativeQueueWindowContentAHB(long handle, long id, long ahbPtr,
+                                                       long traceFrame, CopyCompletion completion);
+    private native void nativeCancelWindowCopies(long handle, long id);
+
+    private void cancelHardwareCopies(Window window, boolean resized) {
+        final Long drawable;
+        synchronized (lock) {
+            drawable = copyDrawables.remove(window.id);
+            if (drawable == null || nativeHandle == 0) return;
+            // Invalidate immediately, with no GPU wait, before a resized/reused
+            // window can enqueue again. Resource disposal stays on the view queue.
+            nativeCancelWindowCopies(nativeHandle, drawable);
+        }
+        if (!resized) return; // Existing destroy/unmap callbacks dispose conditionally.
+        xServerView.queueEvent(() -> {
+            synchronized (lock) { if (nativeHandle != 0) nativeRemoveWindow(nativeHandle, drawable); }
+        });
+    }
+
     @Override
     public void onUpdateWindowContent(Window window) {
         if (!flatPresentationEnabled || !retireHardwarePixmap(window.id, false)) return;
@@ -724,6 +769,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     @Override
     public void onDestroyWindow(Window window) {
+        cancelHardwareCopies(window, false);
         if (!retireHardwarePixmap(window.id, true)) return;
         final long id = did(window.getContent());
         xServerView.queueEvent(() -> {
@@ -738,6 +784,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     @Override
     public void onUnmapWindow(Window window) {
+        cancelHardwareCopies(window, false);
         if (!retireHardwarePixmap(window.id, true)) return;
         final long id = did(window.getContent());
         xServerView.queueEvent(() -> {
@@ -752,6 +799,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
 
     @Override
     public void onUpdateWindowGeometry(Window window, boolean resized) {
+        if (resized) cancelHardwareCopies(window, true);
         if (resized && !retireHardwarePixmap(window.id, true)) return;
         if (flatPresentationEnabled) queueSceneUpdate();
     }

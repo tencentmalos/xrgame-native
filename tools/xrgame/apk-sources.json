@@ -15,7 +15,8 @@
     "lib/arm64-v8a/libxrimmersive.so",
     "lib/arm64-v8a/libmain_hook.so",
     "lib/arm64-v8a/libhook_impl.so",
-    "lib/arm64-v8a/libgndownload.so"
+    "lib/arm64-v8a/libgndownload.so",
+    "assets/opencomposite_x64.dll"
   ],
   "rules": [
     {
@@ -836,6 +837,14 @@
       "license": "MPL-2.0",
       "source": "Public Suffix List distributed by com.squareup.okhttp3:okhttp-android:5.3.2",
       "sha256": "c75ab827afd7ffff59a51b14729c25dbfc3b45237eb40ccf02bec7b7d44304a4"
+    },
+    {
+      "pattern": "assets/opencomposite_x64.dll",
+      "kind": "repository-build",
+      "license": "GPL-3.0-only",
+      "source": "references/opencomposite: pinned OpenOVR + background-support.patch + openvr-system-026.patch; source/build hashes in tools/xrgame/opencomposite-pin.json",
+      "sha256": "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5",
+      "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll"
     }
   ]
 }

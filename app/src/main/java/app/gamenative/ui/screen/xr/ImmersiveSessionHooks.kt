@@ -12,7 +12,7 @@ import androidx.compose.ui.focus.FocusManager
  * activity needs these bypasses at all.
  */
 class ImmersiveSessionHooks(
-    val controls: ImmersiveControls,
+    val controls: ImmersiveControls? = null,
     val windowsVr: app.gamenative.ui.screen.xr.windows.WindowsVrRuntimeService? = null,
     val onQuickMenuVisibilityChanged: (Boolean) -> Unit = {},
     val registerFocusManager: ((FocusManager) -> Unit)? = null,

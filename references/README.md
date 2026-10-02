@@ -68,3 +68,37 @@ is under the Linux build root's `src/gstreamer`; the recipe pin is authoritative
 for this build-only dependency. `build-gst-libav.sh` builds the plugin against
 the existing GStreamer/FFmpeg snapshot, with the optional libavfilter-backed
 filters omitted in a build copy. The source archive collector includes this pin.
+
+## OpenComposite (2026-10-02)
+
+`references/opencomposite` is `tencentmalos/opencomposite`, forked from
+`GameNative/opencomposite`, initially at `7fd3276ac0ffda518a7f5a9157620f292e2032e6`.
+The maintained gitlink is `96a2388c5f9911273321dc731cd5bcc54232d751`.
+It contains the GPL-3.0 build recipe and patch, not a vendored full OpenOVR tree.
+The recipe pins `https://gitlab.com/znixian/OpenOVR` at
+`a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d`. Nested upstream pins remain unchanged.
+The picoXr validation payload now uses a local Windows/MSVC source build with the
+OpenVR 2.15.6 ABI patch from `feature/malos/xrgame-sbs-openvr26`. The exact DLL,
+patch/header checksums, compiler, nested pins and build inputs are recorded in
+[`tools/xrgame/opencomposite-pin.json`](../tools/xrgame/opencomposite-pin.json).
+Stage the matching DLL at `build/xrgame-runtime/opencomposite/opencomposite_x64.dll`;
+packaging fails if its hash or the recipe sources differ. The upstream flavor's
+reviewed v2 asset is unchanged as a rollback baseline.
+
+The unmodified OpenVR 2.15.6 header is pinned at Valve
+`0924064316de3effbcd1acf1e309182a2deb1c05` (BSD-3-Clause), mirrored in
+`tencentmalos/openvr`. Full MSVC compilation/linking and generated ABI checks pass.
+The Windows host uses Vulkan headers `ee3b5caaa7e372715873c7b9c390ee1c3ca5db25`
+from `tencentmalos/Vulkan-Headers` and an x64 import library made from
+`tencentmalos/Vulkan-Loader` `466498bc64eb77955c3b782f0127520548224de0`'s
+`loader/vulkan-1.def`. These are source build inputs, not a proprietary GPU driver.
+See [SBS validation](../docs/validation/vr-sbs-20261002.md) for the narrower device
+results and remaining gameplay gates. Only source is published; the internal
+validation payload has no public binary release.
+
+2026-10-02：GBE 在 `feature/malos/xrgame-local-sockets` 保留离线进程内消息队列与回调；
+维护 gitlink 为 `e6dab9c5a70dd0aefd29e704b4ee557921874569`。
+`disable_networking=1` 继续禁止远端网络/广播。验证客户端仍从原
+`7a319f0bedad260f952b0fb367b27f255fd952c5` 加主仓
+`tools/xrgame/patches/gbe-offline-local-ipc.patch` 重建，不把较新维护 gitlink 自动当作
+已验证 runtime。Windows 对照探针及 Alyx SBS 主菜单证据见 VR 验证记录。

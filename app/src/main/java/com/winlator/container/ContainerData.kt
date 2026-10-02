@@ -113,6 +113,7 @@ data class ContainerData(
     /** Whether LSFG frame generation is enabled for this container */
     val lsfgEnabled: Boolean = false,
     val windowsVrEnabled: Boolean = false,
+    val xrPresentationMode: String = "sbs",
     val openCompositeEnabled: Boolean = false,
 ) {
     companion object {
@@ -190,6 +191,7 @@ data class ContainerData(
                     "sharpnessDenoise" to state.sharpnessDenoise,
                     "lsfgEnabled" to state.lsfgEnabled,
                     "windowsVrEnabled" to state.windowsVrEnabled,
+                    "xrPresentationMode" to state.xrPresentationMode,
                     "openCompositeEnabled" to state.openCompositeEnabled,
                 )
             },
@@ -266,6 +268,7 @@ data class ContainerData(
                     sharpnessDenoise = (savedMap["sharpnessDenoise"] as? Int) ?: 100,
                     lsfgEnabled = (savedMap["lsfgEnabled"] as? Boolean) ?: false,
                     windowsVrEnabled = (savedMap["windowsVrEnabled"] as? Boolean) ?: false,
+                    xrPresentationMode = (savedMap["xrPresentationMode"] as? String) ?: "sbs",
                     openCompositeEnabled = (savedMap["openCompositeEnabled"] as? Boolean) ?: false,
                 )
             },

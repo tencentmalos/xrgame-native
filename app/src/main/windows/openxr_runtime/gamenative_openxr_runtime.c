@@ -612,6 +612,7 @@ static XrTime gn_last_sync_time = 0;
 
 static GnEyeView gn_eye_views[2];
 static int gn_eye_views_valid = 0;
+static XrViewStateFlags gn_host_view_flags = 0;
 static XrPosef gn_local_origin;
 static int gn_local_origin_valid = 0;
 static long long gn_last_recenter_serial = -1;
@@ -928,6 +929,38 @@ static int gn_set_d3d11_context(ID3D11Device* device11) {
         gn_log_num("Wine DXVK Vulkan context result=", args.result);
         gn_log_num("Wine DXVK Vulkan context flags=", args.diagnostic_flags);
         return 0;
+    }
+    return 1;
+}
+
+typedef struct GnVkImageSubresourceRange {
+    gn_uint32 aspectMask, baseMipLevel, levelCount, baseArrayLayer, layerCount;
+} GnVkImageSubresourceRange;
+typedef void (GN_STDCALL *GnDxvkTransitionSurface)(
+    void*, void*, const GnVkImageSubresourceRange*, int, int);
+typedef long (GN_STDCALL *GnDxvkGetImageInfo)(void*, VkImage*, int*, void*);
+
+static int gn_dxvk_prepare_released_images(void) {
+    static const GnGuid iid_surface = {
+        0x5546cf8c, 0x77e7, 0x4341, {0xb0,0x5d,0x8d,0x4d,0x50,0x00,0xe7,0x7d}
+    };
+    GnDxvkTransitionSurface transition = (GnDxvkTransitionSurface)gn_com_method(gn_dxvk_interop, 5);
+    if (!transition) return 0;
+    for (gn_uint32 slot=0; slot<GN_MAX_SWAPCHAINS; ++slot) {
+        GnSwapchain* chain=&gn_swapchains[slot];
+        if (!chain->last_released_valid) continue;
+        void* texture=chain->d3d_images[chain->last_released_image];
+        void* surface=NULL;
+        GnComQueryInterface query=(GnComQueryInterface)gn_com_method(texture, 0);
+        if (!query || query(texture, &iid_surface, &surface)<0 || !surface) return 0;
+        GnDxvkGetImageInfo info=(GnDxvkGetImageInfo)gn_com_method(surface, 4);
+        int layout=1; /* VK_IMAGE_LAYOUT_GENERAL */
+        if (!info || info(surface, NULL, &layout, NULL)<0) { gn_com_release(surface); return 0; }
+        GnVkImageSubresourceRange range={1, 0, chain->create_info.mipCount, 0, chain->create_info.arraySize};
+        // Transition through DXVK even when the layout is unchanged: this finishes
+        // deferred clears/render passes before external consumers read the image.
+        transition(gn_dxvk_interop, surface, &range, layout, layout);
+        gn_com_release(surface);
     }
     return 1;
 }
@@ -1675,7 +1708,7 @@ static XrResult XRAPI_CALL gn_xrGetInstanceProperties(XrInstance instance, XrIns
     (void)instance;
     if (!properties) return XR_ERROR_VALIDATION_FAILURE;
     properties->runtimeVersion = XR_MAKE_VERSION(0, 2, 0);
-    gn_copy(properties->runtimeName, XR_MAX_RUNTIME_NAME_SIZE, "GameNativeVR OpenXR Runtime");
+    gn_copy(properties->runtimeName, XR_MAX_RUNTIME_NAME_SIZE, "XRGame Native OpenXR");
     return XR_SUCCESS;
 }
 
@@ -1765,7 +1798,7 @@ static XrResult XRAPI_CALL gn_xrGetSystemProperties(XrInstance instance, XrSyste
     gn_bridge_call("GET_SYSTEM", response, sizeof(response));
     properties->systemId = gn_system_id;
     properties->vendorId = 0x474e;
-    gn_copy(properties->systemName, XR_MAX_SYSTEM_NAME_SIZE, "Meta Quest via GameNativeVR");
+    gn_copy(properties->systemName, XR_MAX_SYSTEM_NAME_SIZE, "XRGame Native VR bridge");
     properties->graphicsProperties.maxSwapchainImageHeight = 4096;
     properties->graphicsProperties.maxSwapchainImageWidth = 4096;
     properties->graphicsProperties.maxLayerCount = 16;
@@ -2263,11 +2296,9 @@ static XrResult XRAPI_CALL gn_xrLocateSpace(XrSpace space, XrSpace baseSpace, Xr
     gn_identity_pose(&location->pose);
     if (space_status == 0 || base_status == 0) return XR_SUCCESS;
     location->pose = gn_pose_multiply(gn_pose_inverse(base_pose), absolute_pose);
-    location->locationFlags =
-        XR_SPACE_LOCATION_ORIENTATION_VALID_BIT |
-        XR_SPACE_LOCATION_POSITION_VALID_BIT |
-        XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT |
-        XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+    // Host validity/tracking bits are shared with XrSpaceLocationFlags. Synthetic
+    // Android poses are valid, but must never advertise physical position tracking.
+    location->locationFlags = gn_host_view_flags;
     return XR_SUCCESS;
 }
 
@@ -2441,7 +2472,10 @@ static XrResult XRAPI_CALL gn_xrEndFrame(XrSession session, const XrFrameEndInfo
     }
 
     int submission_failed = 0;
-    if (gn_gfx_api == GN_GFX_D3D11) gn_dxvk_flush_and_lock();
+    if (gn_gfx_api == GN_GFX_D3D11) {
+        if (!gn_dxvk_prepare_released_images()) return XR_ERROR_RUNTIME_FAILURE;
+        gn_dxvk_flush_and_lock();
+    }
     if (gn_gfx_api == GN_GFX_D3D12) gn_vkd3d_lock();
     for (gn_uint32 layer_index = 0;
          layer_index < frameEndInfo->layerCount; ++layer_index) {
@@ -2592,6 +2626,7 @@ static XrResult XRAPI_CALL gn_xrLocateViews(
             v->fov[2] = gn_parse_micro(response, fk[eye][2], 0.75f);
             v->fov[3] = gn_parse_micro(response, fk[eye][3], -0.75f);
         }
+        gn_host_view_flags = (XrViewStateFlags)gn_parse_i64(response, "flags", 15) & 15;
         gn_eye_views_valid = 1;
         {
             XrPosef head_pose;
@@ -2621,9 +2656,7 @@ static XrResult XRAPI_CALL gn_xrLocateViews(
 
     viewState->viewStateFlags = 0;
     if (gn_eye_views_valid && base_status > 0) {
-        viewState->viewStateFlags =
-            XR_VIEW_STATE_ORIENTATION_VALID_BIT | XR_VIEW_STATE_POSITION_VALID_BIT |
-            XR_VIEW_STATE_ORIENTATION_TRACKED_BIT | XR_VIEW_STATE_POSITION_TRACKED_BIT;
+        viewState->viewStateFlags = gn_host_view_flags;
     }
     for (gn_uint32 i = 0; i < 2; ++i) {
         if (gn_eye_views_valid) {
@@ -3407,7 +3440,7 @@ static XrResult XRAPI_CALL gn_xrGetInputSourceLocalizedName(
     char* buffer) {
     (void)getInfo;
     if (session != gn_session) return XR_ERROR_HANDLE_INVALID;
-    return gn_fill_string("GameNativeVR Touch", capacity, count, buffer);
+    return gn_fill_string("XRGame Native controller", capacity, count, buffer);
 }
 
 static XrResult XRAPI_CALL gn_xrApplyHapticFeedback(

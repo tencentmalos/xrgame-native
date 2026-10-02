@@ -5,6 +5,14 @@
 全部集中在三个小核的严重降速。尚未证明完整关键路径或确定调度变化的触发源。
 没有调整游戏画质、进程亲和性、设备频率、功耗或温控策略。
 
+2026-09-28 的 [优化复核](mhw-optimization-review-20260928.md) 重新配对 Present，
+并确认异常片段 GPU `max_freq` 也由 680 MHz 降至 348 MHz；来源尚未确定。
+后续按调度/功耗、异步呈现、guest 热点和同步计时排序验证。
+
+2026-09-28 的[新场景 profiling](mhw-profiling-20260928.md) 在正常核心调度下复现
+约 18.5 FPS，并定位到 surface capabilities/GetGeometry 等待被同步 AHB Present
+阻塞。该轮有两份原生 off-CPU 栈对照，不应与本文历史进程合并统计。
+
 ## 身份与采集
 
 - AYN Thor / Android 13 / API 33 / 4 KiB；targetSdk 36。

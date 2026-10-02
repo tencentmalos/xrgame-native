@@ -2017,9 +2017,14 @@ fun XServerScreen(
             // VirGL passthrough). Default to the legacy GL renderer for all
             // other containers as well. Uncheck the per-container useLegacyRenderer
             // setting to switch to the Vulkan renderer.
-            if (BuildConfig.XRGAME && BuildConfig.DEBUG && existingXServer == null) {
-                val traceFrames = EnvVars(container.envVars).get("XRGAME_PRESENT_TRACE_FRAMES").toIntOrNull() ?: 0
-                xServerToUse.getExtension<PresentExtension>(PresentExtension.MAJOR_OPCODE.toInt())?.setTraceFrames(traceFrames)
+            if (BuildConfig.XRGAME && existingXServer == null) {
+                val presentEnv = EnvVars(container.envVars)
+                xServerToUse.getExtension<PresentExtension>(PresentExtension.MAJOR_OPCODE.toInt())?.apply {
+                    if (BuildConfig.DEBUG) {
+                        setTraceFrames(presentEnv.get("XRGAME_PRESENT_TRACE_FRAMES").toIntOrNull() ?: 0)
+                    }
+                    setAsyncCopy(app.gamenative.xrgame.XrGamePresentSettings.asyncCopyEnabled(container.envVars))
+                }
             }
             val useGLRenderer = container.graphicsDriver == "virgl" || container.displayRenderer.equals("gl", true)
             val xServerViewInstance: XServerRendererView = if (useGLRenderer) {

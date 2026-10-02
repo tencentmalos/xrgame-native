@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "scope": "AYN MHW Seliana fixed camera, same APK/process A/B/A, no GPU timestamps",
+  "apkSha256": "685b8ae6bf7cf1513c385ef9a2f0a872d09e53a789a243d41280b60fcb47434c",
+  "phases": [
+    {
+      "phase": "a1",
+      "presentFps": 19.351262344245757,
+      "surface": {
+        "frames": 581,
+        "coveredSeconds": 29.960657176,
+        "fps": 19.392097996615718,
+        "meanMs": 51.56739617211704,
+        "p95Ms": 100.268333,
+        "maxMs": 133.668802
+      },
+      "hotThread": {
+        "pid": 8070,
+        "tid": 8094,
+        "name": "MonsterHunterWo",
+        "cpu": 44.59254094852409,
+        "runqueue": 2.218035318518796,
+        "cores": {
+          "6": 6,
+          "7": 4,
+          "4": 7,
+          "5": 5,
+          "3": 8
+        }
+      },
+      "systemCpu": 46.83,
+      "gpuBusy": {
+        "n": 30,
+        "mean": 74.55895240484584,
+        "p50": 74.78949443185178,
+        "p90": 77.00666205844496,
+        "max": 80.02400477730544
+      },
+      "gpuFreq": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 30,
+          "mean": 643166666.6666666,
+          "p50": 615000000,
+          "p90": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 30,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p90": 680000000,
+          "max": 680000000
+        }
+      },
+      "waits": {
+        "ntSingleNs": 1206471564,
+        "surfaceCapabilitiesNs": 2816971394
+      },
+      "prof": 8.033236143
+    },
+    {
+      "phase": "b1",
+      "presentFps": 26.659026896781974,
+      "surface": {
+        "frames": 799,
+        "coveredSeconds": 29.976905873,
+        "fps": 26.653851581115113,
+        "meanMs": 37.51802987859825,
+        "p95Ms": 50.137969,
+        "maxMs": 100.265989
+      },
+      "hotThread": {
+        "pid": 8070,
+        "tid": 8094,
+        "name": "MonsterHunterWo",
+        "cpu": 66.88639837603533,
+        "runqueue": 3.3503368556937527,
+        "cores": {
+          "7": 7,
+          "3": 3,
+          "4": 8,
+          "5": 7,
+          "6": 5
+        }
+      },
+      "systemCpu": 59.54,
+      "gpuBusy": {
+        "n": 30,
+        "mean": 99.35309467699662,
+        "p50": 99.863814883116,
+        "p90": 99.92250749839302,
+        "max": 99.93069903108459
+      },
+      "gpuFreq": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 30,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p90": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 30,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p90": 680000000,
+          "max": 680000000
+        }
+      },
+      "waits": {
+        "ntSingleNs": 1744662347,
+        "surfaceCapabilitiesNs": 141820994
+      },
+      "prof": 8.043726195
+    },
+    {
+      "phase": "a2",
+      "presentFps": 19.073084105325822,
+      "surface": {
+        "frames": 572,
+        "coveredSeconds": 29.965174519,
+        "fps": 19.088825918144153,
+        "meanMs": 52.38666873951049,
+        "p95Ms": 100.287187,
+        "maxMs": 133.716459
+      },
+      "hotThread": {
+        "pid": 8070,
+        "tid": 8094,
+        "name": "MonsterHunterWo",
+        "cpu": 44.79757198929819,
+        "runqueue": 2.4648887093835907,
+        "cores": {
+          "3": 7,
+          "5": 7,
+          "4": 6,
+          "7": 6,
+          "6": 4
+        }
+      },
+      "systemCpu": 47.14,
+      "gpuBusy": {
+        "n": 30,
+        "mean": 74.37621955160068,
+        "p50": 74.28187333508609,
+        "p90": 77.98136676547928,
+        "max": 79.47806629748554
+      },
+      "gpuFreq": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 30,
+          "mean": 638500000,
+          "p50": 615000000,
+          "p90": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 30,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p90": 680000000,
+          "max": 680000000
+        }
+      },
+      "waits": {
+        "surfaceCapabilitiesNs": 2580683796,
+        "ntSingleNs": 1262081400
+      },
+      "prof": 8.030958799
+    }
+  ],
+  "finalBuild": {
+    "apkSha256": "6f485c301e23b0f2d21f13c38f2409ddbb1c54b37e33e84e539ea9f516c8d383",
+    "pids": [
+      18163,
+      17019,
+      18049
+    ],
+    "presentFps": 26.758286849330002,
+    "surface": {
+      "frames": 803,
+      "coveredSeconds": 29.9934253,
+      "fps": 26.772534045986404,
+      "meanMs": 37.35171270236613,
+      "p95Ms": 50.138126,
+      "maxMs": 83.551302
+    },
+    "hotThread": {
+      "pid": 18163,
+      "tid": 18182,
+      "name": "MonsterHunterWo",
+      "cpu": 64.52354181923224,
+      "runqueue": 4.125554719803047,
+      "cores": {
+        "5": 4,
+        "7": 1,
+        "3": 6,
+        "4": 10,
+        "6": 9
+      }
+    },
+    "gpuBusy": {
+      "n": 30,
+      "mean": 99.58518604664042,
+      "p50": 99.86689809610317,
+      "p90": 99.91610120843698,
+      "max": 99.92485491025884
+    },
+    "queryWaitNs": 140018499,
+    "perfDuration": 8.037522341,
+    "completeTraces": 844,
+    "incompleteTraces": 2,
+    "diagnostics": []
+  }
+}

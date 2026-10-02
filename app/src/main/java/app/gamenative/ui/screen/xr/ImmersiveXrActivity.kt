@@ -283,7 +283,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                     registerBackAction = { cb -> backAction = cb },
                     navigateBack = { finish() },
                     onExit = { onComplete ->
-                        viewModel.exitSteamApp(context, appId) {
+                        viewModel.exitSteamApp(context, appId, allowUiPrompts = !app.gamenative.BuildConfig.XRGAME) {
                             onComplete?.invoke()
                             finish()
                         }
@@ -470,7 +470,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         val newAppId = intent.getStringExtra(EXTRA_APP_ID) ?: return
         val runningAppId = currentAppId
         if (runningAppId == null || newAppId == runningAppId) return
-        viewModel.exitSteamApp(this, runningAppId) { recreate() }
+        viewModel.exitSteamApp(this, runningAppId, allowUiPrompts = !app.gamenative.BuildConfig.XRGAME) { recreate() }
     }
 
     override fun onResume() {

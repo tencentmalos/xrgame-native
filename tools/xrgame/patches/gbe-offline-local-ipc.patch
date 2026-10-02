@@ -1,0 +1,94 @@
+diff --git a/dll/network.cpp b/dll/network.cpp
+index 0a46e53..e3bf024 100644
+--- a/dll/network.cpp
++++ b/dll/network.cpp
+@@ -750,6 +750,8 @@ Networking::Networking(CSteamID id, uint32 appid, uint16 port, std::set<IP_PORT>
+         enabled = false;
+         udp_socket = -1;
+         tcp_socket = -1;
++        // Disabling LAN sockets must not disable in-process client/server IPC.
++        ids.push_back(id);
+         return;
+     }
+ 
+@@ -911,6 +913,16 @@ void Networking::Run()
+     double time_extra = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_run).count();
+     last_run = now;
+ 
++    // Deliver only the current batch. Callbacks may enqueue replies for the
++    // next pump; keeping a separate batch avoids iterator invalidation/reentry.
++    std::vector<Common_Message> local_send_copy;
++    local_send_copy.swap(local_send);
++    for (auto &m : local_send_copy) {
++        m.set_source_ip(ntohl(own_ip));
++        m.set_source_port(ntohs(udp_port));
++        do_callbacks_message(&m);
++    }
++
+     if (!enabled || ids.size() == 0) {
+         return;
+     }
+@@ -963,16 +975,6 @@ void Networking::Run()
+         }
+     }
+ 
+-    // PRINT_DEBUG("RECV LOCAL %zu", local_send.size());
+-    std::vector<Common_Message> local_send_copy = local_send;
+-    local_send.clear();
+-
+-    for (auto & m: local_send_copy) {
+-        m.set_source_ip(ntohl(own_ip));
+-        m.set_source_port(ntohs(udp_port));
+-        do_callbacks_message(&m);
+-    }
+-
+     struct sockaddr_storage addr;
+ #if defined(STEAM_WIN32)
+     int addrlen = sizeof(addr);
+@@ -1140,7 +1142,6 @@ void Networking::Run()
+ 
+ void Networking::addListenId(CSteamID id)
+ {
+-    if (!enabled) return;
+     auto i = std::find(ids.begin(), ids.end(), id);
+     if (i != ids.end()) {
+         return;
+@@ -1148,7 +1149,7 @@ void Networking::addListenId(CSteamID id)
+ 
+     PRINT_DEBUG("ADDED ID %llu", (uint64)id.ConvertToUint64());
+     ids.push_back(id);
+-    send_announce_broadcasts();
++    if (enabled) send_announce_broadcasts();
+     return;
+ }
+ 
+@@ -1197,22 +1198,19 @@ uint16 Networking::getPort(CSteamID id)
+ 
+ bool Networking::sendTo(Common_Message *msg, bool reliable, Connection *conn)
+ {
++    // Socket pairs and the local game server are valid even with networking
++    // disabled. No socket, discovery packet or remote peer is involved.
++    CSteamID dest_id((uint64)msg->dest_id());
++    if (!conn && std::find(ids.begin(), ids.end(), dest_id) != ids.end()) {
++        local_send.push_back(*msg);
++        return true;
++    }
+     if (!enabled) return false;
+ 
+     size_t size = msg->ByteSizeLong();
+     if (size >= MAX_UDP_SIZE) reliable = true; //too big for UDP
+ 
+     bool ret = false;
+-    CSteamID dest_id((uint64)msg->dest_id());
+-    if (std::find(ids.begin(), ids.end(), dest_id) != ids.end()) {
+-        PRINT_DEBUG("sending to self");
+-        if (!conn) {
+-            PRINT_DEBUG("local send");
+-            local_send.push_back(*msg);
+-            ret = true;
+-        }
+-    }
+-
+     if (!conn) {
+         conn = find_connection(dest_id, this->appid);
+     }

@@ -14,6 +14,7 @@ import com.winlator.xenvironment.components.BionicProgramLauncherComponent;
 import com.winlator.xenvironment.components.GlibcProgramLauncherComponent;
 import com.winlator.xenvironment.components.GuestProgramLauncherComponent;
 import com.winlator.xenvironment.components.PulseAudioComponent;
+import com.winlator.xenvironment.components.XServerComponent;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -107,6 +108,10 @@ public class XEnvironment implements Iterable<EnvironmentComponent> {
     }
 
     public void pauseGameProcesses() {
+        if (app.gamenative.BuildConfig.XRGAME) {
+            XServerComponent xServerComponent = getComponent(XServerComponent.class);
+            if (xServerComponent != null) xServerComponent.getXServer().releasePressedKeys();
+        }
         GuestProgramLauncherComponent guestProgramLauncherComponent = getComponent(GuestProgramLauncherComponent.class);
         if (guestProgramLauncherComponent != null) guestProgramLauncherComponent.suspendProcess();
         GlibcProgramLauncherComponent glibcProgramLauncherComponent = getComponent(GlibcProgramLauncherComponent.class);

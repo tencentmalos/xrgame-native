@@ -107,6 +107,57 @@ Java_com_winlator_renderer_VulkanRenderer_nativeCopyWindowContentAHB(
     auto* r = reinterpret_cast<VulkanRendererContext*>(handle);
     return r && ahbPtr && r->copyWindowContentAHB(id, reinterpret_cast<AHardwareBuffer*>(ahbPtr), traceFrame);
 }
+
+// Each accepted job owns one callback reference, independent of Java window and
+// pixmap lifetimes. Rejection and shutdown release it through the same owner.
+class PresentJavaCallback {
+public:
+    JavaVM* vm;
+    jobject callback;
+    jmethodID method;
+    PresentJavaCallback(JNIEnv* env, jobject object) {
+        env->GetJavaVM(&vm);
+        callback = env->NewGlobalRef(object);
+        jclass cls = env->GetObjectClass(object);
+        method = env->GetMethodID(cls, "onComplete", "(I)V");
+        env->DeleteLocalRef(cls);
+    }
+    void withEnv(const std::function<void(JNIEnv*)>& action) {
+        JNIEnv* env = nullptr;
+        bool attached = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK;
+        if (attached && vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+        action(env);
+        if (attached) vm->DetachCurrentThread();
+    }
+    ~PresentJavaCallback() {
+        if (!callback) return;
+        withEnv([this](JNIEnv* env) { if (callback) env->DeleteGlobalRef(callback); });
+    }
+    void complete(int result) {
+        withEnv([this, result](JNIEnv* env) {
+            env->CallVoidMethod(callback, method, result);
+            if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
+            env->DeleteGlobalRef(callback);
+            callback = nullptr;
+        });
+    }
+};
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeQueueWindowContentAHB(
+    JNIEnv* env, jobject, jlong handle, jlong id, jlong ahbPtr, jlong traceFrame, jobject callback) {
+    auto* renderer = reinterpret_cast<VulkanRendererContext*>(handle);
+    if (!renderer || !ahbPtr || !callback) return false;
+    auto owner = std::make_shared<PresentJavaCallback>(env, callback);
+    if (!owner->callback || !owner->method || env->ExceptionCheck()) return false;
+    return renderer->queueWindowContentAHB(id, reinterpret_cast<AHardwareBuffer*>(ahbPtr), traceFrame,
+        [owner](PresentCopyQueue::Result result) { owner->complete(result); });
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeCancelWindowCopies(JNIEnv*, jobject, jlong handle, jlong id) {
+    auto* renderer = reinterpret_cast<VulkanRendererContext*>(handle);
+    if (renderer) renderer->cancelWindowCopies(id);
+}
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeEnableXrTarget(JNIEnv*, jobject, jlong handle) {
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle);

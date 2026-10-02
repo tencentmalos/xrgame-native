@@ -1,0 +1,506 @@
+{
+  "schema": 1,
+  "date": "2026-09-29",
+  "device": {
+    "model": "AYN Thor",
+    "sdk": 33,
+    "targetSdk": 36,
+    "build": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "bootId": "8bb14501-5800-4b9b-a9ab-7173603812f7"
+  },
+  "apkSha256": "6f485c301e23b0f2d21f13c38f2409ddbb1c54b37e33e84e539ea9f516c8d383",
+  "catalogSha256": "e8619cda78b93fbde4e3f509157476f08db3ecb04749215e1fa4eb885984f353",
+  "buildIds": {
+    "libvulkan_renderer.so": "6a799a63e3b40275cf373d803df361cecb183482",
+    "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+    "libevshim.so": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d",
+    "libxrgame_debugbus.so": "30a9c69fe7e2e2c13006718a8591f3d8619cdc23"
+  },
+  "scenario": {
+    "game": "Monster Hunter Rise: Sunbreak",
+    "steamAppId": 1446780,
+    "resolution": "1280x720",
+    "graphicsPreset": "Medium",
+    "gameFpsLimit": 60,
+    "gameVsync": false,
+    "appFpsLimit": 0,
+    "scene": "Original first character; Elgado outpost, fixed camera",
+    "noShaderCacheClear": true,
+    "gameConfigSha256": "e2c53482e1f0764b2239475c9fcfb3b2f38c4b001c3898b8b63279525a1bb0cd"
+  },
+  "phases": {
+    "a1": {
+      "async": false,
+      "pids": {
+        "guest": 30774,
+        "app": 17019,
+        "wineserver": 30656
+      },
+      "processIdentities": [
+        {
+          "pid": 30774,
+          "startTicks": 143290765
+        },
+        {
+          "pid": 17019,
+          "startTicks": 138606591
+        },
+        {
+          "pid": 30656,
+          "startTicks": 143290606
+        }
+      ],
+      "loadDurationSeconds": 29.000027384,
+      "presentFps": 28.871649371718387,
+      "surface": {
+        "frames": 853,
+        "first": 1349091116660351,
+        "last": 1349121046286589,
+        "duration": 29.929626238,
+        "fps": 28.46677713997853,
+        "interval_ms": {
+          "mean": 35.12866929342723,
+          "p50": 33.440156,
+          "p95": 66.886928,
+          "max": 83.623958
+        }
+      },
+      "gpuBusyPercent": 74.25171349032702,
+      "gpuCurrentMHz": 585.2,
+      "gpuMaxMHz": 680.0,
+      "systemCpuPercent": 47.45,
+      "hottestThread": {
+        "pid": 30774,
+        "tid": 31064,
+        "name": "MonsterHunterRi",
+        "cpu": 48.96329594445186,
+        "runqueue": 2.1949307687591664,
+        "cores": {
+          "6": 4,
+          "4": 7,
+          "3": 9,
+          "7": 3,
+          "5": 7
+        }
+      },
+      "perfDurationSeconds": 8.047674112,
+      "surfaceQueryOffCpuSeconds": {
+        "31064": 2.557145707
+      },
+      "traceComplete": 897,
+      "traceIncomplete": 2,
+      "traceErrors": [],
+      "traceSummary": {
+        "copy_wall_ns": {
+          "mean": 14914769.576365663,
+          "p50": 21365104,
+          "p95": 34183645,
+          "max": 44419063
+        },
+        "lock_wait_ns": {
+          "mean": 1408927.5875139353,
+          "p50": 1771,
+          "p95": 11118177,
+          "max": 30476406
+        },
+        "fence_wait_ns": {
+          "mean": 12395307.120401338,
+          "p50": 13125312,
+          "p95": 32507240,
+          "max": 33855157
+        },
+        "receive_to_idle_ns": {
+          "mean": 15251473.413600892,
+          "p50": 21711407,
+          "p95": 34614896,
+          "max": 44797344
+        }
+      },
+      "traceThreads": {
+        "idle": [
+          30618
+        ],
+        "receive": [
+          30618
+        ],
+        "copy_done": [
+          30618
+        ],
+        "complete": [
+          30618
+        ]
+      },
+      "perfSamples": 240074,
+      "perfLost": 0
+    },
+    "b1": {
+      "async": true,
+      "pids": {
+        "guest": 30774,
+        "app": 17019,
+        "wineserver": 30656
+      },
+      "processIdentities": [
+        {
+          "pid": 30774,
+          "startTicks": 143290765
+        },
+        {
+          "pid": 17019,
+          "startTicks": 138606591
+        },
+        {
+          "pid": 30656,
+          "startTicks": 143290606
+        }
+      ],
+      "loadDurationSeconds": 29.000592645,
+      "presentFps": 42.214378737266436,
+      "surface": {
+        "frames": 1265,
+        "first": 1349158060651784,
+        "last": 1349187980974116,
+        "duration": 29.920322332,
+        "fps": 42.245534188251135,
+        "interval_ms": {
+          "mean": 23.671141085443036,
+          "p50": 16.7177345,
+          "p95": 33.438177,
+          "max": 66.864062
+        }
+      },
+      "gpuBusyPercent": 96.93778942935766,
+      "gpuCurrentMHz": 680.0,
+      "gpuMaxMHz": 680.0,
+      "systemCpuPercent": 63.17,
+      "hottestThread": {
+        "pid": 30774,
+        "tid": 31064,
+        "name": "MonsterHunterRi",
+        "cpu": 68.1569593799589,
+        "runqueue": 3.0682961444700503,
+        "cores": {
+          "7": 11,
+          "5": 4,
+          "6": 5,
+          "4": 6,
+          "3": 4
+        }
+      },
+      "perfDurationSeconds": 8.049299007,
+      "surfaceQueryOffCpuSeconds": {
+        "31064": 0.322781035
+      },
+      "traceComplete": 1331,
+      "traceIncomplete": 2,
+      "traceErrors": [],
+      "traceSummary": {
+        "copy_wall_ns": {
+          "mean": 19149622.270473327,
+          "p50": 21926667,
+          "p95": 22673021,
+          "max": 26747344
+        },
+        "lock_wait_ns": {
+          "mean": 416.7738542449286,
+          "p50": 312,
+          "p95": 730,
+          "max": 52968
+        },
+        "fence_wait_ns": {
+          "mean": 18269109.490608566,
+          "p50": 21080365,
+          "p95": 21820469,
+          "max": 23204480
+        },
+        "receive_to_idle_ns": {
+          "mean": 20377014.273478586,
+          "p50": 23175625,
+          "p95": 24102969,
+          "max": 30348282
+        },
+        "receive_to_enqueue_return_ns": {
+          "mean": 300306.5987978963,
+          "p50": 171198,
+          "p95": 868282,
+          "max": 4742604
+        },
+        "receive_to_dequeue_ns": {
+          "mean": 876925.9173553719,
+          "p50": 854062,
+          "p95": 1578593,
+          "max": 7836979
+        }
+      },
+      "traceThreads": {
+        "copy_dequeue": [
+          30613
+        ],
+        "copy_done": [
+          30613
+        ],
+        "complete": [
+          30613
+        ],
+        "idle": [
+          30613
+        ],
+        "receive": [
+          30618
+        ],
+        "enqueue_return": [
+          30618
+        ]
+      },
+      "perfSamples": 332462,
+      "perfLost": 0
+    },
+    "a2": {
+      "async": false,
+      "pids": {
+        "guest": 30774,
+        "app": 17019,
+        "wineserver": 30656
+      },
+      "processIdentities": [
+        {
+          "pid": 30774,
+          "startTicks": 143290765
+        },
+        {
+          "pid": 17019,
+          "startTicks": 138606591
+        },
+        {
+          "pid": 30656,
+          "startTicks": 143290606
+        }
+      ],
+      "loadDurationSeconds": 29.000032437,
+      "presentFps": 29.075564107406578,
+      "surface": {
+        "frames": 871,
+        "first": 1349228479311392,
+        "last": 1349258433608568,
+        "duration": 29.954297176,
+        "fps": 29.044246803328836,
+        "interval_ms": {
+          "mean": 34.43022663908046,
+          "p50": 33.430103,
+          "p95": 66.862917,
+          "max": 83.607343
+        }
+      },
+      "gpuBusyPercent": 73.82418166960882,
+      "gpuCurrentMHz": 591.7,
+      "gpuMaxMHz": 680.0,
+      "systemCpuPercent": 48.75,
+      "hottestThread": {
+        "pid": 30774,
+        "tid": 31064,
+        "name": "MonsterHunterRi",
+        "cpu": 50.22426221295195,
+        "runqueue": 2.0121466562758243,
+        "cores": {
+          "2": 1,
+          "5": 3,
+          "7": 3,
+          "3": 6,
+          "4": 9,
+          "6": 8
+        }
+      },
+      "perfDurationSeconds": 8.049920934,
+      "surfaceQueryOffCpuSeconds": {
+        "31064": 2.653927343
+      },
+      "traceComplete": 914,
+      "traceIncomplete": 2,
+      "traceErrors": [],
+      "traceSummary": {
+        "copy_wall_ns": {
+          "mean": 13776641.269146608,
+          "p50": 16703411.5,
+          "p95": 33642969,
+          "max": 44015313
+        },
+        "lock_wait_ns": {
+          "mean": 776838.3118161926,
+          "p50": 1719.0,
+          "p95": 5849583,
+          "max": 31300417
+        },
+        "fence_wait_ns": {
+          "mean": 11918841.496717725,
+          "p50": 8615989.5,
+          "p95": 32063958,
+          "max": 33559427
+        },
+        "receive_to_idle_ns": {
+          "mean": 14114634.817286652,
+          "p50": 16983255.0,
+          "p95": 34024896,
+          "max": 44272552
+        }
+      },
+      "traceThreads": {
+        "idle": [
+          30618
+        ],
+        "receive": [
+          30618
+        ],
+        "copy_done": [
+          30618
+        ],
+        "complete": [
+          30618
+        ]
+      },
+      "perfSamples": 226746,
+      "perfLost": 0
+    }
+  },
+  "gainPercent": 46.91282224394235,
+  "queryWaitReductionPercent": 87.61172480589194,
+  "uiBuildFollowup": {
+    "apkSha256": "053ed5ea044a33b185db1ec0761bee79d09a04e5876cb31e0c7d57c71be3a471",
+    "catalogSha256": "e8619cda78b93fbde4e3f509157476f08db3ecb04749215e1fa4eb885984f353",
+    "buildIds": {
+      "libvulkan_renderer.so": "6a799a63e3b40275cf373d803df361cecb183482",
+      "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+      "libevshim.so": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d",
+      "libxrgame_debugbus.so": "30a9c69fe7e2e2c13006718a8591f3d8619cdc23"
+    },
+    "sameDeviceAndBoot": true,
+    "pids": {
+      "guest": 13825,
+      "app": 9477,
+      "wineserver": 13706
+    },
+    "processIdentities": [
+      {
+        "pid": 13825,
+        "startTicks": 143523734
+      },
+      {
+        "pid": 9477,
+        "startTicks": 143480224
+      },
+      {
+        "pid": 13706,
+        "startTicks": 143523601
+      }
+    ],
+    "capture": {
+      "samplerExit": 0,
+      "simpleperfExit": 0,
+      "wallSeconds": 34.91277395799989
+    },
+    "loadDurationSeconds": 29.00004478,
+    "presentFps": 42.04464502513027,
+    "surface": {
+      "frames": 1264,
+      "first": 1351358152549122,
+      "last": 1351388148308016,
+      "duration": 29.995758894,
+      "fps": 42.105952526929926,
+      "interval_ms": {
+        "mean": 23.749611159144894,
+        "p50": 16.722395,
+        "p95": 33.446718,
+        "max": 66.887759
+      }
+    },
+    "gpuBusyPercent": 96.91324585315168,
+    "gpuCurrentMHz": 680.0,
+    "perfDurationSeconds": 8.037927549,
+    "surfaceQueryOffCpuSeconds": {
+      "14110": 0.311176526
+    },
+    "traceComplete": 1322,
+    "traceIncomplete": 2,
+    "traceDiagnostics": [],
+    "persistentOptInViaUi": true,
+    "savedAndReopenedChecked": true,
+    "startedWithoutDebugBusOverride": true,
+    "editorNormalization": "Existing editor sets DXVK async=0 for non-async version and inserts vkd3dFeatureLevel=12_1; not a variable in earlier same-process ABA.",
+    "pauseMenuRegression": {
+      "trigger": "Shift+Esc held 120 ms",
+      "completedResumeCycles": 2,
+      "minimumPauseSecondsPerCycle": 12,
+      "sameGuestPid": 13825,
+      "noObservedAnr": true,
+      "scope": "Menu limiter changes were made while paused; in-flight retirement tested separately by unit test."
+    },
+    "limiterOn": {
+      "pendingIdles": 0,
+      "cpuQueuedIdles": 0,
+      "frameRateLimit": 60,
+      "eagerIdleRelease": false,
+      "traceFramesRemaining": 0,
+      "asyncCopyRequested": true,
+      "asyncCopyActive": false,
+      "outstandingCopies": 0,
+      "requestedFrameRateLimit": 60,
+      "asyncCompleted": 16825,
+      "asyncSkipped": 1,
+      "asyncFailed": 0,
+      "atomicSnapshot": false,
+      "active": true,
+      "renderer": "VulkanRenderer",
+      "scope": "host_present_queue_not_guest_or_gpu_execution",
+      "schema": 1,
+      "sampledAtBootNs": 1435699565612139
+    },
+    "resumedAsync": {
+      "pendingIdles": 0,
+      "cpuQueuedIdles": 0,
+      "frameRateLimit": 0,
+      "eagerIdleRelease": false,
+      "traceFramesRemaining": 0,
+      "asyncCopyRequested": true,
+      "asyncCopyActive": true,
+      "outstandingCopies": 1,
+      "requestedFrameRateLimit": 0,
+      "asyncCompleted": 17228,
+      "asyncSkipped": 1,
+      "asyncFailed": 0,
+      "atomicSnapshot": false,
+      "active": true,
+      "renderer": "VulkanRenderer",
+      "scope": "host_present_queue_not_guest_or_gpu_execution",
+      "schema": 1,
+      "sampledAtBootNs": 1435817688962823
+    },
+    "simpleperfSamples": 307700,
+    "simpleperfLostSamples": 0,
+    "cleanup": {
+      "present": {
+        "pendingIdles": 0,
+        "cpuQueuedIdles": 0,
+        "frameRateLimit": 0,
+        "eagerIdleRelease": false,
+        "traceFramesRemaining": 0,
+        "asyncCopyRequested": true,
+        "asyncCopyActive": true,
+        "outstandingCopies": 0,
+        "requestedFrameRateLimit": 0,
+        "asyncCompleted": 19815,
+        "asyncSkipped": 1,
+        "asyncFailed": 0,
+        "atomicSnapshot": false,
+        "active": true,
+        "renderer": "VulkanRenderer",
+        "scope": "host_present_queue_not_guest_or_gpu_execution",
+        "schema": 1,
+        "sampledAtBootNs": 1435879359561862
+      },
+      "profilerCaptureActive": 0,
+      "profilerCaptureState": "ready",
+      "profilerRecordingActive": 0,
+      "debugBusServiceStopped": true,
+      "gameLeftPaused": true
+    }
+  }
+}

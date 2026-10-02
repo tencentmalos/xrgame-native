@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
+import app.gamenative.BuildConfig
+import app.gamenative.xrgame.XrGamePresentSettings
 import app.gamenative.ui.component.settings.SettingsListDropdown
 import app.gamenative.ui.component.settings.SettingsListDropdownSearchable
 import app.gamenative.ui.component.settings.SettingsMultiListDropdown
@@ -104,7 +106,7 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                     },
                 )
             }
-            DxWrapperSection(state)
+            DxWrapperSection(state, default)
             // Bionic: Exposed Vulkan Extensions (same UI as Vortek)
             SettingsMultiListDropdown(
                 colors = settingsTileColors(),
@@ -172,17 +174,34 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                     state.config.value = config.copy(graphicsDriverConfig = cfg.toString())
                 },
             )
-            if (app.gamenative.BuildConfig.XR_BUILD && !default) {
-                val xrRates = listOf(72, 90, 120)
+            if (BuildConfig.XRGAME && !default) {
                 SettingsListDropdown(
                     colors = settingsTileColors(),
-                    title = { Text(text = stringResource(R.string.xr_refresh_rate)) },
-                    value = xrRates.indexOf(config.xrRefreshRate).coerceAtLeast(0),
-                    items = xrRates.map { "$it Hz" },
-                    onItemSelected = { idx ->
-                        state.config.value = config.copy(xrRefreshRate = xrRates[idx])
-                    },
+                    title = { Text(stringResource(R.string.xrgame_vr_mode)) },
+                    value = if (!config.windowsVrEnabled) 0 else if (config.xrPresentationMode == "openxr") 2 else 1,
+                    items = listOf(stringResource(R.string.xrgame_vr_off), stringResource(R.string.xrgame_vr_sbs), stringResource(R.string.xrgame_vr_openxr)),
+                    onItemSelected = { idx -> state.config.value = config.copy(
+                        windowsVrEnabled = idx != 0, xrPresentationMode = if (idx == 2) "openxr" else "sbs",
+                    ) },
                 )
+                if (config.windowsVrEnabled) Text(
+                    stringResource(R.string.xrgame_vr_mode_desc), Modifier.padding(horizontal = 16.dp),
+                )
+            }
+            if (!default && (BuildConfig.XR_BUILD || BuildConfig.XRGAME && config.windowsVrEnabled)) {
+                // SBS follows the Android display clock; only a headset negotiates XR rates.
+                if (!BuildConfig.XRGAME || config.xrPresentationMode == "openxr") {
+                    val xrRates = listOf(72, 90, 120)
+                    SettingsListDropdown(
+                        colors = settingsTileColors(),
+                        title = { Text(text = stringResource(R.string.xr_refresh_rate)) },
+                        value = xrRates.indexOf(config.xrRefreshRate).coerceAtLeast(0),
+                        items = xrRates.map { "$it Hz" },
+                        onItemSelected = { idx ->
+                            state.config.value = config.copy(xrRefreshRate = xrRates[idx])
+                        },
+                    )
+                }
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text(text = stringResource(R.string.xr_render_scale))
                     Slider(
@@ -324,7 +343,7 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                     state.config.value = config.copy(graphicsDriverVersion = selectedVersion)
                 },
             )
-            DxWrapperSection(state)
+            DxWrapperSection(state, default)
             // Vortek/Adreno specific settings
             run {
                 val driverType = StringUtils.parseIdentifier(state.graphicsDrivers.value.getOrNull(state.graphicsDriverIndex.value).orEmpty())
@@ -417,7 +436,7 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
     }
 }
 @Composable
-private fun DxWrapperSection(state: ContainerConfigState) {
+private fun DxWrapperSection(state: ContainerConfigState, default: Boolean) {
     val config = state.config.value
     SettingsListDropdown(
         colors = settingsTileColorsAlt(),
@@ -429,6 +448,19 @@ private fun DxWrapperSection(state: ContainerConfigState) {
             state.config.value = config.copy(displayRenderer = StringUtils.parseIdentifier(state.displayRenderers[it]))
         },
     )
+    if (BuildConfig.XRGAME && !default) {
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(stringResource(R.string.xrgame_async_present)) },
+            subtitle = { Text(stringResource(R.string.xrgame_async_present_description)) },
+            state = XrGamePresentSettings.asyncCopyEnabled(config.envVars),
+            onCheckedChange = { enabled ->
+                state.config.value = config.copy(
+                    envVars = XrGamePresentSettings.withAsyncCopy(config.envVars, enabled),
+                )
+            },
+        )
+    }
     // Show color correction toggle only for ASurfaceRenderer (SurfaceFlinger)
     if (StringUtils.parseIdentifier(state.displayRenderers.getOrNull(state.displayRendererIndex.value).orEmpty()) == "surfaceflinger") {
         SettingsSwitch(

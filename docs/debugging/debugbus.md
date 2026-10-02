@@ -33,6 +33,8 @@ python3 tools/xrgame/debugbus.py --serial <device> modules libxrgame_debugbus.so
 python3 tools/xrgame/debugbus.py --serial <device> present
 python3 tools/xrgame/debugbus.py --serial <device> present trace 120
 python3 tools/xrgame/debugbus.py --serial <device> present trace 0
+python3 tools/xrgame/debugbus.py --serial <device> present async_copy 1
+python3 tools/xrgame/debugbus.py --serial <device> present async_copy 0
 python3 tools/xrgame/debugbus.py --serial <device> --stop
 ```
 
@@ -50,6 +52,17 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 | `modules [exact-basename]` | 当前 Android host 已加载 ELF 的名称、基址、GNU Build ID；超过 256 个时显式标记 truncated，可按完整文件名查询；不是 Wine PE/FEX guest 模块表 |
 | `present` | 当前 host Present 的待归还队列、CPU pacing 队列、限帧、trace 余量；近似并发快照，不获取 GPU 锁 |
 | `present trace N` | 当前会话最多记录 N 帧（0–3600），0 停止；仍通过 `XRGamePresentTrace`/原生 present trace 输出 logcat |
+| `present async_copy 0/1` | 当前会话的 AHB GPU copy 对照开关，初始关闭；在已接收任务归还后切换。查看 `asyncCopyRequested/Active`、`outstandingCopies` 和完成/跳过/失败计数 |
+
+`async_copy` 首轮只覆盖无 wait/idle X fence、无偏移、未启用 Present 限帧的 AHB copy；
+直接采样及其他路径不纳入这次优化。picoXr 可在游戏详情 → 编辑容器 → 图形中切换
+**异步呈现（实验性）**，保存并重启游戏后生效；默认关闭。需要 Vulkan、DRI3，
+并关闭快捷菜单 FPS 限制器，游戏内限帧可保留。配置沿用容器环境变量
+`XRGAME_PRESENT_ASYNC_COPY=1`；UI 关闭会写 `0`，已有 opt-in 可直接读回。
+运行中启用快捷菜单限帧会在已接收 copy 归还后切回同步，关闭限帧则恢复用户的异步选择。
+`requestedFrameRateLimit` 为请求值，`frameRateLimit` 为当前生效值。
+验证与限制见 [MHW](../validation/mhw-present-async-20260928.md) 和
+[MHR / UI 验证](../validation/mhr-present-async-20260929.md)。
 
 JSON 返回 `schema: 1`。Kotlin provider 的 `sampledAtBootNs` 使用 Android elapsed realtime
 （含休眠）；现有 Present trace `mono_ns` 使用 `System.nanoTime`（CLOCK_MONOTONIC），两者

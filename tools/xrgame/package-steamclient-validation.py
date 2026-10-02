@@ -21,10 +21,22 @@ def main():
     parser.add_argument('--loader', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--loader-build-record', type=Path, help='Use the source loader produced by build-steamclient-loader.sh')
+    parser.add_argument('--client-build-record', type=Path, help='Recorded rebuild with the offline local IPC patch')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     payload = {}
     hashes = dict(HASHES)
+    client_record = None
+    if args.client_build_record:
+        client_record = json.loads(args.client_build_record.read_text())
+        patch = root / 'tools/xrgame/patches/gbe-offline-local-ipc.patch'
+        if (client_record.get('kind') != 'source-built-offline-local-ipc' or
+                client_record.get('commit') != PIN or
+                client_record.get('patchSha256') != hashlib.sha256(patch.read_bytes()).hexdigest() or
+                client_record.get('baselineNetworkSha256') !=
+                    '856ec8da737af73ca30e793c5cb959336c8c9c7c043a6de1a23725973d677098'):
+            raise ValueError('Unrecognized patched client build')
+        hashes['steamclient64.dll'] = client_record['binarySha256']
     loader_record = None
     if args.loader_build_record:
         loader_record = json.loads(args.loader_build_record.read_text())
@@ -42,7 +54,7 @@ def main():
     payload['provenance.json'] = (json.dumps({
         'kind': 'source-built-validation' if loader_record else 'mixed-build-validation', 'releaseReady': False,
         'clientSource': f'https://github.com/tencentmalos/gbe_fork/tree/{PIN}',
-        'clientCommit': PIN, 'clientBuild': 'MSVC source build; source-build-identity.json in private evidence',
+        'clientCommit': PIN, 'clientBuild': client_record or 'MSVC source build; source-build-identity.json in private evidence',
         'loaderCommit': PIN if loader_record else LOADER_PIN, 'loaderRelease': None if loader_record else '2026_09_16_2',
         'loaderBuild': loader_record if loader_record else 'fixed upstream release; NOT built by this recipe',
         'loaderArchiveSha256': None if loader_record else 'd311deadc2a8a8aed620fe66976646059388123587aa22d408f723c592fc9688',

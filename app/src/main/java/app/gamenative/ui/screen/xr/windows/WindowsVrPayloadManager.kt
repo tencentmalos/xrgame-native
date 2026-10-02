@@ -1,7 +1,9 @@
 package app.gamenative.ui.screen.xr.windows
 
 import android.content.Context
+import app.gamenative.BuildConfig
 import com.winlator.container.Container
+import com.winlator.core.WineRegistryEditor
 import com.winlator.xenvironment.ImageFs
 import java.io.File
 import java.io.FileOutputStream
@@ -40,7 +42,15 @@ class WindowsVrPayloadManager(
         check(bridge.parentFile?.exists() == true || bridge.parentFile?.mkdirs() == true)
         check(unixlib.parentFile?.exists() == true || unixlib.parentFile?.mkdirs() == true)
         sharedAssets.forEach { (name, assetPath) ->
-            installSharedFile(assetPath, targets.getValue(name), prefixDirectory, name)
+            if (BuildConfig.XRGAME && name in listOf("bridge", "bridge32")) {
+                check(targets.getValue(name).isFile) { "Bundled Wine XR builtin missing: $name" }
+            } else if (BuildConfig.XRGAME && name in listOf("bridgePrefix", "bridge32Prefix")) {
+                val source = targets.getValue(if (name == "bridgePrefix") "bridge" else "bridge32")
+                check(peMachineOf(source) == if (name == "bridgePrefix") 0xaa64 else 0x14c) {
+                    "Unexpected Wine XR builtin architecture: $name"
+                }
+                installSharedFile(assetPath, targets.getValue(name), prefixDirectory, name, source.readBytes())
+            } else installSharedFile(assetPath, targets.getValue(name), prefixDirectory, name)
         }
         val manifest = File(prefixDirectory, "active_runtime.json")
         val manifest64 = File(prefixDirectory, "active_runtime64.json")
@@ -53,7 +63,18 @@ class WindowsVrPayloadManager(
         writeIfChanged(manifest32, json32.toByteArray())
         val marker = File(prefixDirectory, "payload.version")
         copyAssetIfChanged("payload.version", marker)
-        installRegistry(container, prefixDirectory)
+        if (BuildConfig.XRGAME) {
+            // Wine's high-integrity token makes the Khronos loader ignore XR_RUNTIME_JSON.
+            // Select the durable runtime within this game's prefix. Update only these two
+            // values; never roll back a whole registry file and lose new game settings.
+            WineRegistryEditor(File(container.rootDir, ".wine/system.reg")).use { registry ->
+                registry.setStringValue("Software\\Khronos\\OpenXR\\1", "ActiveRuntime",
+                    "C:\\gamenative-xr\\active_runtime64.json")
+                registry.setStringValue("Software\\Wow6432Node\\Khronos\\OpenXR\\1", "ActiveRuntime",
+                    "C:\\gamenative-xr\\active_runtime32.json")
+            }
+            diagnostics.record("registry", "selected per-prefix OpenXR runtime in both registry views")
+        } else installRegistry(container, prefixDirectory)
         diagnostics.record("payload", "prepared path=${prefixDirectory.path} runtime64=${runtime64.length()} runtime32=${runtime32.length()} bridge64=${bridge.length()} bridge32=${bridge32.length()} unixlib=${unixlib.length()} manifest=${manifest.length()}")
         return PreparedPayload(prefixDirectory, manifest)
     }
@@ -75,6 +96,9 @@ class WindowsVrPayloadManager(
             .filter { runCatching { peMachineOf(it) == 0x8664 }.getOrDefault(false) }
         check(targets.isNotEmpty()) { "No x64 openvr_api.dll was found under the launched game" }
         val adapter = context.assets.open("opencomposite_x64.dll").use { it.readBytes() }
+        if (BuildConfig.XRGAME) check(sha256(adapter) == "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5") {
+            "OpenComposite payload checksum mismatch"
+        }
         val record = File(File(container.rootDir, ".wine/drive_c/gamenative-xr"), "opencomposite.targets")
         val encodedTargets = targets.map { checkNotNull(it.parentFile).canonicalPath }
             .distinct()
@@ -86,7 +110,7 @@ class WindowsVrPayloadManager(
             val backup = File(directory, "openvr_api.dll.gamenative-original")
             val owner = File(directory, "openvr_api.dll.gamenative-owner")
             check(!backup.exists() && !owner.exists())
-            writeIfChanged(owner, "2\n".toByteArray())
+            writeIfChanged(owner, ("3\n" + sha256(adapter) + "\n").toByteArray())
             openCompositeDirectories += directory
             writeIfChanged(backup, target.readBytes())
             writeIfChanged(target, adapter)
@@ -242,16 +266,24 @@ class WindowsVrPayloadManager(
 
     private fun restoreOpenCompositeDirectory(directory: File) {
         val owner = File(directory, "openvr_api.dll.gamenative-owner")
-        if (!owner.isFile || owner.readText().trim() != "2") return
+        if (!owner.isFile) return
+        val record = owner.readLines()
+        if (record.firstOrNull() !in listOf("2", "3")) return
         val target = File(directory, "openvr_api.dll")
         val backup = File(directory, "openvr_api.dll.gamenative-original")
+        if (backup.isFile && record.first() == "3" && target.isFile &&
+            sha256(target.readBytes()) != record.getOrNull(1) && !target.readBytes().contentEquals(backup.readBytes())) {
+            // Preserve an externally updated DLL and its original backup for explicit recovery.
+            diagnostics.record("opencomposite", "restore deferred: DLL changed externally path=${target.path}")
+            return
+        }
         if (backup.isFile) atomicReplace(backup, target)
         backup.delete()
         owner.delete()
         diagnostics.record("opencomposite", "restored path=${target.path}")
     }
 
-    private fun installSharedFile(assetPath: String, target: File, payloadDirectory: File, name: String) {
+    private fun installSharedFile(assetPath: String, target: File, payloadDirectory: File, name: String, bytes: ByteArray? = null) {
         val backup = File(payloadDirectory, "$name.backup")
         val missing = File(payloadDirectory, "$name.missing")
         val targetRecord = File(payloadDirectory, "$name.target")
@@ -259,8 +291,8 @@ class WindowsVrPayloadManager(
         validateSharedTarget(canonicalTarget)
         if (canonicalTarget.isFile) writeIfChanged(backup, canonicalTarget.readBytes()) else writeIfChanged(missing, byteArrayOf(1))
         writeIfChanged(targetRecord, canonicalTarget.path.toByteArray())
-        copyAssetIfChanged(assetPath, canonicalTarget)
         fileMutations += FileMutation(canonicalTarget, backup, missing, targetRecord)
+        if (bytes == null) copyAssetIfChanged(assetPath, canonicalTarget) else writeIfChanged(canonicalTarget, bytes)
     }
 
     private fun validateSharedTarget(target: File) {

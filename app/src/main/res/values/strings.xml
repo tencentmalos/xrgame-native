@@ -2624,4 +2624,6 @@
     <string name="gyro_degrees_per_second_value">%1$.1f°/s</string>
     <string name="gyro_milliseconds_value">%1$d ms</string>
     <string name="reset_gyro_settings">Reset gyro settings</string>
+    <string name="xrgame_async_present">Asynchronous presentation (experimental)</string>
+    <string name="xrgame_async_present_description">May improve frame rate by reducing presentation stalls. Requires Vulkan, DRI3, and the quick menu FPS limiter to be off. The in-game frame limit can stay on. Restart the game to apply.</string>
 </resources>

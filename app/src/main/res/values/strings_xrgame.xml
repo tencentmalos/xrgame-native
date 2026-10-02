@@ -4,4 +4,13 @@
     <string name="xrgame_notice_title">Unofficial Steam client</string>
     <string name="xrgame_notice_message">XRGame Native is not an official Valve client. Sign in only with a dedicated test account, never your main Steam account.\n\nGames are installed to %1$s so they survive reinstalling the app. The next screen asks for All files access for that folder.</string>
     <string name="xrgame_notice_accept">Continue</string>
+    <string name="xrgame_vr_mode">VR output (experimental)</string>
+    <string name="xrgame_vr_off">Off</string>
+    <string name="xrgame_vr_sbs">SBS — simulated tracking</string>
+    <string name="xrgame_vr_openxr">OpenXR headset</string>
+    <string name="xrgame_vr_mode_desc">SBS uses the gyroscope and simulated hands, without positional tracking. OpenVR games also need OpenComposite. Headset mode requires a working OpenXR runtime.</string>
+    <string name="xrgame_sbs_waiting">Waiting for VR eye frames…</string>
+    <string name="xrgame_sbs_controls">SBS · Fixed controllers · Touch each half to trigger</string>
+    <string name="xrgame_vr_recenter">Recenter</string>
+    <string name="xrgame_vr_menu">Menu</string>
 </resources>

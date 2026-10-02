@@ -37,6 +37,29 @@ public class PresentExtension implements Extension {
     public enum Mode { COPY, FLIP, SKIP }
 
     private final XrGamePresentTrace presentTrace = new XrGamePresentTrace();
+    private final Object copyModeLock = new Object();
+    private boolean asyncCopyRequested = false, asyncCopyActive = false;
+    private int outstandingCopies = 0;
+    private int requestedFrameRateLimit = 0;
+    private volatile boolean closed = false;
+    private final java.util.concurrent.atomic.AtomicLong asyncCompleted = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong asyncSkipped = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong asyncFailed = new java.util.concurrent.atomic.AtomicLong();
+
+    public void setAsyncCopy(boolean enabled) {
+        synchronized (copyModeLock) {
+            asyncCopyRequested = app.gamenative.BuildConfig.XRGAME && enabled;
+            applyCopySettingsWhenDrained();
+        }
+    }
+
+    // copyModeLock held: keep the current mode/cap until every accepted copy retires.
+    private void applyCopySettingsWhenDrained() {
+        if (outstandingCopies == 0) {
+            frameRateLimit = requestedFrameRateLimit;
+            asyncCopyActive = asyncCopyRequested && frameRateLimit == 0;
+        }
+    }
 
     public void setTraceFrames(int frames) { presentTrace.configure(frames); }
 
@@ -48,6 +71,15 @@ public class PresentExtension implements Extension {
         result.put("frameRateLimit", frameRateLimit);
         result.put("eagerIdleRelease", eagerIdleRelease);
         result.put("traceFramesRemaining", presentTrace.remainingFrames());
+        synchronized (copyModeLock) {
+            result.put("asyncCopyRequested", asyncCopyRequested);
+            result.put("asyncCopyActive", asyncCopyActive);
+            result.put("outstandingCopies", outstandingCopies);
+            result.put("requestedFrameRateLimit", requestedFrameRateLimit);
+        }
+        result.put("asyncCompleted", asyncCompleted.get());
+        result.put("asyncSkipped", asyncSkipped.get());
+        result.put("asyncFailed", asyncFailed.get());
         result.put("atomicSnapshot", false);
         return result;
     }
@@ -100,10 +132,14 @@ public class PresentExtension implements Extension {
     private static final long FIRE_EARLY_NS = 700_000L; // 0.7 ms
 
     public void setFrameRateLimit(int limit) {
-        this.frameRateLimit = Math.max(0, limit);
+        synchronized (copyModeLock) {
+            requestedFrameRateLimit = Math.max(0, limit);
+            applyCopySettingsWhenDrained();
+        }
     }
 
     public void close() {
+        closed = true;
         if (cpuPacerThread != null) {
             cpuPacerThread.interrupt();
             cpuPacerThread = null;
@@ -364,6 +400,57 @@ public class PresentExtension implements Extension {
             if (app.gamenative.BuildConfig.XRGAME && pixmap.drawable.getTexture() instanceof GPUImage && vr != null) {
                 // Release the guest image only after the host GPU has finished reading it.
                 XrGamePresentTrace.Frame trace = presentTrace.begin(windowId, pixmapId, serial, waitFence, idleFence);
+                final boolean queuedCopy;
+                synchronized (copyModeLock) {
+                    // Switching modes waits for accepted copies to retire. Unsupported
+                    // request shapes retain the existing synchronous path when drained.
+                    applyCopySettingsWhenDrained();
+                    queuedCopy = asyncCopyActive && waitFence == 0 && idleFence == 0 && frameRateLimit == 0
+                            && xOff == 0 && yOff == 0 && !vr.canSampleHardwareBuffers();
+                    if (!queuedCopy && outstandingCopies != 0) throw new com.winlator.xserver.errors.BadAlloc();
+                    if (queuedCopy) ++outstandingCopies;
+                }
+                if (queuedCopy) {
+                    final short sequence = client.getSequenceNumber();
+                    final byte opcode = client.getRequestData();
+                    boolean accepted = vr.queueHardwarePixmap(window, (GPUImage)pixmap.drawable.getTexture(),
+                            trace == null ? 0 : trace.id, result -> {
+                                try {
+                                    if (result < 0) {
+                                        asyncFailed.incrementAndGet();
+                                        if (trace != null) trace.event("copy_failed", " mode=async");
+                                        android.util.Log.e("PresentExtension", "Asynchronous copy failed; no Idle/Complete sent");
+                                        if (!closed) try {
+                                            new com.winlator.xserver.errors.BadAlloc().sendError(client, MAJOR_OPCODE, sequence, opcode);
+                                        } catch (IOException ignored) {}
+                                        return;
+                                    }
+                                    if (result == 0) asyncCompleted.incrementAndGet();
+                                    else asyncSkipped.incrementAndGet();
+                                    if (closed) return;
+                                    long doneUst = System.nanoTime() / 1000;
+                                    sendCompleteNotify(window, serial, Kind.PIXMAP, result == 0 ? Mode.COPY : Mode.SKIP,
+                                            doneUst, doneUst / 16667);
+                                    if (trace != null) trace.event("complete", " mode=async result=" + result);
+                                    sendIdleNotify(window, pixmap, serial, idleFence, trace);
+                                } finally {
+                                    synchronized (copyModeLock) {
+                                        --outstandingCopies;
+                                        applyCopySettingsWhenDrained();
+                                    }
+                                }
+                            });
+                    if (!accepted) {
+                        synchronized (copyModeLock) {
+                            --outstandingCopies;
+                            applyCopySettingsWhenDrained();
+                        }
+                        if (trace != null) trace.event("copy_rejected", " mode=async");
+                        throw new com.winlator.xserver.errors.BadAlloc();
+                    }
+                    if (trace != null) trace.event("enqueue_return", " mode=async");
+                    return;
+                }
                 if (vr.canSampleHardwareBuffers() && waitFence == 0 && xOff == 0 && yOff == 0
                         && window.attributes.isMapped()) {
                     if (!vr.sampleHardwarePixmap(window, (GPUImage)pixmap.drawable.getTexture(),

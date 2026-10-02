@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WindowsVrControlServer(
     private val config: WindowsVrRuntimeConfig,
     private val diagnostics: WindowsVrDiagnostics,
-    private val snapshots: WindowsVrSnapshotProvider,
+    private val snapshots: WindowsVrFrameSource,
 ) : Closeable {
     private val running = AtomicBoolean(false)
     private val clients = Semaphore(16)
@@ -84,7 +84,7 @@ class WindowsVrControlServer(
         if (tokens.isEmpty()) return "ERROR malformed"
         return when (tokens[0]) {
             "HELLO" -> if (tokens.size == 1) "OK GameNativeVR ${config.protocolVersion}" else "ERROR malformed"
-            "GET_SYSTEM" -> if (tokens.size == 1) "OK system=1 vendor=2833 name=Meta_Quest_GameNative" else "ERROR malformed"
+            "GET_SYSTEM" -> if (tokens.size == 1) "OK system=1 vendor=0 name=XRGame_Native" else "ERROR malformed"
             "GET_VIEWS" -> if (tokens.size == 1) getViews() else "ERROR malformed"
             "GET_BOUNDS" -> if (tokens.size == 1) getBounds() else "ERROR malformed"
             "WAIT_FRAME" -> if (tokens.size == 1) waitFrame() else "ERROR malformed"

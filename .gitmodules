@@ -47,9 +47,13 @@
 [submodule "references/gbe_fork"]
 	path = references/gbe_fork
 	url = https://github.com/tencentmalos/gbe_fork.git
-	branch = feature/malos/xrgame-loader
+	branch = feature/malos/xrgame-local-sockets
 	shallow = true
 [submodule "foundation"]
 	path = foundation
 	url = git@github.com:tencentmalos/foundation.git
 	branch = main
+[submodule "references/opencomposite"]
+	path = references/opencomposite
+	url = https://github.com/tencentmalos/opencomposite.git
+	branch = feature/malos/xrgame-sbs-openvr26

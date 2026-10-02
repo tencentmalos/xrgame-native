@@ -2,6 +2,7 @@
 
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
+- 2026-10-02 普通 Android SBS 已在 AYN 显示 Alyx 双眼主菜单与虚拟手；OpenComposite 新 ABI 与 GBE 离线本地通信已修复。双手固定 pose，按键/摇杆从 Android 注入到 Windows OpenXR action 的验证通过。完整游玩、物理手柄与 Swan 尚未验收。见 [SBS 规划](docs/specs/xrgame-native-vr-sbs-v1.md)及[证据](docs/validation/vr-sbs-20261002.md)。
 - Default to Chinese when talking with the user.
 - 修改 Foundation 前必须从当前固定提交切出独立功能分支，不能直接在共享 `main` 上修改（用户补充，2026-09-27）。
 - 用户于 2026-09-27 授权将私有 `tencentmalos/foundation` 作为 `foundation/` 子仓接入 DebugBus，替代原先的禁止引入规则。只选取 DebugBus 模块供内部调试包使用；操作与边界见 `docs/debugging/debugbus.md`，不公开发布 Foundation 源码。
@@ -10,6 +11,7 @@
 - picoXr 必须内置完整运行时（含源码 Steam 客户端、DXVK 与 VKD3D），缺组件禁止出包。x64 Steam 游戏默认配置客户端，旧容器启动时校验并修复运行库；不修改游戏目录或存档。验证范围见 `docs/validation/bundled-runtime-20260927.md`。
 - **Turnip 子仓主干也为 `malos/main`**：已从 shadPS4 的 `codex/turnip-xr-fdm2`（`d15b7c01`）建立并推送；迭代分支 `feature/malos/xrgame-wine-icd` 从该基线切出，不能从 Mesa 上游 `main` 起步。2026-09-28 阶段版本已先推子仓再更新 gitlink；已验证运行时仍采用配方的固定基线与补丁，不能把维护分支 rebase 当成新二进制验收。
 - Start from [docs/specs/xrgame-native-personal-v2.md](docs/specs/xrgame-native-personal-v2.md). The user revised the plan on 2026-09-26: personal learning, AYN validation now, Swan deferred; the old WP3 engineering/publication remainder is the final optional P5 and does not block runtime work.
+- 2026-09-28 新增 [Mac 独立构建规格](docs/specs/xrgame-native-macos-build-v1.md)：用户同日再次明确暂停 Mac 构建迁移（ROI 低）；保留评估，当前优先将 Present fence 等待移出 X 请求线程及全局锁，并做 MHW 对照验证。当前只完成评估和小型编译探针，未迁移完整运行时或授权公开上传二进制。 异步 Present 改造与 MHW 同包对照见 [验证记录](docs/validation/mhw-present-async-20260928.md)，当前按容器显式启用，不视为全游戏/完整生命周期验收。 图形设置新增“异步呈现（实验性）”，MHR 同包对照与 UI/暂停验证见 [MHR 记录](docs/validation/mhr-present-async-20260929.md)。
 - Retain the original v1 acceptance gaps; see [the original-spec/observability review](docs/validation/spec-observability-review-20260926.md). D0–D4 expands guest/host debugging and analysis alongside P1–P3. Do not treat shared FEXCore code as an already integrated Wine debugger, or AYN validation as Swan/XR acceptance.
   - Start with P1 (former WP4 on AYN), using the existing embedded runtime and Steam-installed games; complete the remaining Steam usability checks in P2.
   - Do not split work packages into micro-specs.
