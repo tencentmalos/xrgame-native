@@ -19,9 +19,9 @@ if(XRGAME_BUILD_PROBES)
     add_subdirectory("${XRGAME_ROOT}/foundation/modules/debugbus" foundation-debugbus EXCLUDE_FROM_ALL)
     execute_process(COMMAND git -C "${XRGAME_ROOT}/foundation" rev-parse HEAD
         OUTPUT_VARIABLE FOUNDATION_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-    add_library(xrgame_debugbus SHARED debugbus.cpp profiler.cpp)
+    add_library(xrgame_debugbus SHARED debugbus.cpp profiler.cpp profiler_core.cpp)
     target_link_libraries(xrgame_debugbus PRIVATE spatial::foundation_debugbus_profiler_ring dl)
-    target_compile_definitions(xrgame_debugbus PRIVATE XRGAME_FOUNDATION_REVISION="${FOUNDATION_REVISION}")
+    target_compile_definitions(xrgame_debugbus PRIVATE XRGAME_PROFILE=1 XRGAME_FOUNDATION_REVISION="${FOUNDATION_REVISION}")
     target_compile_options(xrgame_debugbus PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
     install(TARGETS xrgame_debugbus LIBRARY DESTINATION arm64-v8a)
 
@@ -96,7 +96,7 @@ add_library(vulkan_renderer SHARED
     ${LSFG_SOURCES} "${CMAKE_CURRENT_BINARY_DIR}/window_vert.h" "${CMAKE_CURRENT_BINARY_DIR}/window_frag.h")
 target_include_directories(vulkan_renderer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${GN}/winlator" "${GN}/lsfg")
 target_compile_options(vulkan_renderer PRIVATE -fvisibility=hidden)
-target_link_libraries(vulkan_renderer log android vulkan adrenotools dxbc dl atomic)
+target_link_libraries(vulkan_renderer PRIVATE log android vulkan adrenotools dxbc dl atomic)
 
 if(DEFINED OpenXR_DIR)
     find_package(OpenXR REQUIRED CONFIG)
@@ -108,6 +108,12 @@ endif()
 
 set(XRGAME_LIBRARIES winlator winlator_11 extras evshim gamenative_dns_v4mapped
     vulkan_renderer asurface_renderer ahbimage drawable xconnectorpatch)
+if(XRGAME_BUILD_PROBES)
+    foreach(profiled_target vulkan_renderer xrimmersive)
+        target_compile_definitions(${profiled_target} PRIVATE XRGAME_PROFILE=1)
+        target_link_libraries(${profiled_target} PRIVATE xrgame_debugbus)
+    endforeach()
+endif()
 if(TARGET xrimmersive)
     list(APPEND XRGAME_LIBRARIES xrimmersive)
 endif()

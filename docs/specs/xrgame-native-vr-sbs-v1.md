@@ -14,6 +14,11 @@ OpenXR 帧时钟、姿态、控制器、swapchain 和 compositor。
 普通 2D 游戏的复制显示不等于 PCVR 支持；SBS 验收必须证明双眼是两个独立提交。
 影院 quad 是原 v1 的独立要求，本任务不会以 SBS 结果宣称它已通过。
 
+2026-10-02 后续增量：用户另行要求接通普通游戏大屏，先用 Android SBS 模拟。
+该路径使用 XServer Vulkan 合成器绘制同一张游戏画面的两个固定视点，复用现有
+`immersiveQuadScale` / `immersiveQuadDistance`。与下文 Windows VR 双眼提交分开验证；
+见 [SBS 影院验证](../validation/sbs-theater-20261002.md)。Swan、头部追踪和完整影院验收仍未完成。
+
 ```mermaid
 flowchart TD
     VR[Windows OpenVR 游戏] --> OC[OpenComposite x64]

@@ -61,6 +61,10 @@ public class DXVKHelper {
 
 
         envVars.put("DXVK_CONFIG_FILE", rootDir + ImageFs.CONFIG_PATH+"/dxvk.conf");
+        // picoXr passes raw execve values, not a shell command. DXVK's inline
+        // parser expects semicolon-separated options without outer quotes.
+        if (app.gamenative.BuildConfig.XRGAME)
+            content = content.substring(1, content.length() - 1).replace('\n', ';');
         envVars.put("DXVK_CONFIG", content);
     }
 

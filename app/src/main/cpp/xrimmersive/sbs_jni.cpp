@@ -1,4 +1,5 @@
 #include "xr_windows_projection.h"
+#include "../xrgame_profiler.h"
 #include <jni.h>
 #include <memory>
 #include <unordered_map>
@@ -15,6 +16,7 @@ thread_local jlong nextHandle = 0;
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_app_gamenative_ui_screen_xr_sbs_SbsNative_create(JNIEnv* env, jobject, jstring endpoint) {
+    XrProfileScope profile("host.vr.sbs.initialize");
     if (!endpoint || eglGetCurrentContext() == EGL_NO_CONTEXT) return 0;
     const char* path = env->GetStringUTFChars(endpoint, nullptr);
     if (!path) return 0;
@@ -42,6 +44,7 @@ Java_app_gamenative_ui_screen_xr_sbs_SbsNative_draw(JNIEnv*, jobject, jlong hand
 
 extern "C" JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_sbs_SbsNative_destroy(JNIEnv*, jobject, jlong handle) {
+    XrProfileScope profile("host.vr.sbs.shutdown");
     const auto found = presenters.find(handle);
     if (found == presenters.end()) return;
     // Drain our own GPU work before releasing imported images / transport references.

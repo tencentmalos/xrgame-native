@@ -3,6 +3,9 @@
 package app.gamenative.service.download
 
 import timber.log.Timber
+import app.gamenative.xrgame.XrGameProfiler
+import app.gamenative.xrgame.ProfileProgressGate
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Callbacks from the native Steam depot download engine. Every method runs on a native
@@ -72,6 +75,7 @@ interface NativeSteamDownloadListener {
 object NativeSteamDownload {
 
     private const val TAG = "GN_STEAM_DL"
+    private val profileSequence = AtomicLong()
 
     @Volatile
     private var available: Boolean? = null
@@ -101,9 +105,35 @@ object NativeSteamDownload {
     @JvmStatic
     fun start(planJson: String, listener: NativeSteamDownloadListener): Long {
         if (!isAvailable()) return 0L
+        val profile = XrGameProfiler.region("steam.download.run")
+        val progressGate = ProfileProgressGate()
+        val sequence = profileSequence.incrementAndGet()
+        val profiledListener = object : NativeSteamDownloadListener by listener {
+            override fun onProgress(depotId: Int, depotDone: Long, depotTotal: Long,
+                depotsDone: Int, depotsTotal: Int, verifying: Boolean) {
+                if (progressGate.sample(System.nanoTime())) {
+                    // Same-thread sample context: byte counts reset when the depot changes.
+                    XrGameProfiler.counter(6, sequence)
+                    XrGameProfiler.counter(5, depotId.toLong())
+                    XrGameProfiler.counter(0, depotDone)
+                    XrGameProfiler.counter(1, depotTotal)
+                    XrGameProfiler.counter(2, depotsDone.toLong())
+                    XrGameProfiler.counter(3, depotsTotal.toLong())
+                    XrGameProfiler.counter(4, if (verifying) 1 else 0)
+                }
+                listener.onProgress(depotId, depotDone, depotTotal, depotsDone, depotsTotal, verifying)
+            }
+            override fun onComplete(success: Boolean, error: String, bytesWritten: Long,
+                depotsCompleted: Int, depotsSkipped: Int) {
+                profile.close()
+                XrGameProfiler.mark(if (success) "steam.download.complete" else "steam.download.failed_or_cancelled")
+                listener.onComplete(success, error, bytesWritten, depotsCompleted, depotsSkipped)
+            }
+        }
         return try {
-            nativeStart(planJson, listener)
+            nativeStart(planJson, profiledListener).also { if (it == 0L) profile.close() }
         } catch (t: Throwable) {
+            profile.close()
             Timber.tag(TAG).e("nativeStart threw — ${t.javaClass.simpleName}: ${t.message}")
             0L
         }
@@ -113,6 +143,7 @@ object NativeSteamDownload {
     @JvmStatic
     fun cancel(handle: Long) {
         if (handle == 0L) return
+        XrGameProfiler.mark("steam.download.cancel.request")
         runCatching { nativeCancel(handle) }
     }
 

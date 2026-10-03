@@ -1,0 +1,815 @@
+{
+  "schema": 1,
+  "date": "2026-10-02",
+  "scope": "Android host instrumentation coverage, not guest/GPU or FPS acceptance",
+  "sourceHead": "6193851f6ceb1f126839bc0ed2e2e7c5a68c9f1f",
+  "sourceDirty": true,
+  "foundationRevision": "c1d339c3a9b231ad23d02e4fd982e3e7120f7ef5",
+  "sdkRevision": "0b467a861569345a64fd88cb2e5daa8ff542c14f",
+  "apkSha256": "9d8ef4e89a14d7b97e263a2859828b8e8ca71525489817086a19adab925e4222",
+  "componentManifestSha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+  "buildIds": {
+    "lib7zx.so": "e79db703428a1e9992214bba03dfe9047eb68119",
+    "libahbimage.so": "b08bfa1613c4a5821fe917795bc7ad664dfa6f07",
+    "libandroidx.graphics.path.so": "a7846ae06d6bf6cf63fa7c5e056b5de493c71567",
+    "libarchive-jni.so": "d235438c5533e44a6e830f535018c72e8b43b117",
+    "libasurface_renderer.so": "774fe0ddda6bdaf4c9cd248e59fecd7af4294858",
+    "libc++_shared.so": "ea306390624df9242cca21aeec76a0427683bd72",
+    "libdatastore_shared_counter.so": "17db37bd6770ac00dd2d1d2828839fd23a7959a3",
+    "libdrawable.so": "a1050793852b30c9e015ba8c69d458213b570787",
+    "libevshim.so": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d",
+    "libextras.so": "4fc1ac1eba1ec240ee5e392ebaa7752097219dbe",
+    "libgamenative_dns_v4mapped.so": "4815e9b00e9a8f4653888b98b0974c225758d43c",
+    "libgndownload.so": "d2351fd2a3bfd2f5ec3f4074e921d6d6f4f46a9e",
+    "libhook_impl.so": "4ff80aa40482fa55068c6e792df0ea7af30b688a",
+    "libltdl.so": "5a068ed046a13338452db8a4fe06206216a5128c",
+    "libmain_hook.so": "721a7592fd26313b2158dbdc3c225840ee07a3a8",
+    "libopenxr_loader.so": "8694d5759369f045621543aa4f73753220badd0d",
+    "libpulse.so": "d9861eaefd76e7b510c0cbe3cf28fdd243e7f0ad",
+    "libpulseaudio.so": "ad97886e4ccdf2f02bec63d21c9733da0bfefe45",
+    "libpulsecommon-13.0.so": "d370d2dbb757865a1462cc05bb1cdb3426a3ce29",
+    "libpulsecore-13.0.so": "f11dd288254c8011a77b6f5c68b803917332f3d9",
+    "libsndfile.so": "9b045131dbb1cbb002815c56611d9095315eea99",
+    "libvulkan_renderer.so": "2151525d5ac80b73f293814fba05741c15c618b9",
+    "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+    "libwinlator_11.so": "0831cf9e01bd408ab7cefa64a7bc91df7c1325e8",
+    "libxconnectorpatch.so": "abd01470fed8b2351f64a79a601f6f51092b4190",
+    "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+    "libxrgame_exec_probe.so": "b8e19d33f2fd978f0891e5b4a42ae19939e5c1d5",
+    "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2",
+    "libzstd-jni-1.5.7-5.so": null
+  },
+  "device": {
+    "model": "AYN Thor",
+    "build": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "bootId": "8bb14501-5800-4b9b-a9ab-7173603812f7",
+    "sdk": 33,
+    "targetSdk": 36,
+    "pid": 11333
+  },
+  "guestPids": {
+    "MHW": 12660,
+    "wineserver": 12547
+  },
+  "tests": {
+    "jvm": {
+      "passed": 7,
+      "failed": 0
+    },
+    "presentQueueWithHooks": "pass",
+    "presentQueueWithoutHooks": "pass",
+    "singleSdkDynamicOwner": "pass",
+    "apkAuditErrors": []
+  },
+  "captures": {
+    "startup": {
+      "sha256": "c0cdb635d1510beaea95bbb64318b6dd1b921277abeffb53a8cb4d204a8efb44",
+      "sidecarSha256": "0063b80c6f2ad20059a3396b9da4ab214276764d455b56e27afbe11e568f782f",
+      "bytes": 624530,
+      "captureId": 1,
+      "boundsSeconds": 120,
+      "boundsMiB": 64,
+      "captureComplete": true,
+      "summary": {
+        "sourceFormat": "prof",
+        "processCount": 1,
+        "threadCount": 7,
+        "frameCount": 4675,
+        "sliceCount": 28083,
+        "counterCount": 0,
+        "schedCount": 0,
+        "kgslCmdbatchCount": 0,
+        "startTimeNs": 0,
+        "endTimeNs": 101101144741,
+        "durationMs": 101101.145,
+        "eventsDecoded": true,
+        "framesUnavailable": false,
+        "frameSource": "sdk-source-frame-index",
+        "status": "loaded"
+      },
+      "diagnostics": [
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "2 unclosed spans on tid 12507"
+        },
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "4 unpaired regions dropped"
+        },
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "2 open scopes excluded"
+        }
+      ],
+      "phases": [
+        {
+          "track_id": 2,
+          "track_name": "XRGame Present queue lifecycle (not GPU time)",
+          "name": "host.present.queue_to_complete",
+          "count": 4672,
+          "mean_ms": 22.554020858732876,
+          "p50_ms": 2.422031,
+          "p90_ms": 64.6911509,
+          "p99_ms": 66.68925127,
+          "max_ms": 70.434063,
+          "boundary_clipped_count": 0,
+          "sum_ms": 105372.385452,
+          "union_ms": 39669.983893,
+          "cross_thread_count": 4672
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "x11.server_to_first_present_request",
+          "count": 1,
+          "mean_ms": 9224.664063,
+          "p50_ms": 9224.664063,
+          "p90_ms": 9224.664063,
+          "p99_ms": 9224.664063,
+          "max_ms": 9224.664063,
+          "boundary_clipped_count": 0,
+          "sum_ms": 9224.664063,
+          "union_ms": 9224.664063,
+          "cross_thread_count": 1
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "launch.preparation",
+          "count": 1,
+          "mean_ms": 2555.84625,
+          "p50_ms": 2555.84625,
+          "p90_ms": 2555.84625,
+          "p99_ms": 2555.84625,
+          "max_ms": 2555.84625,
+          "boundary_clipped_count": 0,
+          "sum_ms": 2555.84625,
+          "union_ms": 2555.84625,
+          "cross_thread_count": 1
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "launch.dependencies",
+          "count": 1,
+          "mean_ms": 1666.890885,
+          "p50_ms": 1666.890885,
+          "p90_ms": 1666.890885,
+          "p99_ms": 1666.890885,
+          "max_ms": 1666.890885,
+          "boundary_clipped_count": 0,
+          "sum_ms": 1666.890885,
+          "union_ms": 1666.890885,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.prepare",
+          "count": 1,
+          "mean_ms": 1665.320886,
+          "p50_ms": 1665.320886,
+          "p90_ms": 1665.320886,
+          "p99_ms": 1665.320886,
+          "max_ms": 1665.320886,
+          "boundary_clipped_count": 0,
+          "sum_ms": 1665.320886,
+          "union_ms": 1665.320886,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.verify.proton",
+          "count": 1,
+          "mean_ms": 1261.998021,
+          "p50_ms": 1261.998021,
+          "p90_ms": 1261.998021,
+          "p99_ms": 1261.998021,
+          "max_ms": 1261.998021,
+          "boundary_clipped_count": 0,
+          "sum_ms": 1261.998021,
+          "union_ms": 1261.998021,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "steamclient.prepare",
+          "count": 1,
+          "mean_ms": 465.236302,
+          "p50_ms": 465.236302,
+          "p90_ms": 465.236302,
+          "p99_ms": 465.236302,
+          "max_ms": 465.236302,
+          "boundary_clipped_count": 0,
+          "sum_ms": 465.236302,
+          "union_ms": 465.236302,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "steam.cloud.sync",
+          "count": 1,
+          "mean_ms": 431.74302,
+          "p50_ms": 431.74302,
+          "p90_ms": 431.74302,
+          "p99_ms": 431.74302,
+          "max_ms": 431.74302,
+          "boundary_clipped_count": 0,
+          "sum_ms": 431.74302,
+          "union_ms": 431.74302,
+          "cross_thread_count": 1
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.imagefs.upgrade",
+          "count": 1,
+          "mean_ms": 310.805364,
+          "p50_ms": 310.805364,
+          "p90_ms": 310.805364,
+          "p99_ms": 310.805364,
+          "max_ms": 310.805364,
+          "boundary_clipped_count": 0,
+          "sum_ms": 310.805364,
+          "union_ms": 310.805364,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.prefix.graphics",
+          "count": 1,
+          "mean_ms": 139.567239,
+          "p50_ms": 139.567239,
+          "p90_ms": 139.567239,
+          "p99_ms": 139.567239,
+          "max_ms": 139.567239,
+          "boundary_clipped_count": 0,
+          "sum_ms": 139.567239,
+          "union_ms": 139.567239,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.imagefs.archive",
+          "count": 1,
+          "mean_ms": 39.533385,
+          "p50_ms": 39.533385,
+          "p90_ms": 39.533385,
+          "p99_ms": 39.533385,
+          "max_ms": 39.533385,
+          "boundary_clipped_count": 0,
+          "sum_ms": 39.533385,
+          "union_ms": 39.533385,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.driver.stage",
+          "count": 1,
+          "mean_ms": 23.841875,
+          "p50_ms": 23.841875,
+          "p90_ms": 23.841875,
+          "p99_ms": 23.841875,
+          "max_ms": 23.841875,
+          "boundary_clipped_count": 0,
+          "sum_ms": 23.841875,
+          "union_ms": 23.841875,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "host.environment.start",
+          "count": 1,
+          "mean_ms": 21.918177,
+          "p50_ms": 21.918177,
+          "p90_ms": 21.918177,
+          "p99_ms": 21.918177,
+          "max_ms": 21.918177,
+          "boundary_clipped_count": 0,
+          "sum_ms": 21.918177,
+          "union_ms": 21.918177,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.verify.dxvk",
+          "count": 1,
+          "mean_ms": 17.583802,
+          "p50_ms": 17.583802,
+          "p90_ms": 17.583802,
+          "p99_ms": 17.583802,
+          "max_ms": 17.583802,
+          "boundary_clipped_count": 0,
+          "sum_ms": 17.583802,
+          "union_ms": 17.583802,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "host.wine.start",
+          "count": 1,
+          "mean_ms": 15.150625,
+          "p50_ms": 15.150625,
+          "p90_ms": 15.150625,
+          "p99_ms": 15.150625,
+          "max_ms": 15.150625,
+          "boundary_clipped_count": 0,
+          "sum_ms": 15.150625,
+          "union_ms": 15.150625,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "wine.launch",
+          "count": 1,
+          "mean_ms": 15.143645,
+          "p50_ms": 15.143645,
+          "p90_ms": 15.143645,
+          "p99_ms": 15.143645,
+          "max_ms": 15.143645,
+          "boundary_clipped_count": 0,
+          "sum_ms": 15.143645,
+          "union_ms": 15.143645,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.verify.turnip",
+          "count": 1,
+          "mean_ms": 12.895678,
+          "p50_ms": 12.895678,
+          "p90_ms": 12.895678,
+          "p99_ms": 12.895678,
+          "max_ms": 12.895678,
+          "boundary_clipped_count": 0,
+          "sum_ms": 12.895678,
+          "union_ms": 12.895678,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.verify.fexcore",
+          "count": 1,
+          "mean_ms": 9.892864,
+          "p50_ms": 9.892864,
+          "p90_ms": 9.892864,
+          "p99_ms": 9.892864,
+          "max_ms": 9.892864,
+          "boundary_clipped_count": 0,
+          "sum_ms": 9.892864,
+          "union_ms": 9.892864,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "runtime.verify.vkd3d",
+          "count": 1,
+          "mean_ms": 6.043177,
+          "p50_ms": 6.043177,
+          "p90_ms": 6.043177,
+          "p99_ms": 6.043177,
+          "max_ms": 6.043177,
+          "boundary_clipped_count": 0,
+          "sum_ms": 6.043177,
+          "union_ms": 6.043177,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "host.helper.start",
+          "count": 4,
+          "mean_ms": 1.4267705,
+          "p50_ms": 1.39375,
+          "p90_ms": 2.7265878,
+          "p99_ms": 2.81004858,
+          "max_ms": 2.819322,
+          "boundary_clipped_count": 0,
+          "sum_ms": 5.707082,
+          "union_ms": 5.707082,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "host.xserver.start",
+          "count": 1,
+          "mean_ms": 0.727552,
+          "p50_ms": 0.727552,
+          "p90_ms": 0.727552,
+          "p99_ms": 0.727552,
+          "max_ms": 0.727552,
+          "boundary_clipped_count": 0,
+          "sum_ms": 0.727552,
+          "union_ms": 0.727552,
+          "cross_thread_count": 0
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "host.audio.start",
+          "count": 1,
+          "mean_ms": 0.144636,
+          "p50_ms": 0.144636,
+          "p90_ms": 0.144636,
+          "p99_ms": 0.144636,
+          "max_ms": 0.144636,
+          "boundary_clipped_count": 0,
+          "sum_ms": 0.144636,
+          "union_ms": 0.144636,
+          "cross_thread_count": 0
+        }
+      ],
+      "integrity": {
+        "truncated": false,
+        "chunks_ok": 8,
+        "chunks_skipped": 0,
+        "diagnostics": [
+          "2 unclosed spans on tid 12507",
+          "4 unpaired regions dropped"
+        ],
+        "retention_complete": "unknown_per_thread_byte_ring"
+      },
+      "container_integrity": {
+        "container_complete": true,
+        "decompressed_bytes": 1926967,
+        "dropped_chunk_markers": 0,
+        "within_import_byte_limit": true
+      },
+      "frame_distribution": {
+        "count": 4675,
+        "mean_ms": 18.61724147721925,
+        "p50_ms": 16.705781,
+        "p90_ms": 18.663323,
+        "p99_ms": 23.66012172,
+        "max_ms": 4640.33724
+      },
+      "frame_marker_count": 4676,
+      "frame_pair_exclusions": 0
+    },
+    "coarse": {
+      "sha256": "a5aebd940c7b7bb1a983ba2905c772741388c728a2fdf022c7507d57ea0070e5",
+      "sidecarSha256": "0f7f638d975bfc1d091f7040e2f3e826268366ca30494544199aa51ae2b3a4bd",
+      "bytes": 158914,
+      "captureId": 3,
+      "boundsSeconds": 20,
+      "boundsMiB": 16,
+      "captureComplete": true,
+      "summary": {
+        "sourceFormat": "prof",
+        "processCount": 1,
+        "threadCount": 2,
+        "frameCount": 1197,
+        "sliceCount": 7186,
+        "counterCount": 0,
+        "schedCount": 0,
+        "kgslCmdbatchCount": 0,
+        "startTimeNs": 0,
+        "endTimeNs": 20010620834,
+        "durationMs": 20010.621,
+        "eventsDecoded": true,
+        "framesUnavailable": false,
+        "frameSource": "sdk-source-frame-index",
+        "status": "loaded"
+      },
+      "diagnostics": [
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "2 unclosed spans on tid 12507"
+        },
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "4 unpaired regions dropped"
+        },
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "2 open scopes excluded"
+        }
+      ],
+      "phases": [
+        {
+          "track_id": 2,
+          "track_name": "XRGame Present queue lifecycle (not GPU time)",
+          "name": "host.present.queue_to_complete",
+          "count": 1194,
+          "mean_ms": 64.80402330988275,
+          "p50_ms": 64.8153905,
+          "p90_ms": 66.2560519,
+          "p99_ms": 67.88289386999999,
+          "max_ms": 69.121198,
+          "boundary_clipped_count": 0,
+          "sum_ms": 77376.003832,
+          "union_ms": 20004.568646,
+          "cross_thread_count": 1194
+        }
+      ],
+      "integrity": {
+        "truncated": false,
+        "chunks_ok": 2,
+        "chunks_skipped": 0,
+        "diagnostics": [
+          "2 unclosed spans on tid 12507",
+          "4 unpaired regions dropped"
+        ],
+        "retention_complete": "unknown_per_thread_byte_ring"
+      },
+      "container_integrity": {
+        "container_complete": true,
+        "decompressed_bytes": 491529,
+        "dropped_chunk_markers": 0,
+        "within_import_byte_limit": true
+      },
+      "frame_distribution": {
+        "count": 1197,
+        "mean_ms": 16.714536819548872,
+        "p50_ms": 16.744427,
+        "p90_ms": 18.141135600000002,
+        "p99_ms": 19.56364592,
+        "max_ms": 22.916407
+      },
+      "frame_marker_count": 1198,
+      "frame_pair_exclusions": 0
+    },
+    "detail": {
+      "sha256": "e9004d61c44e6da25bd86d8de5662db39bb38687d0dcc2b994c505cfcb877482",
+      "sidecarSha256": "7656dcf03604850754906f6a4bfb393d6a7c7142c6c559e3f16d4a330a1bcf15",
+      "bytes": 254073,
+      "captureId": 2,
+      "boundsSeconds": 20,
+      "boundsMiB": 16,
+      "captureComplete": true,
+      "summary": {
+        "sourceFormat": "prof",
+        "processCount": 1,
+        "threadCount": 2,
+        "frameCount": 1197,
+        "sliceCount": 11978,
+        "counterCount": 0,
+        "schedCount": 0,
+        "kgslCmdbatchCount": 0,
+        "startTimeNs": 0,
+        "endTimeNs": 20003905366,
+        "durationMs": 20003.905,
+        "eventsDecoded": true,
+        "framesUnavailable": false,
+        "frameSource": "sdk-source-frame-index",
+        "status": "loaded"
+      },
+      "diagnostics": [
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "2 unclosed spans on tid 12507"
+        },
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "4 unpaired regions dropped"
+        },
+        {
+          "severity": "warning",
+          "code": "ProfImport",
+          "message": "2 open scopes excluded"
+        }
+      ],
+      "phases": [
+        {
+          "track_id": 2,
+          "track_name": "XRGame Present queue lifecycle (not GPU time)",
+          "name": "host.present.queue_to_complete",
+          "count": 1194,
+          "mean_ms": 64.77112762730319,
+          "p50_ms": 64.793385,
+          "p90_ms": 66.1460834,
+          "p99_ms": 67.51188264999999,
+          "max_ms": 69.472031,
+          "boundary_clipped_count": 0,
+          "sum_ms": 77336.726387,
+          "union_ms": 19998.297396,
+          "cross_thread_count": 1194
+        }
+      ],
+      "integrity": {
+        "truncated": false,
+        "chunks_ok": 3,
+        "chunks_skipped": 0,
+        "diagnostics": [
+          "2 unclosed spans on tid 12507",
+          "4 unpaired regions dropped"
+        ],
+        "retention_complete": "unknown_per_thread_byte_ring"
+      },
+      "container_integrity": {
+        "container_complete": true,
+        "decompressed_bytes": 720347,
+        "dropped_chunk_markers": 0,
+        "within_import_byte_limit": true
+      },
+      "frame_distribution": {
+        "count": 1197,
+        "mean_ms": 16.7085450609858,
+        "p50_ms": 16.74,
+        "p90_ms": 18.070510199999998,
+        "p99_ms": 19.903447679999996,
+        "max_ms": 24.111407
+      },
+      "frame_marker_count": 1198,
+      "frame_pair_exclusions": 0
+    },
+    "lifecycle": {
+      "sha256": "6b61480e20955d7322ccaf9ada1713d1570d4e4c8a55bfccff45cf3f451a3671",
+      "sidecarSha256": "000e7ac1c2b45594177a8244c5143e3ba8555175e19c0f61f76242870f79b193",
+      "bytes": 1759,
+      "captureId": 4,
+      "boundsSeconds": 40,
+      "boundsMiB": 16,
+      "captureComplete": true,
+      "summary": {
+        "sourceFormat": "prof",
+        "processCount": 1,
+        "threadCount": 4,
+        "frameCount": 3,
+        "sliceCount": 58,
+        "counterCount": 0,
+        "schedCount": 0,
+        "kgslCmdbatchCount": 0,
+        "startTimeNs": 0,
+        "endTimeNs": 2532556668,
+        "durationMs": 2532.557,
+        "eventsDecoded": true,
+        "framesUnavailable": false,
+        "frameSource": "sdk-source-frame-index",
+        "status": "loaded"
+      },
+      "diagnostics": [],
+      "phases": [
+        {
+          "track_id": 2,
+          "track_name": "XRGame Present queue lifecycle (not GPU time)",
+          "name": "host.present.queue_to_complete",
+          "count": 4,
+          "mean_ms": 74.83230475,
+          "p50_ms": 76.1346355,
+          "p90_ms": 78.4905622,
+          "p99_ms": 78.58975912000001,
+          "max_ms": 78.600781,
+          "boundary_clipped_count": 0,
+          "sum_ms": 299.329219,
+          "union_ms": 128.982292,
+          "cross_thread_count": 4
+        },
+        {
+          "track_id": 1,
+          "track_name": "XRGame lifecycle / IO (elapsed, not CPU time)",
+          "name": "host.environment.pause",
+          "count": 2,
+          "mean_ms": 6.296484,
+          "p50_ms": 6.296484,
+          "p90_ms": 6.4891296,
+          "p99_ms": 6.532474860000001,
+          "max_ms": 6.537291,
+          "boundary_clipped_count": 0,
+          "sum_ms": 12.592968,
+          "union_ms": 12.592968,
+          "cross_thread_count": 0
+        }
+      ],
+      "integrity": {
+        "truncated": false,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "diagnostics": [],
+        "retention_complete": "unknown_per_thread_byte_ring"
+      },
+      "container_integrity": {
+        "container_complete": true,
+        "decompressed_bytes": 4042,
+        "dropped_chunk_markers": 0,
+        "within_import_byte_limit": true
+      },
+      "frame_distribution": {
+        "count": 3,
+        "mean_ms": 16.792743,
+        "p50_ms": 16.588281,
+        "p90_ms": 17.089573,
+        "p99_ms": 17.2023637,
+        "max_ms": 17.214896
+      },
+      "frame_marker_count": 4,
+      "frame_pair_exclusions": 0
+    }
+  },
+  "unverified": [
+    "live Steam download counters",
+    "host.environment.resume/stop and wine.process.exit emission on device",
+    "Windows VR bridge path",
+    "GPU timestamps",
+    "Wine/FEX/DXVK/Turnip internals",
+    "uncapped matched-scene FPS overhead"
+  ],
+  "benchmark": {
+    "pid": 15873,
+    "probeSha256": "a9c97bae4dadf33a553f9928872385b599d66743fd38b82e3166c1dc77c74590",
+    "probeBuildId": "e7bea5f58eab1695e1051d8befba985fed8b6cea",
+    "rounds": 7,
+    "iterationsPerRound": 100000,
+    "samples": [
+      {
+        "mode": "baseline",
+        "iterationsPerRound": 100000,
+        "rounds": 7,
+        "medianNsPerPair": 2.48177,
+        "minNsPerPair": 2.48125,
+        "maxNsPerPair": 2.48177
+      },
+      {
+        "mode": "ring_off",
+        "iterationsPerRound": 100000,
+        "rounds": 7,
+        "medianNsPerPair": 8.92969,
+        "minNsPerPair": 8.53334,
+        "maxNsPerPair": 10.413
+      },
+      {
+        "mode": "coarse",
+        "iterationsPerRound": 100000,
+        "rounds": 7,
+        "medianNsPerPair": 89.7609,
+        "minNsPerPair": 74.0964,
+        "maxNsPerPair": 161.451
+      },
+      {
+        "mode": "detail_filtered",
+        "iterationsPerRound": 100000,
+        "rounds": 7,
+        "medianNsPerPair": 1.88333,
+        "minNsPerPair": 1.88281,
+        "maxNsPerPair": 1.88333
+      },
+      {
+        "mode": "detail",
+        "iterationsPerRound": 100000,
+        "rounds": 7,
+        "medianNsPerPair": 73.6443,
+        "minNsPerPair": 73.4552,
+        "maxNsPerPair": 73.888
+      },
+      {
+        "mode": "instrumentation_off",
+        "iterationsPerRound": 100000,
+        "rounds": 7,
+        "medianNsPerPair": 1.88334,
+        "minNsPerPair": 1.88281,
+        "maxNsPerPair": 2.01302
+      }
+    ],
+    "limitations": "synthetic empty native scope loop; no JNI/driver/GPU, no clock or affinity control, no causal FPS conclusion"
+  },
+  "fixtures": {
+    "ring-1790947407797659-1.prof": {
+      "sha256": "8f8be4dfe39044a1264318800e091bab7047f18a16098bdf05ec4d08e19313d7",
+      "sidecarSha256": "d4e21c4f12700905da19b154d84d83167f0e67336e0791c326135e1bd15606d2",
+      "pid": 8517,
+      "diagnostic": "worker exited before snapshot: missing worker endpoint; stale tokens also intentionally open"
+    },
+    "ring-1790947662337467-1.prof": {
+      "sha256": "8625f3154c8490468814a04c99c3420186ce394c96bcfdb93d50908d9b105f77",
+      "sidecarSha256": "9a91351b980f58f7b8552f8d8e4115932998c69f0cd66c83d2c2d625c318d798",
+      "pid": 10676,
+      "diagnostic": "clean: 6 spans, cross-thread region 10676 -> 10677, no warnings"
+    },
+    "ring-1790947662401993-1.prof": {
+      "sha256": "1b15a8fff722234e7262feebd5b9e337c503628b470ee12d53454fbb725e6c86",
+      "sidecarSha256": "38636a7a7c42c539dfe33804c4e6cbfd95aee5943ff4ccb63dbecf25d378aa9c",
+      "pid": 10681,
+      "diagnostic": "stale generation: 1 open scope and 1 unpaired region expected; decoder nesting across generation must not be used"
+    }
+  },
+  "cleanup": {
+    "recording": false,
+    "instrumentation": "coarse",
+    "diagnosticServiceStopped": true,
+    "ownedProbeDirectoryRemoved": true,
+    "ownedScrcpyStopped": true,
+    "gameExitedThroughQuickMenu": true
+  }
+}

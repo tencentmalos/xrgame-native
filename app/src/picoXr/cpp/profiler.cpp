@@ -3,6 +3,7 @@
 #include <jni.h>
 #include <time.h>
 #include <string>
+#include "profiler_core.h"
 
 using spatial::LiteTrace;
 using spatial::ProfilerRing;
@@ -25,17 +26,18 @@ Java_app_gamenative_xrgame_LitepProfiler_initialize(JNIEnv* env, jobject, jstrin
     clock_gettime(CLOCK_BOOTTIME, &boot);
     const auto trace_ns = LiteTrace::timeNs();
     clock_gettime(CLOCK_MONOTONIC, &mono);
-    ProfilerRing::SetAppInfo("scope=android-host;frame_source=x11-present-request;foundation="
+    ProfilerRing::SetAppInfo("scope=android-host;instrumentation_schema=1;default_detail=coarse;frame_source=x11-present-request;foundation="
         XRGAME_FOUNDATION_REVISION ";catalog=" + text(env, sha) +
         ";clock_boot_ns=" + std::to_string(boot.tv_sec * 1000000000LL + boot.tv_nsec) +
         ";clock_trace_ns=" + std::to_string(trace_ns) +
         ";clock_mono_ns=" + std::to_string(mono.tv_sec * 1000000000LL + mono.tv_nsec));
-    LiteTrace::trackDef(1, "XRGame startup (elapsed, not CPU time)");
+    LiteTrace::trackDef(1, "XRGame lifecycle / IO (elapsed, not CPU time)");
+    LiteTrace::trackDef(2, "XRGame Present queue lifecycle (not GPU time)");
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_app_gamenative_xrgame_LitepProfiler_begin(JNIEnv* env, jobject, jstring name) {
-    if (!ProfilerRing::Enabled()) return nullptr;
+    if (!xrgameProfileEnabled()) return nullptr;
     const jlong token[]{static_cast<jlong>(LiteTrace::regionCookieCreate()),
                         static_cast<jlong>(ProfilerRing::Generation())};
     auto array = env->NewLongArray(2);
@@ -55,8 +57,15 @@ Java_app_gamenative_xrgame_LitepProfiler_end(JNIEnv* env, jobject, jlongArray ar
 
 extern "C" JNIEXPORT void JNICALL
 Java_app_gamenative_xrgame_LitepProfiler_bookmark(JNIEnv* env, jobject, jstring name) {
-    if (ProfilerRing::Enabled()) LiteTrace::bookmark(text(env, name).c_str());
+    if (xrgameProfileEnabled()) LiteTrace::bookmark(text(env, name).c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_app_gamenative_xrgame_LitepProfiler_frame(JNIEnv*, jobject) { ProfilerRing::FrameMark(); }
+Java_app_gamenative_xrgame_LitepProfiler_frame(JNIEnv*, jobject) {
+    if (xrgameProfileEnabled()) ProfilerRing::FrameMark();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_app_gamenative_xrgame_LitepProfiler_counter(JNIEnv*, jobject, jint id, jlong value) {
+    xrgameProfileCounter(id, value);
+}

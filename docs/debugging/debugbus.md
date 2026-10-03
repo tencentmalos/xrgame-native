@@ -35,6 +35,8 @@ python3 tools/xrgame/debugbus.py --serial <device> present trace 120
 python3 tools/xrgame/debugbus.py --serial <device> present trace 0
 python3 tools/xrgame/debugbus.py --serial <device> present async_copy 1
 python3 tools/xrgame/debugbus.py --serial <device> present async_copy 0
+python3 tools/xrgame/debugbus.py --serial <device> present copy_pipeline 1
+python3 tools/xrgame/debugbus.py --serial <device> present copy_pipeline 0
 python3 tools/xrgame/debugbus.py --serial <device> --stop
 ```
 
@@ -53,6 +55,12 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 | `present` | 当前 host Present 的待归还队列、CPU pacing 队列、限帧、trace 余量；近似并发快照，不获取 GPU 锁 |
 | `present trace N` | 当前会话最多记录 N 帧（0–3600），0 停止；仍通过 `XRGamePresentTrace`/原生 present trace 输出 logcat |
 | `present async_copy 0/1` | 当前会话的 AHB GPU copy 对照开关，初始关闭；在已接收任务归还后切换。查看 `asyncCopyRequested/Active`、`outstandingCopies` 和完成/跳过/失败计数 |
+| `present copy_pipeline 0/1` | 实验性两阶段 copy，默认关闭、仅当前会话；需 `asyncCopyActive=true`。同队列的 GPU barrier 保证 copy→draw 顺序，独立线程等待 copy fence 后才通知 Complete/Idle。查看 `copyPipelineRequested/Active`；模式切换等待已接收任务归还 |
+| `instrumentation [off\|coarse\|detail]` | host Litep 桩点层级；默认 coarse，仍需显式开始采集；off 不结束已开始的采集会话 |
+| `profiler_ring [status\|start\|stop\|dump N]` | 每线程 1 MiB 的有界 ring；dump 0 允许零帧启动，等待准确 dump_id 完成后收集 |
+| `profiler_capture [status\|stop\|file MiB seconds]` | 有界 Streaming 文件，完成后恢复此前 ring 状态；保留 PROF 与 sidecar |
+
+Litep 的主流程覆盖、开销控制、跨线程/截断语义和采集示例见 [Litep 桩点说明](litep.md)。
 
 `async_copy` 首轮只覆盖无 wait/idle X fence、无偏移、未启用 Present 限帧的 AHB copy；
 直接采样及其他路径不纳入这次优化。picoXr 可在游戏详情 → 编辑容器 → 图形中切换
@@ -61,6 +69,12 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 `XRGAME_PRESENT_ASYNC_COPY=1`；UI 关闭会写 `0`，已有 opt-in 可直接读回。
 运行中启用快捷菜单限帧会在已接收 copy 归还后切回同步，关闭限帧则恢复用户的异步选择。
 `requestedFrameRateLimit` 为请求值，`frameRateLimit` 为当前生效值。
+`copy_pipeline` 不改变游戏 VSync、DXGI 最大在途帧数或源 AHB 归还时机，也不启用直接采样。
+它移除 renderer 在 copy 与 draw 之间的 CPU fence 等待；命令池释放仍在 renderer 上，
+回收线程只等待 fence 并发出完成通知。队列容量包含已提交但尚未完成的 copy；
+窗口取消不能提前归还在途 AHB，GPU 等待失败时保留资源到设备销毁，不发 Idle。
+Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait` 是回收线程的等待；
+跨线程 `host.present.queue_to_complete` 仍覆盖完整请求寿命，不能把两个阶段的并行时间相加。
 验证与限制见 [MHW](../validation/mhw-present-async-20260928.md) 和
 [MHR / UI 验证](../validation/mhr-present-async-20260929.md)。
 

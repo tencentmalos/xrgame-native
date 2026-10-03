@@ -177,12 +177,16 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
             if (BuildConfig.XRGAME && !default) {
                 SettingsListDropdown(
                     colors = settingsTileColors(),
-                    title = { Text(stringResource(R.string.xrgame_vr_mode)) },
-                    value = if (!config.windowsVrEnabled) 0 else if (config.xrPresentationMode == "openxr") 2 else 1,
-                    items = listOf(stringResource(R.string.xrgame_vr_off), stringResource(R.string.xrgame_vr_sbs), stringResource(R.string.xrgame_vr_openxr)),
+                    title = { Text(stringResource(R.string.xrgame_display_mode)) },
+                    value = if (config.sbsTheaterEnabled) 3 else if (!config.windowsVrEnabled) 0 else if (config.xrPresentationMode == "openxr") 2 else 1,
+                    items = listOf(stringResource(R.string.xrgame_display_flat), stringResource(R.string.xrgame_vr_sbs), stringResource(R.string.xrgame_vr_openxr), stringResource(R.string.xrgame_theater_sbs)),
                     onItemSelected = { idx -> state.config.value = config.copy(
-                        windowsVrEnabled = idx != 0, xrPresentationMode = if (idx == 2) "openxr" else "sbs",
+                        windowsVrEnabled = idx == 1 || idx == 2, sbsTheaterEnabled = idx == 3,
+                        xrPresentationMode = if (idx == 2) "openxr" else "sbs",
                     ) },
+                )
+                if (config.sbsTheaterEnabled) Text(
+                    stringResource(R.string.xrgame_theater_desc), Modifier.padding(horizontal = 16.dp),
                 )
                 if (config.windowsVrEnabled) Text(
                     stringResource(R.string.xrgame_vr_mode_desc), Modifier.padding(horizontal = 16.dp),
@@ -457,6 +461,17 @@ private fun DxWrapperSection(state: ContainerConfigState, default: Boolean) {
             onCheckedChange = { enabled ->
                 state.config.value = config.copy(
                     envVars = XrGamePresentSettings.withAsyncCopy(config.envVars, enabled),
+                )
+            },
+        )
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(stringResource(R.string.xrgame_render_ahead)) },
+            subtitle = { Text(stringResource(R.string.xrgame_render_ahead_description)) },
+            state = XrGamePresentSettings.renderAheadEnabled(config.envVars),
+            onCheckedChange = { enabled ->
+                state.config.value = config.copy(
+                    envVars = XrGamePresentSettings.withRenderAhead(config.envVars, enabled),
                 )
             },
         )

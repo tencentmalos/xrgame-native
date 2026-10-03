@@ -191,6 +191,8 @@ import com.winlator.widget.TouchpadView
 import com.winlator.renderer.ASurfaceRenderer
 import com.winlator.renderer.GLRenderer
 import com.winlator.renderer.VulkanRenderer
+import app.gamenative.ui.screen.xr.SbsTheaterSettings
+import app.gamenative.ui.screen.xr.SbsTheaterOverlay
 import com.winlator.widget.XServerRendererView
 import com.winlator.widget.XServerView
 import com.winlator.widget.XServerViewGL
@@ -515,7 +517,8 @@ fun XServerScreen(
 
     PluviaApp.events.emit(
         AndroidEvent.SetAllowedOrientation(
-            if (container.isPortraitMode) EnumSet.of(Orientation.PORTRAIT)
+            if (SbsTheaterSettings.isEnabled(container)) EnumSet.of(Orientation.LANDSCAPE)
+            else if (container.isPortraitMode) EnumSet.of(Orientation.PORTRAIT)
             else PrefManager.allowedOrientation,
         ),
     )
@@ -598,7 +601,7 @@ fun XServerScreen(
     var playingBlockedRemoteName by rememberSaveable { mutableStateOf<String?>(null) }
     var showTouchGestureDialog by remember { mutableStateOf(false) }
     var showShooterModeDialog by remember(container.id) { mutableStateOf(false) }
-    var isTouchscreenModeActive by remember { mutableStateOf(container.isTouchscreenMode) }
+    var isTouchscreenModeActive by remember { mutableStateOf(container.isTouchscreenMode && !SbsTheaterSettings.isEnabled(container)) }
     var isShooterModeActive by remember(container.id) { mutableStateOf(container.isShooterMode) }
     var currentGestureConfig by remember {
         mutableStateOf(app.gamenative.data.TouchGestureConfig.fromJson(container.getGestureConfig()))
@@ -645,7 +648,7 @@ fun XServerScreen(
     )
 
     // LSFG tab in QuickMenu only visible when enabled in container settings
-    val isLsfgAvailable = LsfgQuickMenuHelper.isAvailable(container)
+    val isLsfgAvailable = LsfgQuickMenuHelper.isAvailable(container) && !SbsTheaterSettings.isEnabled(container)
     val initialLsfgSettings = remember(container.id) { LsfgQuickMenuHelper.readSettings(container) }
     var lsfgMultiplier by rememberSaveable(container.id) { mutableIntStateOf(initialLsfgSettings.multiplier) }
     var lsfgFlowScale by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.flowScale) }
@@ -1347,44 +1350,48 @@ fun XServerScreen(
             }
 
             QuickMenuAction.TOUCHSCREEN_MODE -> {
-                val newMode = !container.isTouchscreenMode
-                container.setTouchscreenMode(newMode)
-                container.saveData()
-                isTouchscreenModeActive = newMode
-
-                // Notify TouchpadView of the mode change
-                PluviaApp.touchpadView?.setTouchscreenMode(newMode)
-
-                if (newMode) {
-                    // Apply gesture config when enabling
-                    PluviaApp.touchpadView?.setGestureConfig(currentGestureConfig)
-
-                    // Hide on-screen controls (mirrors startup priority logic)
-                    if (areControlsVisible) {
-                        hideInputControls()
-                        areControlsVisible = false
-                    }
-
-                    applyMouseCursorVisibility()
+                if (SbsTheaterSettings.isEnabled(container)) {
+                    SnackbarManager.show(context.getString(R.string.xrgame_theater_touchpad))
                 } else {
-                    applyMouseCursorVisibility()
+                    val newMode = !container.isTouchscreenMode
+                    container.setTouchscreenMode(newMode)
+                    container.saveData()
+                    isTouchscreenModeActive = newMode
 
-                    // Re-evaluate whether to show on-screen controls
-                    // (same logic as scanForExternalDevices startup path)
-                    if (!hasPhysicalController && !hasPhysicalKeyboard &&
-                        !hasPhysicalMouse && !hasInternalTouchpad) {
-                        val manager = PluviaApp.inputControlsManager
-                        val profiles = manager?.getProfiles(false) ?: listOf()
-                        if (profiles.isNotEmpty() && !areControlsVisible) {
-                            val profileIdStr = container.getExtra("profileId", "0")
-                            val profileId = profileIdStr.toIntOrNull() ?: 0
-                            val targetProfile = if (profileId != 0) {
-                                manager?.getProfile(profileId)
-                            } else {
-                                null
-                            } ?: manager?.getProfile(0) ?: profiles.getOrNull(2) ?: profiles.first()
-                            showInputControls(targetProfile, xServerView!!.getxServer().winHandler, container)
-                            areControlsVisible = true
+                    // Notify TouchpadView of the mode change
+                    PluviaApp.touchpadView?.setTouchscreenMode(newMode)
+
+                    if (newMode) {
+                        // Apply gesture config when enabling
+                        PluviaApp.touchpadView?.setGestureConfig(currentGestureConfig)
+
+                        // Hide on-screen controls (mirrors startup priority logic)
+                        if (areControlsVisible) {
+                            hideInputControls()
+                            areControlsVisible = false
+                        }
+
+                        applyMouseCursorVisibility()
+                    } else {
+                        applyMouseCursorVisibility()
+
+                        // Re-evaluate whether to show on-screen controls
+                        // (same logic as scanForExternalDevices startup path)
+                        if (!hasPhysicalController && !hasPhysicalKeyboard &&
+                            !hasPhysicalMouse && !hasInternalTouchpad) {
+                            val manager = PluviaApp.inputControlsManager
+                            val profiles = manager?.getProfiles(false) ?: listOf()
+                            if (profiles.isNotEmpty() && !areControlsVisible) {
+                                val profileIdStr = container.getExtra("profileId", "0")
+                                val profileId = profileIdStr.toIntOrNull() ?: 0
+                                val targetProfile = if (profileId != 0) {
+                                    manager?.getProfile(profileId)
+                                } else {
+                                    null
+                                } ?: manager?.getProfile(0) ?: profiles.getOrNull(2) ?: profiles.first()
+                                showInputControls(targetProfile, xServerView!!.getxServer().winHandler, container)
+                                areControlsVisible = true
+                            }
                         }
                     }
                 }
@@ -1874,7 +1881,7 @@ fun XServerScreen(
         }
     }
 
-    val isPortrait = container.isPortraitMode
+    val isPortrait = container.isPortraitMode && !SbsTheaterSettings.isEnabled(container)
     // var launchedView by rememberSaveable { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxSize()) {
         key(isPortrait) {
@@ -2026,17 +2033,19 @@ fun XServerScreen(
                     setAsyncCopy(app.gamenative.xrgame.XrGamePresentSettings.asyncCopyEnabled(container.envVars))
                 }
             }
-            val useGLRenderer = container.graphicsDriver == "virgl" || container.displayRenderer.equals("gl", true)
+            val useGLRenderer = !SbsTheaterSettings.isEnabled(container) &&
+                (container.graphicsDriver == "virgl" || container.displayRenderer.equals("gl", true))
             val xServerViewInstance: XServerRendererView = if (useGLRenderer) {
                 XServerViewGL(context, xServerToUse)
             } else {
-                XServerView(context, xServerToUse, container.displayRenderer)
+                XServerView(context, xServerToUse, if (SbsTheaterSettings.isEnabled(container)) "vulkan" else container.displayRenderer)
             }
             val xServerView = xServerViewInstance.apply {
                 xServerView = this
                 setFrameRateLimit(if (fpsLimiterEnabled) fpsLimiterTarget else 0)
                 val renderer = this.renderer
                 if (!useGLRenderer && renderer is VulkanRenderer) {
+                    SbsTheaterSettings.apply(renderer, container)
                     if (BuildConfig.XRGAME && BuildConfig.DEBUG) {
                         renderer.setForeignAhbOwnership(EnvVars(container.envVars).get("XRGAME_AHB_OWNERSHIP") == "foreign")
                         renderer.setSampleHardwareBuffers(EnvVars(container.envVars).get("XRGAME_AHB_PRESENT") == "sample")
@@ -2065,7 +2074,7 @@ fun XServerScreen(
                 }
                 getxServer().renderer = renderer
                 PluviaApp.touchpadView = TouchpadView(context, getxServer(), PrefManager.getBoolean("capture_pointer_on_external_mouse", true))
-                PluviaApp.touchpadView?.setMoveCursorToTouchpoint(PrefManager.getBoolean("move_cursor_to_touchpoint", false))
+                PluviaApp.touchpadView?.setMoveCursorToTouchpoint(!SbsTheaterSettings.isEnabled(container) && PrefManager.getBoolean("move_cursor_to_touchpoint", false))
 
                 // Wire keyboard toggle callback for gesture "Show Keyboard" action.
                 // Mirrors the QuickMenuAction.KEYBOARD external-display routing
@@ -2293,7 +2302,7 @@ fun XServerScreen(
                             handler.setDInputMapperType(container.dinputMapperType)
                             if (container.isDisableMouseInput()) {
                                 PluviaApp.touchpadView?.setTouchscreenMouseDisabled(true)
-                            } else if (container.isTouchscreenMode()) {
+                            } else if (container.isTouchscreenMode() && !SbsTheaterSettings.isEnabled(container)) {
                                 PluviaApp.touchpadView?.setTouchscreenMode(true)
                                 // Apply per-game gesture configuration
                                 val gestureConfig = app.gamenative.data.TouchGestureConfig.fromJson(container.getGestureConfig())
@@ -2910,6 +2919,12 @@ fun XServerScreen(
                 }
             )
         }
+
+        if (SbsTheaterSettings.isEnabled(container)) SbsTheaterOverlay(
+            container, xServerView?.renderer as? VulkanRenderer,
+            !showQuickMenu && !PluviaApp.isOverlayPaused && !keepPausedForEditor,
+            Modifier.align(Alignment.TopEnd),
+        )
 
         QuickMenu(
             isVisible = showQuickMenu,

@@ -2944,6 +2944,10 @@ class SteamService : Service(), IChallengeUrlChanged {
         suspend fun notifyRunningProcesses(vararg gameProcesses: GameProcessInfo) = withContext(Dispatchers.IO) {
             instance?.let { steamInstance ->
                 if (isConnected) {
+                    // Disconnect can clear steamID before isConnected changes.
+                    // Bind this report to the same service/account snapshot.
+                    val userAccountId = steamInstance.steamClient?.steamID?.accountID?.toInt()
+                        ?: return@withContext
                     val gamesPlayed = gameProcesses.mapNotNull { gameProcess ->
                         getAppInfoOf(gameProcess.appId)?.let { appInfo ->
                             getPkgInfoOf(gameProcess.appId)?.let { pkgInfo ->
@@ -2954,8 +2958,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                                         ?: gameProcess.processes.firstOrNull()?.processId
                                         ?: 0
 
-                                    val userAccountId = userSteamId!!.accountID.toInt()
-                                    val preferredLender = instance?.preferredLenderByAppId?.get(gameProcess.appId)
+                                    val preferredLender = steamInstance.preferredLenderByAppId[gameProcess.appId]
                                         ?: PrefManager.preferredFamilyLenders[gameProcess.appId]
                                     val preferredAccountId = preferredLender?.let { SteamID(it).accountID.toInt() }
                                     val ownerId = when {

@@ -452,6 +452,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                 if (BuildConfig.XRGAME && runGeneration != xrGameRunGeneration) return;
                 pid = -1;
             }
+            app.gamenative.xrgame.XrGameProfiler.mark("wine.process.exit");
             if (!environment.isWinetricksRunning()) {
                 SteamService.setKeepAlive(false);
                 if (terminationCallback != null)

@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- XRGame Native (picoXr) only; see app.gamenative.xrgame.XrGameStorage. -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="xrgame_render_ahead">Render ahead (experimental)</string>
+    <string name="xrgame_render_ahead_description">Let the next frame start earlier. May improve frame rate and increase input latency. Direct3D 9–11 only; restart the game to apply.</string>
     <string name="xrgame_notice_title">Unofficial Steam client</string>
     <string name="xrgame_notice_message">XRGame Native is not an official Valve client. Sign in only with a dedicated test account, never your main Steam account.\n\nGames are installed to %1$s so they survive reinstalling the app. The next screen asks for All files access for that folder.</string>
     <string name="xrgame_notice_accept">Continue</string>
@@ -13,4 +15,15 @@
     <string name="xrgame_sbs_controls">SBS · Fixed controllers · Touch each half to trigger</string>
     <string name="xrgame_vr_recenter">Recenter</string>
     <string name="xrgame_vr_menu">Menu</string>
+    <string name="xrgame_display_mode">Display mode (experimental)</string>
+    <string name="xrgame_display_flat">Flat screen</string>
+    <string name="xrgame_theater_sbs">SBS cinema — non-VR games</string>
+    <string name="xrgame_theater_desc">A virtual screen for ordinary games, viewed from two fixed eyes. Uses the Vulkan compositor; frame generation is disabled for this session. Gamepad and keyboard work normally; touch acts as a trackpad. Size and distance can be adjusted while playing.</string>
+    <string name="xrgame_theater_controls">Cinema</string>
+    <string name="xrgame_theater_preview_flat">Preview flat</string>
+    <string name="xrgame_theater_preview_sbs">Preview SBS</string>
+    <string name="xrgame_theater_size">Screen size: %1$s×</string>
+    <string name="xrgame_theater_distance">Distance: %1$s m</string>
+    <string name="xrgame_theater_reset">Reset screen</string>
+    <string name="xrgame_theater_touchpad">SBS cinema uses trackpad input. Direct touch is unavailable in this preview.</string>
 </resources>

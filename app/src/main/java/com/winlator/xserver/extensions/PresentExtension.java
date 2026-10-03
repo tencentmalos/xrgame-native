@@ -32,6 +32,8 @@ import java.io.IOException;
 import app.gamenative.xrgame.XrGamePresentTrace;
 
 public class PresentExtension implements Extension {
+    private final java.util.concurrent.atomic.AtomicReference<app.gamenative.xrgame.XrGameProfiler.Region> firstPresent =
+            new java.util.concurrent.atomic.AtomicReference<>(app.gamenative.xrgame.XrGameProfiler.region("x11.server_to_first_present_request"));
     public static final byte MAJOR_OPCODE = -103;
     public enum Kind { PIXMAP, MSC_NOTIFY }
     public enum Mode { COPY, FLIP, SKIP }
@@ -39,6 +41,7 @@ public class PresentExtension implements Extension {
     private final XrGamePresentTrace presentTrace = new XrGamePresentTrace();
     private final Object copyModeLock = new Object();
     private boolean asyncCopyRequested = false, asyncCopyActive = false;
+    private boolean copyPipelineRequested = false, copyPipelineActive = false;
     private int outstandingCopies = 0;
     private int requestedFrameRateLimit = 0;
     private volatile boolean closed = false;
@@ -53,11 +56,20 @@ public class PresentExtension implements Extension {
         }
     }
 
+    /** Experimental GPU-ordered draw with independently fenced copy retirement. */
+    public void setCopyPipeline(boolean enabled) {
+        synchronized (copyModeLock) {
+            copyPipelineRequested = app.gamenative.BuildConfig.XRGAME && enabled;
+            applyCopySettingsWhenDrained();
+        }
+    }
+
     // copyModeLock held: keep the current mode/cap until every accepted copy retires.
     private void applyCopySettingsWhenDrained() {
         if (outstandingCopies == 0) {
             frameRateLimit = requestedFrameRateLimit;
             asyncCopyActive = asyncCopyRequested && frameRateLimit == 0;
+            copyPipelineActive = asyncCopyActive && copyPipelineRequested;
         }
     }
 
@@ -74,6 +86,8 @@ public class PresentExtension implements Extension {
         synchronized (copyModeLock) {
             result.put("asyncCopyRequested", asyncCopyRequested);
             result.put("asyncCopyActive", asyncCopyActive);
+            result.put("copyPipelineRequested", copyPipelineRequested);
+            result.put("copyPipelineActive", copyPipelineActive);
             result.put("outstandingCopies", outstandingCopies);
             result.put("requestedFrameRateLimit", requestedFrameRateLimit);
         }
@@ -124,7 +138,7 @@ public class PresentExtension implements Extension {
     private volatile boolean choreographerChecked = false;
     private final Object choreographerLock = new Object();
 
-    private Thread cpuPacerThread = null;
+    private volatile Thread cpuPacerThread = null;
     private final java.util.concurrent.PriorityBlockingQueue<PendingIdle> cpuQueue =
             new java.util.concurrent.PriorityBlockingQueue<>(11,
                     java.util.Comparator.comparingLong(p -> p.targetNs));
@@ -140,9 +154,16 @@ public class PresentExtension implements Extension {
 
     public void close() {
         closed = true;
-        if (cpuPacerThread != null) {
-            cpuPacerThread.interrupt();
-            cpuPacerThread = null;
+        app.gamenative.xrgame.XrGameProfiler.Region pending = firstPresent.getAndSet(null);
+        if (pending != null) {
+            pending.close();
+            app.gamenative.xrgame.XrGameProfiler.mark("x11.closed_without_present_request");
+        }
+        synchronized (choreographerLock) {
+            if (cpuPacerThread != null) {
+                cpuPacerThread.interrupt();
+                cpuPacerThread = null;
+            }
         }
     }
 
@@ -166,12 +187,14 @@ public class PresentExtension implements Extension {
     }
 
     private void startCpuPacer() {
-        if (cpuPacerThread != null) return;
+        // Called under choreographerLock, which also serializes close().
+        if (closed || cpuPacerThread != null) return;
         cpuPacerThread = new Thread(() -> {
             while (!Thread.interrupted()) {
                 PendingIdle p = cpuQueue.peek();
                 if (p == null) {
-                    java.util.concurrent.locks.LockSupport.parkNanos(500_000L);
+                    // unpark's permit survives an offer between peek and park.
+                    java.util.concurrent.locks.LockSupport.park(this);
                     continue;
                 }
                 long now = System.nanoTime();
@@ -191,6 +214,12 @@ public class PresentExtension implements Extension {
         cpuPacerThread.setDaemon(true);
         cpuPacerThread.setPriority(Thread.MAX_PRIORITY);
         cpuPacerThread.start();
+    }
+
+    private void enqueueCpuIdle(PendingIdle idle) {
+        cpuQueue.offer(idle);
+        // Also interrupt a timed wait when an earlier deadline is inserted.
+        java.util.concurrent.locks.LockSupport.unpark(cpuPacerThread);
     }
 
     private volatile boolean choreographerPosted = false;
@@ -271,7 +300,7 @@ public class PresentExtension implements Extension {
                     }
                 }
             }
-            cpuQueue.offer(new PendingIdle(window, pixmap, serial, idleFence, fireTime, 0, trace));
+            enqueueCpuIdle(new PendingIdle(window, pixmap, serial, idleFence, fireTime, 0, trace));
         }
     }
 
@@ -374,6 +403,13 @@ public class PresentExtension implements Extension {
         if (pixmap == null) throw new BadPixmap(pixmapId);
 
         app.gamenative.xrgame.XrGameProfiler.present();
+        if (firstPresent.get() != null) {
+            app.gamenative.xrgame.XrGameProfiler.Region pending = firstPresent.getAndSet(null);
+            if (pending != null) {
+                pending.close();
+                app.gamenative.xrgame.XrGameProfiler.mark("x11.first_present_request");
+            }
+        }
         Drawable content = window.getContent();
         int contentDepth = content.visual.depth;
         int pixmapDepth = pixmap.drawable.visual.depth;
@@ -401,6 +437,7 @@ public class PresentExtension implements Extension {
                 // Release the guest image only after the host GPU has finished reading it.
                 XrGamePresentTrace.Frame trace = presentTrace.begin(windowId, pixmapId, serial, waitFence, idleFence);
                 final boolean queuedCopy;
+                final boolean pipelineCopy;
                 synchronized (copyModeLock) {
                     // Switching modes waits for accepted copies to retire. Unsupported
                     // request shapes retain the existing synchronous path when drained.
@@ -409,12 +446,13 @@ public class PresentExtension implements Extension {
                             && xOff == 0 && yOff == 0 && !vr.canSampleHardwareBuffers();
                     if (!queuedCopy && outstandingCopies != 0) throw new com.winlator.xserver.errors.BadAlloc();
                     if (queuedCopy) ++outstandingCopies;
+                    pipelineCopy = copyPipelineActive;
                 }
                 if (queuedCopy) {
                     final short sequence = client.getSequenceNumber();
                     final byte opcode = client.getRequestData();
                     boolean accepted = vr.queueHardwarePixmap(window, (GPUImage)pixmap.drawable.getTexture(),
-                            trace == null ? 0 : trace.id, result -> {
+                            trace == null ? 0 : trace.id, pipelineCopy, result -> {
                                 try {
                                     if (result < 0) {
                                         asyncFailed.incrementAndGet();

@@ -1,0 +1,34 @@
+--- a/src/dxvk/dxvk_presenter.cpp
++++ b/src/dxvk/dxvk_presenter.cpp
+@@ -48,6 +48,11 @@
+     // the present fence if presentation is queued but fails.
+     // TODO Remove this hack when this gets fixed in stable SteamOS.
+     m_hasGamescopeFenceSignalBug = env::getEnvVar("ENABLE_GAMESCOPE_WSI") == "1";
++    // Opt-in pacing experiment. Keep Vulkan/X11 completion and image reuse
++    // intact; use the existing no-present-wait frame-latency fallback only.
++    m_gpuFrameCompletion = env::getEnvVar("XRGAME_DXVK_FRAME_COMPLETION") == "gpu";
++    if (m_gpuFrameCompletion)
++      Logger::info("XRGame DXVK: frame latency signaled at GPU completion; present/Idle remain real");
+   }
+ 
+   
+@@ -855,7 +860,8 @@
+ 
+     // Set up feature support for present wait / id, and launch sync thread as necessary
+     m_hasPresentId = presentId2Caps.presentId2Supported || m_device->features().khrPresentId.presentId;
+-    m_hasPresentWait = presentWait2Caps.presentWait2Supported || m_device->features().khrPresentWait.presentWait;
++    m_hasPresentWait = !m_gpuFrameCompletion &&
++      (presentWait2Caps.presentWait2Supported || m_device->features().khrPresentWait.presentWait);
+ 
+     if (m_signal && m_hasPresentWait && !m_frameThread.joinable())
+       m_frameThread = dxvk::thread([this] { runFrameThread(); });
+--- a/src/dxvk/dxvk_presenter.h
++++ b/src/dxvk/dxvk_presenter.h
+@@ -291,6 +291,7 @@
+ 
+     bool                        m_hasPresentId = false;
+     bool                        m_hasPresentWait = false;
++    bool                  m_gpuFrameCompletion = false;
+     bool                        m_hasSwapchainMaintenance1 = false;
+ 
+     VkPresentModeKHR            m_presentMode = VK_PRESENT_MODE_FIFO_KHR;

@@ -1,5 +1,6 @@
 #pragma once
 #include "PresentCopyQueue.h"
+#include "SbsTheater.h"
 #include <vulkan/vulkan.h>
 #include <list>
 #include <vulkan/vulkan_android.h>
@@ -162,12 +163,13 @@ public:
 
     void onSurfaceResized(int width, int height);
     void setTransform(float ox, float oy, float sx, float sy);
+    void setSbsTheater(bool enabled, float widthMeters, float distanceMeters);
     void updatePointerPosition(short x, short y);
     void updateWindowContent(int64_t id, void* pixels, short w, short h, short stride, int x, int y);
     bool copyWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame,
                               const PresentCopyQueue::Ticket& ticket = {});
     bool queueWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame,
-                               PresentCopyQueue::Completion complete);
+                               bool pipeline, PresentCopyQueue::Completion complete);
     void cancelWindowCopies(int64_t id) { presentCopies.invalidate(id); }
     bool sampleWindowContentAHB(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame);
     bool retireSampledWindow(int64_t id);
@@ -423,12 +425,26 @@ private:
     std::atomic<bool> isRunning{false};
     std::atomic<bool> fbResized{false};
     std::mutex        renderMutex;
+    SbsTheater        sbsTheater; // guarded by renderMutex; copied once per command buffer
     std::mutex        dirtyMutex;
     std::condition_variable dirtyCV;
     std::shared_mutex frameMutex;
     PresentCopyQueue presentCopies;
     std::vector<std::shared_ptr<AHardwareBuffer>> failedCopyBuffers;
     std::vector<std::pair<VkCommandBuffer, VkFence>> failedCopySubmissions;
+    struct CopySubmission {
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+        std::atomic<VkResult> result{VK_NOT_READY};
+        std::shared_ptr<AHardwareBuffer> owner;
+    };
+    // Renderer owns Vulkan allocation/free. Retirement thread only waits and
+    // publishes result; it never touches the command pool or texture maps.
+    std::vector<std::shared_ptr<CopySubmission>> pendingCopySubmissions;
+    bool submitWindowCopy(int64_t id, AHardwareBuffer* ahb, uint64_t traceFrame,
+                          const PresentCopyQueue::Ticket& ticket,
+                          const std::shared_ptr<CopySubmission>& pending);
+    void reapCopySubmissions(bool deviceStopped = false);
 
     void createInstance();
     void createSurface();

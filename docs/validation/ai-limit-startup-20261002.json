@@ -1,0 +1,138 @@
+{
+  "date": "2026-10-02",
+  "status": "main_menu_observed_without_runtime_configuration_or_code_change",
+  "identity": {
+    "model": "AYN Thor",
+    "fingerprint": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "bootId": "8bb14501-5800-4b9b-a9ab-7173603812f7",
+    "pageSize": "4096",
+    "apkSha256": "4607aeda2dd6dfb209c3e512a98d2f242ecc579b8afe4c975c9f5859049ed397",
+    "componentCatalogSha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+    "nativeBuildIds": {
+      "assets/gamenative_xr_unixbridge.so": "7f8828628f088bbdc9124d99b8c301d82fa9a1cf",
+      "lib/arm64-v8a/lib7zx.so": "e79db703428a1e9992214bba03dfe9047eb68119",
+      "lib/arm64-v8a/libahbimage.so": "b08bfa1613c4a5821fe917795bc7ad664dfa6f07",
+      "lib/arm64-v8a/libandroidx.graphics.path.so": "a7846ae06d6bf6cf63fa7c5e056b5de493c71567",
+      "lib/arm64-v8a/libarchive-jni.so": "d235438c5533e44a6e830f535018c72e8b43b117",
+      "lib/arm64-v8a/libasurface_renderer.so": "774fe0ddda6bdaf4c9cd248e59fecd7af4294858",
+      "lib/arm64-v8a/libc++_shared.so": "ea306390624df9242cca21aeec76a0427683bd72",
+      "lib/arm64-v8a/libdatastore_shared_counter.so": "17db37bd6770ac00dd2d1d2828839fd23a7959a3",
+      "lib/arm64-v8a/libdrawable.so": "a1050793852b30c9e015ba8c69d458213b570787",
+      "lib/arm64-v8a/libevshim.so": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d",
+      "lib/arm64-v8a/libextras.so": "4fc1ac1eba1ec240ee5e392ebaa7752097219dbe",
+      "lib/arm64-v8a/libgamenative_dns_v4mapped.so": "4815e9b00e9a8f4653888b98b0974c225758d43c",
+      "lib/arm64-v8a/libgndownload.so": "d2351fd2a3bfd2f5ec3f4074e921d6d6f4f46a9e",
+      "lib/arm64-v8a/libhook_impl.so": "4ff80aa40482fa55068c6e792df0ea7af30b688a",
+      "lib/arm64-v8a/libltdl.so": "5a068ed046a13338452db8a4fe06206216a5128c",
+      "lib/arm64-v8a/libmain_hook.so": "721a7592fd26313b2158dbdc3c225840ee07a3a8",
+      "lib/arm64-v8a/libopenxr_loader.so": "8694d5759369f045621543aa4f73753220badd0d",
+      "lib/arm64-v8a/libpulse.so": "d9861eaefd76e7b510c0cbe3cf28fdd243e7f0ad",
+      "lib/arm64-v8a/libpulseaudio.so": "ad97886e4ccdf2f02bec63d21c9733da0bfefe45",
+      "lib/arm64-v8a/libpulsecommon-13.0.so": "d370d2dbb757865a1462cc05bb1cdb3426a3ce29",
+      "lib/arm64-v8a/libpulsecore-13.0.so": "f11dd288254c8011a77b6f5c68b803917332f3d9",
+      "lib/arm64-v8a/libsndfile.so": "9b045131dbb1cbb002815c56611d9095315eea99",
+      "lib/arm64-v8a/libvulkan_renderer.so": "6a799a63e3b40275cf373d803df361cecb183482",
+      "lib/arm64-v8a/libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+      "lib/arm64-v8a/libwinlator_11.so": "0831cf9e01bd408ab7cefa64a7bc91df7c1325e8",
+      "lib/arm64-v8a/libxconnectorpatch.so": "abd01470fed8b2351f64a79a601f6f51092b4190",
+      "lib/arm64-v8a/libxrgame_debugbus.so": "30a9c69fe7e2e2c13006718a8591f3d8619cdc23",
+      "lib/arm64-v8a/libxrgame_exec_probe.so": "b8e19d33f2fd978f0891e5b4a42ae19939e5c1d5",
+      "lib/arm64-v8a/libxrimmersive.so": "b22095d0b7a4ee1002cda6cb2a88c63ae52a448f",
+      "lib/arm64-v8a/libzstd-jni-1.5.7-5.so": null
+    },
+    "auditFiles": 124,
+    "auditErrors": 0,
+    "openCompositeSha256": "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5"
+  },
+  "appPid": 15588,
+  "guestPid": 20816,
+  "guestStartTimeTicks": 172116840,
+  "observationSeconds": 310.586,
+  "observationIncludesStartup": true,
+  "originalAttempt": {
+    "guestPid": 16840,
+    "loaderObservedProcessExitCode": 0,
+    "loaderWaitMs": 20069,
+    "lastGameplayMessage": "VersionValidationManager writes VersionLocal timestamp",
+    "exitTriggerProven": false
+  },
+  "replay": {
+    "languageSettingsObserved": true,
+    "mainMenuObserved": true,
+    "actualRenderer": "Direct3D 11.0 level 11.1 via DXVK / Turnip",
+    "shaderSampleTids": [
+      20934,
+      20935
+    ],
+    "shaderSampleCpuPercent": [
+      96.2,
+      92.5
+    ],
+    "shaderSampleMeaning": "per-thread top instantaneous sample; 100 percent means one CPU core",
+    "mesaShaderCacheObservedKiB": 43740,
+    "inputsInjected": [
+      "one Android gamepad R1 key",
+      "one Android keyboard Tab key"
+    ],
+    "physicalControlsAccepted": false,
+    "gameplayAccepted": false,
+    "repeatLaunchAccepted": false
+  },
+  "configuration": {
+    "changedKeys": [
+      "sessionMetadata"
+    ],
+    "runtimeSettingsChangedByAgent": false,
+    "apkReplaced": false,
+    "savesReplaced": false,
+    "shaderCacheCleared": false
+  },
+  "privateEvidenceSha256": {
+    "replay1-logcat-private.txt": "70e8d8176bd9a11923653012a6fea832d09d2578a61b72935e6e98543da88584",
+    "replay1-final.json": "f6e3e0d7ba09a72cc6647a2da988e5ec47af4e3c44569df7c52b417cbf4d1219",
+    "VersionValidation": "caf8c3822480c742c2e4e81835e0370615c6605ad5101a1e62e576a76f008f34",
+    "replay1-observations.json": "8e0b100d3cd58d745fe18483de21d9115f32e8c89a34628ca375c209e0bf3cef",
+    "replay1-processes-30.txt": "e1eebbfcf0f23799567a39de36260ea85ade19cdc4d44ad674049272ca516da0",
+    "final-processes.txt": "5a9cf1667bc0f6f5fb7e4ca0809ddb3c4ed88f8c6219868fd9c1a2dc8aba8b02",
+    "title-observation.json": "19c873482f57901853ffb6465c7dd910efa30bbe236b894f168e38d4ba1942b7",
+    "replay1-start.json": "d4c5bc231d8e605064bcc994c2c8aac48baa64bc854f9a2c1591af6c12282846",
+    "VersionLocal": "fa7a8abd987b056b93033ec0e90041bab4e2b733afac0962b5466b10b9443597",
+    "player-initial.log": "b1ae7a7b0ab7e1b95b673ae5aa719d3e0352a3c1474ba2ae434224b875faa6d7",
+    "replay1-processes-45.txt": "fcf777b6e90d5c1851452e088a540f3fef670ce60e0aa1cfe49fff08f00f9a0e",
+    "player-replay1-live.log": "8b3e30eb639878bfea4f1516de02983b2d0483e21df6fb6d1510e9636eab56a2",
+    "replay1-launch.txt": "597008be6f42f10b516f1d820b01ff697eda9b261ef4f71b9fbe60dd65128d78",
+    "player-replay1.log": "8b3e30eb639878bfea4f1516de02983b2d0483e21df6fb6d1510e9636eab56a2",
+    "replay1-identity.json": "7a233e8f0fb312cf02c9d98b0f2ed44031a9ebd6d912d9c4b9109d4d06a8f88d",
+    "loader-title.log": "a66a6a4dc6d0493a9f728ad0698b2efd5e2c32b549ef863b63db958231eeec03",
+    "player-title.log": "97da7fc26d7a568aa90c26b6a0e8e3c328f6dcfce3ed6b70e31084b9af0620b6",
+    "identity.json": "017f882e8f074e147138d402ddbbf280c4188c63515471ad32484bb54e4fa1f6",
+    "replay1-processes-60.txt": "5a8e441896209266b5cb34f9bfa9840c7137f4144adf4e6ff434d6b243ee131e",
+    "loader-replay1.log": "a66a6a4dc6d0493a9f728ad0698b2efd5e2c32b549ef863b63db958231eeec03",
+    "container-final.json": "b78b3a645f64ffab09373633122508ecac1e55847539ad165cd08b3d55b1de3c",
+    "replay1-processes-15.txt": "cdf4de64945ae3263f95b85f531b5ffa9d807dc1f7b55e50df20e6b817560946",
+    "replay1-100-threads.txt": "36b1350291b5a83249fee7cc9f548f8b3e62822c586bfb3ef50f403fc1f5cb1b",
+    "container-original.json": "7be91f9e9e789d4972e55a511b00e2333bfeaaf0aef44639512bb8289418f60c",
+    "cache-after-settings.txt": "4400d1dae532451d405fd6dc0c5f3bccc261770cdb9aae9ab016c5692abf59e8",
+    "initial-logcat-private.txt": "856737fc9533759d7dbf66a09321505e98125ebbb7f449810ed24935f3aabb94",
+    "title-threads.txt": "e6dcbe4189e349abbfdf4f48c3768e689e4e199816d692b70dc9962e44385e0a",
+    "replay1-100-cache.txt": "1845772454000f77f8885092a6cae331425e9c2e0937847962033d965ea402f2"
+  },
+  "screenshots": {
+    "settings-keyboard.png": "01d9a3a05831becf33d8a50a749e2b3d76625b700db1b1449b27d7918722a2fe",
+    "initial.png": "9ffd4bc6964b87990124d3f24d6389c096b54f0dc6c0c191eb8e4685a5dddcbf",
+    "settings-rb.png": "7cfbf57722ec350d83318ef88ee0662a8a863d5db9a92560e1984f461570df99",
+    "replay1-90.png": "564c699677117753340696a5f0fe9b9b8800d6b23acf1c7a60f63a6e1c3f1c1c",
+    "replay1-late.png": "3b2cb565d4f22925226cdbe06504714ed314a16e3c6f201c1d17e0454367a8b7",
+    "title-final.png": "94dc79f635fd0d73026916cde74ed73d9a5f2e26a293e07a3e6aa9416feac995",
+    "awake.png": "3b2cb565d4f22925226cdbe06504714ed314a16e3c6f201c1d17e0454367a8b7",
+    "replay1-now.png": "68190bcc3f6347699658469aa38bdaf1018d95744b451f5771d947040ed3ac46"
+  },
+  "cleanup": {
+    "gameLeftRunning": true,
+    "debuggerStarted": false,
+    "forwardsCreated": false,
+    "temporaryDevicePayloadsCreated": false,
+    "ownedScrcpySessionStopped": true
+  },
+  "evidenceLocation": "private sibling evidence directory: ai-limit/20261002"
+}

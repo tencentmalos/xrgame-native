@@ -1,0 +1,1042 @@
+{
+  "schema": 1,
+  "date": "2026-10-02",
+  "status": "profiled_not_fixed",
+  "game": {
+    "app_id": 2407270,
+    "mode": "flat_non_sbs",
+    "resolution": [
+      1280,
+      720
+    ],
+    "quality": "medium",
+    "scene": "existing save, fixed sewer camera"
+  },
+  "apk_sha256": "9d8ef4e89a14d7b97e263a2859828b8e8ca71525489817086a19adab925e4222",
+  "catalog_sha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+  "apk_library_build_ids": {
+    "lib7zx.so": "e79db703428a1e9992214bba03dfe9047eb68119",
+    "libahbimage.so": "b08bfa1613c4a5821fe917795bc7ad664dfa6f07",
+    "libandroidx.graphics.path.so": "a7846ae06d6bf6cf63fa7c5e056b5de493c71567",
+    "libarchive-jni.so": "d235438c5533e44a6e830f535018c72e8b43b117",
+    "libasurface_renderer.so": "774fe0ddda6bdaf4c9cd248e59fecd7af4294858",
+    "libc++_shared.so": "ea306390624df9242cca21aeec76a0427683bd72",
+    "libdatastore_shared_counter.so": "17db37bd6770ac00dd2d1d2828839fd23a7959a3",
+    "libdrawable.so": "a1050793852b30c9e015ba8c69d458213b570787",
+    "libevshim.so": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d",
+    "libextras.so": "4fc1ac1eba1ec240ee5e392ebaa7752097219dbe",
+    "libgamenative_dns_v4mapped.so": "4815e9b00e9a8f4653888b98b0974c225758d43c",
+    "libgndownload.so": "d2351fd2a3bfd2f5ec3f4074e921d6d6f4f46a9e",
+    "libhook_impl.so": "4ff80aa40482fa55068c6e792df0ea7af30b688a",
+    "libltdl.so": "5a068ed046a13338452db8a4fe06206216a5128c",
+    "libmain_hook.so": "721a7592fd26313b2158dbdc3c225840ee07a3a8",
+    "libopenxr_loader.so": "8694d5759369f045621543aa4f73753220badd0d",
+    "libpulse.so": "d9861eaefd76e7b510c0cbe3cf28fdd243e7f0ad",
+    "libpulseaudio.so": "ad97886e4ccdf2f02bec63d21c9733da0bfefe45",
+    "libpulsecommon-13.0.so": "d370d2dbb757865a1462cc05bb1cdb3426a3ce29",
+    "libpulsecore-13.0.so": "f11dd288254c8011a77b6f5c68b803917332f3d9",
+    "libsndfile.so": "9b045131dbb1cbb002815c56611d9095315eea99",
+    "libvulkan_renderer.so": "2151525d5ac80b73f293814fba05741c15c618b9",
+    "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+    "libwinlator_11.so": "0831cf9e01bd408ab7cefa64a7bc91df7c1325e8",
+    "libxconnectorpatch.so": "abd01470fed8b2351f64a79a601f6f51092b4190",
+    "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+    "libxrgame_exec_probe.so": "b8e19d33f2fd978f0891e5b4a42ae19939e5c1d5",
+    "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2",
+    "libzstd-jni-1.5.7-5.so": null
+  },
+  "device": {
+    "model": "AYN Thor",
+    "fingerprint": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "android": "13",
+    "sdk": "33",
+    "kernel": "Linux localhost 5.15.123-android13-8-gafd857749d1f #1 SMP PREEMPT Thu Feb 5 07:59:03 UTC 2026 aarch64 Toybox",
+    "gpu_model": "Adreno740v2",
+    "boot_id": "8bb14501-5800-4b9b-a9ab-7173603812f7"
+  },
+  "pids": {
+    "host": 11333,
+    "game": 19457,
+    "wineserver": 19344
+  },
+  "start_ticks": {
+    "11333": "173179329",
+    "19457": "173273981",
+    "19344": "173273851"
+  },
+  "captures": {
+    "B2": {
+      "requested_prof_seconds": 18,
+      "prof_sha256": "15bf2edd6741f10c9beaa276e51e13d88728716357204940dfae2bb15533f572",
+      "kgsl_capture_manifest_sha256": "dcea0eb4e17e0926451a3a20b1f4729ddf56450c39367efa77de4fb699571951",
+      "kgsl_trace_sha256": "0300325fece43faabe741910b97e1dea53aa957e93f037b82a62442f8fcde3f8",
+      "safe_analysis_seconds": 17.706366843,
+      "clock_uncertainty_ns": 1130,
+      "capture_overrun": 0,
+      "capture_dropped": 0,
+      "gpu_busy_percent": 70.07288321844182,
+      "gpu_frequency_share": {
+        "550000": 0.037454662827240734,
+        "615000": 0.3382057932097708,
+        "680000": 0.6243395439629885
+      },
+      "frame_count": 274,
+      "present_request_rate": 15.300159935570415,
+      "frame_length_ms": {
+        "mean_ms": 65.35879390875913,
+        "p50_ms": 64.0280465,
+        "p90_ms": 88.4409375,
+        "sum_ms": 17908.309531
+      },
+      "scope_budget": [
+        {
+          "name": "host.vulkan.fence_wait",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 1,
+            "sum": 274
+          },
+          "inclusive": {
+            "mean_ms": 22.280541861313868,
+            "p50_ms": 17.422265,
+            "p90_ms": 46.2419267,
+            "sum_ms": 6104.86847
+          },
+          "exclusive": {
+            "mean_ms": 22.280541861313868,
+            "p50_ms": 17.422265,
+            "p90_ms": 46.2419267,
+            "sum_ms": 6104.86847
+          },
+          "frames_present": 274
+        },
+        {
+          "name": "host.present.copy",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 1,
+            "sum": 274
+          },
+          "inclusive": {
+            "mean_ms": 23.02279596350365,
+            "p50_ms": 18.2771355,
+            "p90_ms": 47.142026,
+            "sum_ms": 6308.246094
+          },
+          "exclusive": {
+            "mean_ms": 0.7413677445255474,
+            "p50_ms": 0.740521,
+            "p90_ms": 0.945146,
+            "sum_ms": 203.134762
+          },
+          "frames_present": 274
+        },
+        {
+          "name": "host.render.queue_present",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 2,
+            "sum": 274
+          },
+          "inclusive": {
+            "mean_ms": 0.24350176642335766,
+            "p50_ms": 0.239375,
+            "p90_ms": 0.5175417,
+            "sum_ms": 66.719484
+          },
+          "exclusive": {
+            "mean_ms": 0.24350176642335766,
+            "p50_ms": 0.239375,
+            "p90_ms": 0.5175417,
+            "sum_ms": 66.719484
+          },
+          "frames_present": 155
+        },
+        {
+          "name": "host.render.frame",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 2,
+            "sum": 274
+          },
+          "inclusive": {
+            "mean_ms": 0.5091972664233576,
+            "p50_ms": 0.509506,
+            "p90_ms": 1.072776,
+            "sum_ms": 139.520051
+          },
+          "exclusive": {
+            "mean_ms": 0.225749098540146,
+            "p50_ms": 0.2208595,
+            "p90_ms": 0.4613862,
+            "sum_ms": 61.855253
+          },
+          "frames_present": 174
+        },
+        {
+          "name": "host.render.acquire",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 2,
+            "sum": 274
+          },
+          "inclusive": {
+            "mean_ms": 0.039946401459854015,
+            "p50_ms": 0.038907,
+            "p90_ms": 0.08444820000000001,
+            "sum_ms": 10.945314
+          },
+          "exclusive": {
+            "mean_ms": 0.039946401459854015,
+            "p50_ms": 0.038907,
+            "p90_ms": 0.08444820000000001,
+            "sum_ms": 10.945314
+          },
+          "frames_present": 173
+        },
+        {
+          "name": "host.present.copy.lock_wait",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 1,
+            "sum": 274
+          },
+          "inclusive": {
+            "mean_ms": 0.0008863576642335766,
+            "p50_ms": 0.000625,
+            "p90_ms": 0.00151,
+            "sum_ms": 0.242862
+          },
+          "exclusive": {
+            "mean_ms": 0.0008863576642335766,
+            "p50_ms": 0.000625,
+            "p90_ms": 0.00151,
+            "sum_ms": 0.242862
+          },
+          "frames_present": 274
+        }
+      ],
+      "prof_integrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 11333,
+        "main_thread_id": 19304,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33250494421353,
+        "clock_ns0": 1632390275512696,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [
+          "2 unclosed spans on tid 19301",
+          "1 unpaired regions dropped"
+        ],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "kgsl_diagnostics": {
+        "zero_timestamp_batch_observation": 395
+      }
+    },
+    "A2": {
+      "requested_prof_seconds": 18,
+      "prof_sha256": "68d788699b885a802ddfa9e1044d844198b3fe1b691e1c22bc4f3923537cf68b",
+      "kgsl_capture_manifest_sha256": "e6028cceb29b8b7efe31ddff92fff0fd2d5d59ddf77a82be44a4564003e11915",
+      "kgsl_trace_sha256": "f959fd78b1e3c8e0ce5fbd25f10fb5f0def27393ce201f43069cc173425bcb40",
+      "safe_analysis_seconds": 12.079945670999999,
+      "clock_uncertainty_ns": 1130,
+      "capture_overrun": 0,
+      "capture_dropped": 0,
+      "gpu_busy_percent": 70.09917757826038,
+      "gpu_frequency_share": {
+        "550000": 0.058768227882371904,
+        "615000": 0.30496974906469343,
+        "680000": 0.6362620230529347
+      },
+      "frame_count": 271,
+      "present_request_rate": 15.08435108483093,
+      "frame_length_ms": {
+        "mean_ms": 66.29386934686347,
+        "p50_ms": 53.402135,
+        "p90_ms": 90.820886,
+        "sum_ms": 17965.638593
+      },
+      "scope_budget": [
+        {
+          "name": "host.vulkan.fence_wait",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 1,
+            "sum": 271
+          },
+          "inclusive": {
+            "mean_ms": 23.07350936900369,
+            "p50_ms": 41.16474,
+            "p90_ms": 47.321146,
+            "sum_ms": 6252.921039
+          },
+          "exclusive": {
+            "mean_ms": 23.07350936900369,
+            "p50_ms": 41.16474,
+            "p90_ms": 47.321146,
+            "sum_ms": 6252.921039
+          },
+          "frames_present": 271
+        },
+        {
+          "name": "host.present.copy",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 1,
+            "sum": 271
+          },
+          "inclusive": {
+            "mean_ms": 24.078957948339486,
+            "p50_ms": 42.206666,
+            "p90_ms": 48.278958,
+            "sum_ms": 6525.397604
+          },
+          "exclusive": {
+            "mean_ms": 0.8263421033210332,
+            "p50_ms": 0.863801,
+            "p90_ms": 1.049167,
+            "sum_ms": 223.93871
+          },
+          "frames_present": 271
+        },
+        {
+          "name": "host.present.copy.lock_wait",
+          "is_hle": false,
+          "per_frame_count": {
+            "mean": 1,
+            "p50": 1,
+            "p90": 1,
+            "sum": 271
+          },
+          "inclusive": {
+            "mean_ms": 0.17910647601476015,
+            "p50_ms": 0.003646,
+            "p90_ms": 0.453489,
+            "sum_ms": 48.537855
+          },
+          "exclusive": {
+            "mean_ms": 0.17910647601476015,
+            "p50_ms": 0.003646,
+            "p90_ms": 0.453489,
+            "sum_ms": 48.537855
+          },
+          "frames_present": 271
+        }
+      ],
+      "prof_integrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 11333,
+        "main_thread_id": 19304,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33250494421353,
+        "clock_ns0": 1632390275512696,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "kgsl_diagnostics": {
+        "zero_timestamp_batch_observation": 389
+      }
+    }
+  },
+  "independent_observations": {
+    "B2": {
+      "proc_window_seconds": 19.000047232,
+      "surface": {
+        "presentations": 314,
+        "rate": 15.671884241094903,
+        "interval_ms": {
+          "n": 313,
+          "mean": 63.80853665175719,
+          "p50": 16.718958,
+          "p95": 117.012135,
+          "max": 133.734166
+        }
+      },
+      "system_cpu_busy_percent": 37.02,
+      "sysfs_gpu_busy_percent": {
+        "n": 20,
+        "mean": 70.88101853484345,
+        "p50": 70.97501495421709,
+        "p95": 72.10531498654021,
+        "max": 73.69992281815667
+      },
+      "guest_main": {
+        "pid": 19457,
+        "tid": 19457,
+        "name": "AI-LIMIT.exe",
+        "cpu": 44.72687060318145,
+        "runqueue": 1.6874250578705088,
+        "wchan": {
+          "pipe_read": 2,
+          "futex_wait_queue_me": 6,
+          "0": 12
+        }
+      },
+      "sampler_cost": "20000132284 sampler_cpu_ns=205629853\n",
+      "source_load_sha256": "81092406870d021a95f273221cef60845e5fbb4d1d6644e8933aff1d5f7a23cc",
+      "source_surface_sha256": "cb2c71676eb79d1d385404d1d18944425ff7953690abe29f456d3e708a784be0"
+    },
+    "A2": {
+      "proc_window_seconds": 19.000070357,
+      "surface": {
+        "presentations": 306,
+        "rate": 15.305495540439596,
+        "interval_ms": {
+          "n": 305,
+          "mean": 65.33600936721311,
+          "p50": 100.28552,
+          "p95": 117.054323,
+          "max": 133.762865
+        }
+      },
+      "system_cpu_busy_percent": 40.05,
+      "sysfs_gpu_busy_percent": {
+        "n": 20,
+        "mean": 71.29471085260366,
+        "p50": 71.52983259548249,
+        "p95": 73.6804653887571,
+        "max": 73.85722977281804
+      },
+      "guest_main": {
+        "pid": 19457,
+        "tid": 19457,
+        "name": "AI-LIMIT.exe",
+        "cpu": 44.80714445282831,
+        "runqueue": 1.810123118166725,
+        "wchan": {
+          "0": 10,
+          "futex_wait_queue_me": 10
+        }
+      },
+      "sampler_cost": "20000107232 sampler_cpu_ns=214736561\n",
+      "source_load_sha256": "a6f1a2b8c9dda0e2a0806b6c35c33097a9135a0584b41678e7767f057ae8ad4d",
+      "source_surface_sha256": "86e0278511e7a2e4568233534b44e389b99cfe5cdd4a30b22b60a75b3fb64f59"
+    },
+    "C2": {
+      "proc_window_seconds": 18.999993013,
+      "surface": {
+        "presentations": 291,
+        "rate": 14.580993398347943,
+        "interval_ms": {
+          "n": 290,
+          "mean": 68.58243280689655,
+          "p50": 100.268749,
+          "p95": 133.699948,
+          "max": 150.418021
+        }
+      },
+      "system_cpu_busy_percent": 30.86,
+      "sysfs_gpu_busy_percent": {
+        "n": 20,
+        "mean": 70.39675487928098,
+        "p50": 70.22938278622519,
+        "p95": 72.74821095616682,
+        "max": 73.95080738274456
+      },
+      "guest_main": {
+        "pid": 19457,
+        "tid": 19457,
+        "name": "AI-LIMIT.exe",
+        "cpu": 44.7681893208073,
+        "runqueue": 1.8480625006532996,
+        "wchan": {
+          "0": 9,
+          "futex_wait_queue_me": 10,
+          "pipe_read": 1
+        }
+      },
+      "sampler_cost": "20000090097 sampler_cpu_ns=291442276\n",
+      "source_load_sha256": "478098d6d04006c40f2670f6851af9a049e44111a4f57e79fa81bc025740e0f5",
+      "source_surface_sha256": "78e63114cc55cb0818b5034389c4fed5055dbc848e81306ba9960dbf3be5f986"
+    }
+  },
+  "guest_sched": {
+    "window_seconds": 17.706366843,
+    "threads": {
+      "19457": {
+        "name": "AI-LIMIT.exe",
+        "on_cpu_ms": 7958.564,
+        "sleep_ms": 9242.425843,
+        "runnable_ms": 505.377,
+        "wakeups": 45526,
+        "waker_top": [
+          {
+            "tid": 19344,
+            "count": 40158
+          },
+          {
+            "tid": 19496,
+            "count": 3600
+          },
+          {
+            "tid": 19497,
+            "count": 1076
+          },
+          {
+            "tid": 19499,
+            "count": 169
+          },
+          {
+            "tid": 19498,
+            "count": 159
+          }
+        ],
+        "wake_to_run_p90_us": 11.0
+      },
+      "19594": {
+        "name": "AI-LIMIT.exe",
+        "on_cpu_ms": 2952.952,
+        "sleep_ms": 14684.514843,
+        "runnable_ms": 68.9,
+        "wakeups": 1773,
+        "waker_top": [
+          {
+            "tid": 19590,
+            "count": 1705
+          },
+          {
+            "tid": 19608,
+            "count": 49
+          },
+          {
+            "tid": 19457,
+            "count": 7
+          },
+          {
+            "tid": 19344,
+            "count": 5
+          },
+          {
+            "tid": 19530,
+            "count": 3
+          }
+        ],
+        "wake_to_run_p90_us": 181.79999999999973
+      },
+      "19585": {
+        "name": "AI-LIMIT.exe",
+        "on_cpu_ms": 2859.057,
+        "sleep_ms": 14829.102843,
+        "runnable_ms": 18.207,
+        "wakeups": 1146,
+        "waker_top": [
+          {
+            "tid": 0,
+            "count": 724
+          },
+          {
+            "tid": 19457,
+            "count": 134
+          },
+          {
+            "tid": 19594,
+            "count": 116
+          },
+          {
+            "tid": 19530,
+            "count": 23
+          },
+          {
+            "tid": 19497,
+            "count": 20
+          }
+        ],
+        "wake_to_run_p90_us": 12.0
+      },
+      "19530": {
+        "name": "UnityGfxDeviceW",
+        "on_cpu_ms": 1760.959,
+        "sleep_ms": 15694.934843,
+        "runnable_ms": 250.473,
+        "wakeups": 12290,
+        "waker_top": [
+          {
+            "tid": 19457,
+            "count": 7994
+          },
+          {
+            "tid": 19496,
+            "count": 891
+          },
+          {
+            "tid": 19497,
+            "count": 860
+          },
+          {
+            "tid": 19501,
+            "count": 522
+          },
+          {
+            "tid": 19498,
+            "count": 478
+          }
+        ],
+        "wake_to_run_p90_us": 38.0
+      },
+      "19496": {
+        "name": "Job.Worker 1",
+        "on_cpu_ms": 1665.748,
+        "sleep_ms": 14996.074843,
+        "runnable_ms": 1044.544,
+        "wakeups": 38866,
+        "waker_top": [
+          {
+            "tid": 19457,
+            "count": 30292
+          },
+          {
+            "tid": 19501,
+            "count": 1934
+          },
+          {
+            "tid": 19499,
+            "count": 1454
+          },
+          {
+            "tid": 19498,
+            "count": 1369
+          },
+          {
+            "tid": 19497,
+            "count": 1347
+          }
+        ],
+        "wake_to_run_p90_us": 19.0
+      },
+      "19608": {
+        "name": "AI-LIMIT.exe",
+        "on_cpu_ms": 1329.87,
+        "sleep_ms": 16167.115843,
+        "runnable_ms": 209.381,
+        "wakeups": 1708,
+        "waker_top": [
+          {
+            "tid": 19590,
+            "count": 1059
+          },
+          {
+            "tid": 19594,
+            "count": 621
+          },
+          {
+            "tid": 19344,
+            "count": 7
+          },
+          {
+            "tid": 19457,
+            "count": 6
+          },
+          {
+            "tid": 2285,
+            "count": 3
+          }
+        ],
+        "wake_to_run_p90_us": 135.5999999999999
+      },
+      "19497": {
+        "name": "Job.Worker 2",
+        "on_cpu_ms": 1096.174,
+        "sleep_ms": 15317.679843,
+        "runnable_ms": 1292.513,
+        "wakeups": 36635,
+        "waker_top": [
+          {
+            "tid": 19457,
+            "count": 20025
+          },
+          {
+            "tid": 19496,
+            "count": 7324
+          },
+          {
+            "tid": 19494,
+            "count": 2181
+          },
+          {
+            "tid": 19498,
+            "count": 1815
+          },
+          {
+            "tid": 19499,
+            "count": 1733
+          }
+        ],
+        "wake_to_run_p90_us": 41.0
+      },
+      "19528": {
+        "name": "dxvk-cs",
+        "on_cpu_ms": 956.813,
+        "sleep_ms": 16696.271843,
+        "runnable_ms": 53.282,
+        "wakeups": 4199,
+        "waker_top": [
+          {
+            "tid": 19530,
+            "count": 4171
+          },
+          {
+            "tid": 19526,
+            "count": 27
+          },
+          {
+            "tid": 19527,
+            "count": 1
+          }
+        ],
+        "wake_to_run_p90_us": 10.0
+      },
+      "19494": {
+        "name": "Job.Worker 0",
+        "on_cpu_ms": 891.076,
+        "sleep_ms": 16216.075843,
+        "runnable_ms": 599.215,
+        "wakeups": 32311,
+        "waker_top": [
+          {
+            "tid": 19497,
+            "count": 7226
+          },
+          {
+            "tid": 19496,
+            "count": 6394
+          },
+          {
+            "tid": 19457,
+            "count": 6209
+          },
+          {
+            "tid": 19498,
+            "count": 4210
+          },
+          {
+            "tid": 19500,
+            "count": 3195
+          }
+        ],
+        "wake_to_run_p90_us": 29.0
+      },
+      "19501": {
+        "name": "Job.Worker 6",
+        "on_cpu_ms": 862.407,
+        "sleep_ms": 16055.150843,
+        "runnable_ms": 788.809,
+        "wakeups": 33239,
+        "waker_top": [
+          {
+            "tid": 19497,
+            "count": 8422
+          },
+          {
+            "tid": 19496,
+            "count": 7857
+          },
+          {
+            "tid": 19457,
+            "count": 5682
+          },
+          {
+            "tid": 19498,
+            "count": 4178
+          },
+          {
+            "tid": 19499,
+            "count": 3475
+          }
+        ],
+        "wake_to_run_p90_us": 42.0
+      },
+      "19500": {
+        "name": "Job.Worker 5",
+        "on_cpu_ms": 788.686,
+        "sleep_ms": 15958.044843,
+        "runnable_ms": 959.636,
+        "wakeups": 32998,
+        "waker_top": [
+          {
+            "tid": 19496,
+            "count": 10613
+          },
+          {
+            "tid": 19497,
+            "count": 7058
+          },
+          {
+            "tid": 19457,
+            "count": 5646
+          },
+          {
+            "tid": 19498,
+            "count": 4514
+          },
+          {
+            "tid": 19499,
+            "count": 1779
+          }
+        ],
+        "wake_to_run_p90_us": 54.0
+      },
+      "19499": {
+        "name": "Job.Worker 4",
+        "on_cpu_ms": 770.012,
+        "sleep_ms": 15781.977843,
+        "runnable_ms": 1154.377,
+        "wakeups": 33920,
+        "waker_top": [
+          {
+            "tid": 19496,
+            "count": 10334
+          },
+          {
+            "tid": 19457,
+            "count": 10228
+          },
+          {
+            "tid": 19497,
+            "count": 7020
+          },
+          {
+            "tid": 19498,
+            "count": 1742
+          },
+          {
+            "tid": 19494,
+            "count": 1604
+          }
+        ],
+        "wake_to_run_p90_us": 64.0
+      },
+      "19498": {
+        "name": "Job.Worker 3",
+        "on_cpu_ms": 754.148,
+        "sleep_ms": 15568.161843,
+        "runnable_ms": 1384.057,
+        "wakeups": 34382,
+        "waker_top": [
+          {
+            "tid": 19496,
+            "count": 16903
+          },
+          {
+            "tid": 19457,
+            "count": 8857
+          },
+          {
+            "tid": 19497,
+            "count": 2498
+          },
+          {
+            "tid": 19499,
+            "count": 1625
+          },
+          {
+            "tid": 19500,
+            "count": 1568
+          }
+        ],
+        "wake_to_run_p90_us": 79.0
+      },
+      "19590": {
+        "name": "audio_client_ma",
+        "on_cpu_ms": 599.309,
+        "sleep_ms": 16955.791843,
+        "runnable_ms": 151.266,
+        "wakeups": 1902,
+        "waker_top": [
+          {
+            "tid": 19307,
+            "count": 978
+          },
+          {
+            "tid": 0,
+            "count": 641
+          },
+          {
+            "tid": 19608,
+            "count": 26
+          },
+          {
+            "tid": 19594,
+            "count": 18
+          },
+          {
+            "tid": 13400,
+            "count": 16
+          }
+        ],
+        "wake_to_run_p90_us": 78.0
+      },
+      "19527": {
+        "name": "dxvk-queue",
+        "on_cpu_ms": 487.178843,
+        "sleep_ms": 17025.669,
+        "runnable_ms": 193.519,
+        "wakeups": 996,
+        "waker_top": [
+          {
+            "tid": 867,
+            "count": 804
+          },
+          {
+            "tid": 19526,
+            "count": 168
+          },
+          {
+            "tid": 875,
+            "count": 11
+          },
+          {
+            "tid": 4589,
+            "count": 5
+          },
+          {
+            "tid": 13660,
+            "count": 4
+          }
+        ],
+        "wake_to_run_p90_us": 223.5
+      },
+      "19526": {
+        "name": "dxvk-submit",
+        "on_cpu_ms": 288.172,
+        "sleep_ms": 17339.914843,
+        "runnable_ms": 78.28,
+        "wakeups": 810,
+        "waker_top": [
+          {
+            "tid": 19344,
+            "count": 400
+          },
+          {
+            "tid": 19528,
+            "count": 327
+          },
+          {
+            "tid": 19527,
+            "count": 34
+          },
+          {
+            "tid": 4589,
+            "count": 34
+          },
+          {
+            "tid": 21016,
+            "count": 11
+          }
+        ],
+        "wake_to_run_p90_us": 70.20000000000005
+      }
+    },
+    "source_sha256": "434525854ccec408aaf62e5224c99888500d23408c46e3a6f7b060e02572416d",
+    "analysis_module_sha256": "9e2c4a192667d9da0a532a73420f25f76495313804eaa2f274d3799d65a97c0f"
+  },
+  "perf": {
+    "record_seconds": 8.02004,
+    "timestamp_span_seconds": 8.058542757,
+    "samples": 187331,
+    "samples_lost": 0,
+    "data_sha256": "522ec578a63cd2ad1a28556a3a53fe8f734e284c4259868e35e19ad73d6130c0",
+    "main_offcpu": {
+      "NtWaitForMultipleObjects": {
+        "offcpu_samples": 72,
+        "offcpu_ms": 3694.349532
+      },
+      "NtWaitForSingleObject": {
+        "offcpu_samples": 2299,
+        "offcpu_ms": 68.985892
+      },
+      "NtCreateSemaphore": {
+        "offcpu_samples": 9094,
+        "offcpu_ms": 352.878338
+      },
+      "NtClose": {
+        "offcpu_samples": 9065,
+        "offcpu_ms": 251.446817
+      },
+      "other": {
+        "offcpu_samples": 219,
+        "offcpu_ms": 45.262655
+      }
+    }
+  },
+  "excluded_captures": [
+    [
+      "A-limit60",
+      "Thermal polling extended KGSL collection past the 74-second host timeout. PROF remains usable as exploratory; raw KGSL recovered separately; excluded from matched scheduler comparison."
+    ],
+    [
+      "B-unlimited-async",
+      "Quick menu left guest manually suspended. Zero PROF frames. Collection succeeded but invalid performance scene."
+    ],
+    [
+      "B-observed",
+      "Guest still manually suspended; excluded."
+    ],
+    [
+      "C-vsync-off-observed",
+      "Capture started in game settings and includes menu-to-scene transition; excluded."
+    ]
+  ],
+  "cleanup": {
+    "recording": false,
+    "capture_active": false,
+    "debugbus_service_stopped": true,
+    "owned_instances_removed": true,
+    "global_trace_state_changed": false,
+    "restored_host_cap": 60,
+    "restored_game_vsync": true,
+    "restored_game_frame_cap": 0
+  },
+  "limitations": [
+    "SF observations and PROF/scheduler captures are adjacent independent windows, not identical frame pairs.",
+    "X11 request and host SurfaceFlinger presentation are not unique guest simulation frames.",
+    "No GPU pass timestamps or object-ID-linked guest waits. No saved-game data or game files were modified.",
+    "C2 also selected game frame cap 60 when VSync was disabled; no strict single-variable VSync conclusion.",
+    "Normal governor, thermal and background load; no statistically controlled capture-overhead claim."
+  ]
+}

@@ -1,0 +1,2070 @@
+{
+  "date": "2026-10-02",
+  "status": "host wait relocated without standalone FPS gain; opt-in DXVK GPU completion repeats higher throughput in bounded AI LIMIT scene",
+  "device": {
+    "model": "AYN Thor",
+    "fingerprint": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "boot_id": "8bb14501-5800-4b9b-a9ab-7173603812f7"
+  },
+  "hostOnlyApkSha256": "3e532a6f3d764e88bfc46628ab5d2c94bc0d89047ba20b3602eb6b4894dff8b7",
+  "hostOnlyCatalogSha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+  "hostOnlyPids": {
+    "host": 3365,
+    "guest": 5321,
+    "wineserver": 5208
+  },
+  "hostOnlyStartTicks": {
+    "host": "173797518",
+    "guest": "173806253"
+  },
+  "hostOnlyBuildIds": {
+    "libvulkan_renderer.so": "813211e017d57d8f474cb25fb85d426c04cf346b",
+    "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+    "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+    "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2"
+  },
+  "hostScopes": {
+    "A1": {
+      "host.present.copy.lock_wait": {
+        "count": 273,
+        "mean_ms": 0.0005681575091575091,
+        "p50_ms": 0.000312,
+        "p95_ms": 0.000886
+      },
+      "host.vulkan.fence_wait": {
+        "count": 272,
+        "mean_ms": 23.26982843382353,
+        "p50_ms": 40.478854,
+        "p95_ms": 51.011145
+      },
+      "host.present.copy": {
+        "count": 272,
+        "mean_ms": 23.993957419117645,
+        "p50_ms": 41.239375,
+        "p95_ms": 52.146615
+      },
+      "host.present.queue_to_complete": {
+        "count": 272,
+        "mean_ms": 24.394018625,
+        "p50_ms": 41.313802,
+        "p95_ms": 52.250572
+      },
+      "host.render.acquire": {
+        "count": 272,
+        "mean_ms": 0.03305110661764706,
+        "p50_ms": 0.032396,
+        "p95_ms": 0.052969
+      },
+      "host.render.queue_present": {
+        "count": 272,
+        "mean_ms": 0.20536266911764706,
+        "p50_ms": 0.198855,
+        "p95_ms": 0.295417
+      },
+      "host.render.frame": {
+        "count": 272,
+        "mean_ms": 0.42533605882352943,
+        "p50_ms": 0.415885,
+        "p95_ms": 0.597395
+      }
+    },
+    "B1": {
+      "host.present.copy.lock_wait": {
+        "count": 283,
+        "mean_ms": 0.0005819363957597173,
+        "p50_ms": 0.000416,
+        "p95_ms": 0.000885
+      },
+      "host.present.copy": {
+        "count": 283,
+        "mean_ms": 0.5654310212014134,
+        "p50_ms": 0.537292,
+        "p95_ms": 0.854062
+      },
+      "host.render.acquire": {
+        "count": 283,
+        "mean_ms": 0.04065965017667845,
+        "p50_ms": 0.038281,
+        "p95_ms": 0.060625
+      },
+      "host.present.retire_wait": {
+        "count": 283,
+        "mean_ms": 22.291817063604242,
+        "p50_ms": 2.181979,
+        "p95_ms": 47.987188
+      },
+      "host.present.queue_to_complete": {
+        "count": 283,
+        "mean_ms": 23.334082049469966,
+        "p50_ms": 5.935938,
+        "p95_ms": 48.944428
+      },
+      "host.render.queue_present": {
+        "count": 283,
+        "mean_ms": 0.31479271024734984,
+        "p50_ms": 0.289166,
+        "p95_ms": 0.451458
+      },
+      "host.render.frame": {
+        "count": 283,
+        "mean_ms": 0.5428279116607774,
+        "p50_ms": 0.54026,
+        "p95_ms": 0.727968
+      }
+    },
+    "A2": {
+      "host.present.copy.lock_wait": {
+        "count": 288,
+        "mean_ms": 0.0005244618055555556,
+        "p50_ms": 0.000312,
+        "p95_ms": 0.000729
+      },
+      "host.vulkan.fence_wait": {
+        "count": 288,
+        "mean_ms": 21.98324617361111,
+        "p50_ms": 40.288854,
+        "p95_ms": 46.053855
+      },
+      "host.present.copy": {
+        "count": 288,
+        "mean_ms": 22.69798230902778,
+        "p50_ms": 41.029114,
+        "p95_ms": 47.121354
+      },
+      "host.present.queue_to_complete": {
+        "count": 288,
+        "mean_ms": 23.061691788194445,
+        "p50_ms": 41.284948,
+        "p95_ms": 47.166406
+      },
+      "host.render.acquire": {
+        "count": 288,
+        "mean_ms": 0.03258913194444445,
+        "p50_ms": 0.031042,
+        "p95_ms": 0.050313
+      },
+      "host.render.queue_present": {
+        "count": 288,
+        "mean_ms": 0.20034703472222223,
+        "p50_ms": 0.192135,
+        "p95_ms": 0.298438
+      },
+      "host.render.frame": {
+        "count": 288,
+        "mean_ms": 0.4219538888888889,
+        "p50_ms": 0.411198,
+        "p95_ms": 0.590469
+      }
+    }
+  },
+  "observed": {
+    "A": {
+      "schedulerDurationSeconds": 19.000200044,
+      "surface": {
+        "presentations": 299,
+        "rate": 14.941974892019937,
+        "interval_ms": {
+          "n": 298,
+          "mean": 66.92555751342282,
+          "p50": 83.590676,
+          "p95": 133.748125,
+          "max": 150.489895
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 71.51727182533271,
+        "p50": 72.35469581681134,
+        "p95": 75.57025199165317,
+        "max": 78.02801009551146
+      },
+      "guestMain": {
+        "pid": 5321,
+        "tid": 5321,
+        "name": "AI-LIMIT.exe",
+        "cpu": 42.951430753894016,
+        "runqueue": 1.8343710023730109,
+        "wchan": {
+          "0": 11,
+          "futex_wait_queue_me": 8,
+          "pipe_read": 1
+        }
+      }
+    },
+    "B": {
+      "schedulerDurationSeconds": 19.000066399,
+      "surface": {
+        "presentations": 305,
+        "rate": 15.26825131559907,
+        "interval_ms": {
+          "n": 304,
+          "mean": 65.49538511842105,
+          "p50": 66.872499,
+          "p95": 133.724531,
+          "max": 183.861042
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 73.32398152988759,
+        "p50": 73.69072731375647,
+        "p95": 74.72000991846784,
+        "max": 75.58690210071988
+      },
+      "guestMain": {
+        "pid": 5321,
+        "tid": 5321,
+        "name": "AI-LIMIT.exe",
+        "cpu": 42.25453929688659,
+        "runqueue": 1.6629593516401058,
+        "wchan": {
+          "futex_wait_queue_me": 12,
+          "0": 7,
+          "pipe_read": 1
+        }
+      }
+    },
+    "A2": {
+      "schedulerDurationSeconds": 19.000077128,
+      "surface": {
+        "presentations": 316,
+        "rate": 15.838170109448939,
+        "interval_ms": {
+          "n": 315,
+          "mean": 63.13860711746032,
+          "p50": 50.135834,
+          "p95": 117.010052,
+          "max": 167.106667
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 73.45901946724956,
+        "p50": 73.37120564248633,
+        "p95": 75.75370510746751,
+        "max": 75.81130998072555
+      },
+      "guestMain": {
+        "pid": 5321,
+        "tid": 5321,
+        "name": "AI-LIMIT.exe",
+        "cpu": 42.31241263832831,
+        "runqueue": 1.8183342187114935,
+        "wchan": {
+          "0": 11,
+          "futex_wait_queue_me": 8,
+          "pipe_read": 1
+        }
+      }
+    }
+  },
+  "profileCaptures": {
+    "A1": {
+      "elapsed_ms": 17970.835573,
+      "prof_sha256": "1a78d3b235c9d81dca4eda0d1c891364188eaf3da792774312204b4bd0ca4739",
+      "trace_sha256": "6261cb1d55195553d2ef27e48fa312ab0e9404b8dde79d68afa6dc3b2f84266f",
+      "capture_overrun": 0,
+      "capture_dropped": 0,
+      "gpu": {
+        "busy_percent": 73.22721495944747,
+        "pwrstats_samples": 850,
+        "gpubusy_percent": 73.20496993963268,
+        "gpubusy_samples": 18,
+        "freq_share": {
+          "615000": 0.32682050582134053,
+          "550000": 0.1396364119969014,
+          "680000": 0.4884400597481333,
+          "475000": 0.03523280803655484,
+          "401000": 0.009870214397069872
+        },
+        "freq_max_khz": 680000,
+        "freq_max_share": 0.4884400597481333,
+        "freq_known_share": 1.0,
+        "inflight_at_submit": {
+          "1": 783,
+          "2": 181,
+          "3": 141,
+          "4": 255,
+          "5": 255,
+          "6": 176,
+          "7": 69,
+          "8": 39,
+          "9": 2
+        },
+        "batches_by_context": {
+          "15": {
+            "count": 544,
+            "target_process": true,
+            "p50_ms": 0.6275,
+            "p90_ms": 46.454,
+            "max_ms": 67.856
+          },
+          "17": {
+            "count": 18,
+            "target_process": true,
+            "p50_ms": 19.151,
+            "p90_ms": 49.262800000000006,
+            "max_ms": 60.558
+          },
+          "3": {
+            "count": 517,
+            "target_process": false,
+            "p50_ms": 0.897,
+            "p90_ms": 41.756400000000006,
+            "max_ms": 81.128
+          },
+          "19": {
+            "count": 813,
+            "target_process": false,
+            "p50_ms": 56.111,
+            "p90_ms": 69.09,
+            "max_ms": 111.768
+          },
+          "11": {
+            "count": 5,
+            "target_process": false,
+            "p50_ms": 3.185,
+            "p90_ms": 33.2726,
+            "max_ms": 35.661
+          }
+        },
+        "context_owner": {
+          "15": {
+            "pid": "3365",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "17": {
+            "pid": "3365",
+            "comm": "RenderThread",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "3": {
+            "pid": "2285",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "19": {
+            "pid": "5321",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "11": {
+            "pid": "13634",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          }
+        },
+        "target_contexts": [
+          15,
+          17
+        ],
+        "main_target_context": 15,
+        "gpu_queue_wait_ms": {
+          "count": 1897,
+          "mean_ms": 24.495962199261992,
+          "p50_ms": 17.25927,
+          "p90_ms": 60.11989560000001,
+          "p99_ms": 76.18411159999998,
+          "max_ms": 111.519375
+        },
+        "tick_frequency_check": {
+          "assumed_tick_hz": 19200000,
+          "target_batch_exec_seconds": 0.1690721875,
+          "pwrstats_busy_seconds": 13.172222,
+          "ratio": 0.012835510022530748,
+          "consistent": false,
+          "note": "ratio>1 can be concurrent contexts; ratio far from 1 means tick frequency or pwrstats units are not what was assumed; no reinterpretation is applied"
+        },
+        "interpretation": {
+          "gpu_bound": "not established: busy_percent>=80, main_ctx_p90_submit_to_retire>=0.8*frame",
+          "rule": "busy_percent>=80 and main target context p90 submit->retire >= 0.8 x complete-frame p50; other processes are listed separately and never added to the target"
+        }
+      },
+      "prof_integrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 3365,
+        "main_thread_id": 5170,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33369186134824,
+        "clock_ns0": 1638572135577005,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [
+          "2 unclosed spans on tid 5167",
+          "1 unpaired regions dropped"
+        ],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "diagnostics": {
+        "zero_timestamp_batch_observation": 1077
+      }
+    },
+    "B1": {
+      "elapsed_ms": 17800.73317,
+      "prof_sha256": "1d016259975a5e8bd5c3e5087bb989ef9f3dfd8c284b9fc1459e7b5ac08d62e8",
+      "trace_sha256": "bb6ff1def40a39c968913a6704f45ef94e3d08985e76cfad5c0ce98176a10092",
+      "capture_overrun": 0,
+      "capture_dropped": 0,
+      "gpu": {
+        "busy_percent": 73.24194030174638,
+        "pwrstats_samples": 883,
+        "gpubusy_percent": 73.00614092780171,
+        "gpubusy_samples": 18,
+        "freq_share": {
+          "680000": 0.7461244457269733,
+          "615000": 0.1577045716707409,
+          "550000": 0.06502945631199526,
+          "475000": 0.021095591760954418,
+          "401000": 0.010045934529336019
+        },
+        "freq_max_khz": 680000,
+        "freq_max_share": 0.7461244457269733,
+        "freq_known_share": 1.0,
+        "inflight_at_submit": {
+          "1": 436,
+          "2": 293,
+          "3": 147,
+          "4": 261,
+          "5": 277,
+          "6": 280,
+          "7": 121,
+          "8": 56,
+          "9": 1
+        },
+        "batches_by_context": {
+          "15": {
+            "count": 560,
+            "target_process": true,
+            "p50_ms": 20.0765,
+            "p90_ms": 46.0086,
+            "max_ms": 65.865
+          },
+          "17": {
+            "count": 18,
+            "target_process": true,
+            "p50_ms": 24.518,
+            "p90_ms": 55.9786,
+            "max_ms": 64.444
+          },
+          "19": {
+            "count": 837,
+            "target_process": false,
+            "p50_ms": 54.231,
+            "p90_ms": 66.4172,
+            "max_ms": 112.698
+          },
+          "3": {
+            "count": 452,
+            "target_process": false,
+            "p50_ms": 23.6395,
+            "p90_ms": 41.01780000000001,
+            "max_ms": 110.607
+          },
+          "11": {
+            "count": 5,
+            "target_process": false,
+            "p50_ms": 27.234,
+            "p90_ms": 51.5514,
+            "max_ms": 58.841
+          }
+        },
+        "context_owner": {
+          "15": {
+            "pid": "3365",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "17": {
+            "pid": "3365",
+            "comm": "RenderThread",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "3": {
+            "pid": "2285",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "19": {
+            "pid": "5321",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "11": {
+            "pid": "13634",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          }
+        },
+        "target_contexts": [
+          15,
+          17
+        ],
+        "main_target_context": 15,
+        "gpu_queue_wait_ms": {
+          "count": 1872,
+          "mean_ms": 29.110272282585473,
+          "p50_ms": 35.8454165,
+          "p90_ms": 59.327197700000006,
+          "p99_ms": 72.73664742999999,
+          "max_ms": 112.455833
+        },
+        "tick_frequency_check": {
+          "assumed_tick_hz": 19200000,
+          "target_batch_exec_seconds": 0.15429484375,
+          "pwrstats_busy_seconds": 13.061567,
+          "ratio": 0.011812889200047742,
+          "consistent": false,
+          "note": "ratio>1 can be concurrent contexts; ratio far from 1 means tick frequency or pwrstats units are not what was assumed; no reinterpretation is applied"
+        },
+        "interpretation": {
+          "gpu_bound": "not established: busy_percent>=80, main_ctx_p90_submit_to_retire>=0.8*frame",
+          "rule": "busy_percent>=80 and main target context p90 submit->retire >= 0.8 x complete-frame p50; other processes are listed separately and never added to the target"
+        }
+      },
+      "prof_integrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 3365,
+        "main_thread_id": 5170,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33369186134824,
+        "clock_ns0": 1638572135577005,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "diagnostics": {
+        "zero_timestamp_batch_observation": 1017
+      }
+    },
+    "A2": {
+      "elapsed_ms": 17954.647135,
+      "prof_sha256": "8d65b6b69fa3e4ca13ad6b3f1049307e616becdac31f4d4f0eaddc4dbdc9170c",
+      "trace_sha256": "027372594ab6749b389bd22ad26f3dda0a4bdb8f80d482fa51f49cd861c75924",
+      "capture_overrun": 0,
+      "capture_dropped": 0,
+      "gpu": {
+        "busy_percent": 72.78396782069304,
+        "pwrstats_samples": 887,
+        "gpubusy_percent": 72.79687233053403,
+        "gpubusy_samples": 18,
+        "freq_share": {
+          "680000": 0.8911583209457489,
+          "615000": 0.08735203695218709,
+          "550000": 0.02148964210206407
+        },
+        "freq_max_khz": 680000,
+        "freq_max_share": 0.8911583209457489,
+        "freq_known_share": 1.0,
+        "inflight_at_submit": {
+          "1": 818,
+          "2": 179,
+          "3": 147,
+          "4": 257,
+          "5": 265,
+          "6": 207,
+          "7": 87,
+          "8": 51,
+          "9": 4
+        },
+        "batches_by_context": {
+          "15": {
+            "count": 575,
+            "target_process": true,
+            "p50_ms": 0.614,
+            "p90_ms": 42.7778,
+            "max_ms": 52.167
+          },
+          "17": {
+            "count": 17,
+            "target_process": true,
+            "p50_ms": 33.207,
+            "p90_ms": 46.8598,
+            "max_ms": 51.004
+          },
+          "3": {
+            "count": 560,
+            "target_process": false,
+            "p50_ms": 0.8855,
+            "p90_ms": 39.2778,
+            "max_ms": 70.189
+          },
+          "19": {
+            "count": 858,
+            "target_process": false,
+            "p50_ms": 52.5615,
+            "p90_ms": 63.247,
+            "max_ms": 78.834
+          },
+          "11": {
+            "count": 4,
+            "target_process": false,
+            "p50_ms": 26.352,
+            "p90_ms": 36.4714,
+            "max_ms": 38.161
+          }
+        },
+        "context_owner": {
+          "15": {
+            "pid": "3365",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "17": {
+            "pid": "3365",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "3": {
+            "pid": "2285",
+            "comm": "RenderEngine",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "19": {
+            "pid": "5321",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          },
+          "11": {
+            "pid": "13634",
+            "comm": "<...>",
+            "source": "adreno_cmdbatch_submitted emitter"
+          }
+        },
+        "target_contexts": [
+          15,
+          17
+        ],
+        "main_target_context": 15,
+        "gpu_queue_wait_ms": {
+          "count": 2014,
+          "mean_ms": 23.128213918570008,
+          "p50_ms": 16.1855985,
+          "p90_ms": 57.4320096,
+          "p99_ms": 66.68286217999999,
+          "max_ms": 78.627395
+        },
+        "tick_frequency_check": {
+          "assumed_tick_hz": 19200000,
+          "target_batch_exec_seconds": 0.17018427083333335,
+          "pwrstats_busy_seconds": 13.07914,
+          "ratio": 0.0130118854017415,
+          "consistent": false,
+          "note": "ratio>1 can be concurrent contexts; ratio far from 1 means tick frequency or pwrstats units are not what was assumed; no reinterpretation is applied"
+        },
+        "interpretation": {
+          "gpu_bound": "not established: busy_percent>=80",
+          "rule": "busy_percent>=80 and main target context p90 submit->retire >= 0.8 x complete-frame p50; other processes are listed separately and never added to the target"
+        }
+      },
+      "prof_integrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 3365,
+        "main_thread_id": 5170,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33369186134824,
+        "clock_ns0": 1638572135577005,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "diagnostics": {
+        "zero_timestamp_batch_observation": 1151
+      }
+    }
+  },
+  "dxgiObservation": {
+    "apk": {
+      "apk_sha256": "1c02e2f629862259aace2d8ae8b265204c5b24c0a16263bbda9686a6dd2f65e5",
+      "catalog_sha256": "c1ca69e55d34ae965221da788c939734e476daa2918acccca95930caa01d8278",
+      "build_ids": {
+        "libvulkan_renderer.so": "dd64d7f47d1da72b319ad6c089f19750e56936eb",
+        "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+        "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+        "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2"
+      }
+    },
+    "hostPid": 27604,
+    "guestPid": 28765,
+    "swapchainFlags": 2114,
+    "bufferCount": 2,
+    "defaultFrameLatency": 1,
+    "gameRequestedFrameLatency": 2,
+    "effectiveFrameLatency": 2,
+    "override": 0,
+    "implicitCap": 2,
+    "loadResult": "Android LOW_MEMORY SIGKILL; no GPU-completion override enabled"
+  },
+  "limitations": [
+    "CPU scope elapsed is not GPU blit duration",
+    "SurfaceFlinger presentations need not equal unique game frames",
+    "GPU frequency and temperature not locked",
+    "Only one bounded host A/B/A scene; opt-in remains default-off",
+    "ASan/TSan host runtime failed before test execution",
+    "Long play, resize matrix and Swan not accepted"
+  ],
+  "sourcePins": {
+    "ntsync": "7ce6435e5979b1cb5341aa4b299f31e8937fe121",
+    "dxvkBase": "a6764047e587178283fcde4073ae6e1410af594f",
+    "dxvkPatchSha256": "54c52f1a46c693dfd5740d006beb8843dc8d7baa1f1aaf27b6ec3bc8609ba653",
+    "shadps4ReadOnlyReference": "1c56a3f1f3fd5e32133641232bfa230fa0df124d"
+  },
+  "dateUpdated": "2026-10-03",
+  "gpuCompletionApk": {
+    "apk_sha256": "e6182b5741e925648d1fc87e90b0f6d55019e7a8c28fe72fd7577cf3a74ebddb",
+    "catalog_sha256": "e8f2780a71024d47b4f12ff1b74616354f588573d77ae105d8c93162337732bb",
+    "build_ids": {
+      "libvulkan_renderer.so": "dd64d7f47d1da72b319ad6c089f19750e56936eb",
+      "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+      "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+      "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2"
+    }
+  },
+  "uiAndPacerApk": {
+    "apk_sha256": "fa984dec6e65d8be4d79eb979c49af2845af2d906f06923e891c40defdc1fc73",
+    "catalog_sha256": "e8f2780a71024d47b4f12ff1b74616354f588573d77ae105d8c93162337732bb",
+    "build_ids": {
+      "libvulkan_renderer.so": "dd64d7f47d1da72b319ad6c089f19750e56936eb",
+      "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+      "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+      "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2"
+    }
+  },
+  "gpuCompletionConfig": {
+    "version": "11.0-a676404-arm64ec-xrg4",
+    "source": "https://github.com/tencentmalos/dxvk",
+    "pin": "a6764047e587178283fcde4073ae6e1410af594f",
+    "latencyOverride": false,
+    "gameSetsLatency": 2,
+    "memoryBudgetMiB": 3072,
+    "memoryBudgetType": "allocator soft budget, not reported VRAM or hard limit",
+    "hostLimiter": 0,
+    "vsync": true,
+    "gameLimiter": false,
+    "resolution": "1280x720",
+    "quality": "medium",
+    "sbs": false
+  },
+  "dxvkPatches": {
+    "tools/xrgame/patches/dxvk-waitable-frame-latency.patch": "acfa088b32041264888d86e37c460690ff92136d9ffccea65f4f6efdf4fe9252",
+    "tools/xrgame/patches/dxvk-present-gpu-completion.patch": "c6977ef6a80778754fa0fb8cb6897c4c2184c787598845cd30475b73feef2d40"
+  },
+  "completionObserved": {
+    "G1": {
+      "pids": {
+        "host": 16969,
+        "guest": 18159,
+        "wineserver": 18048
+      },
+      "startTicks": {
+        "16969": "174086531",
+        "18159": "174087611",
+        "18048": "174087507"
+      },
+      "frameCompletion": "gpu",
+      "hostCopyPipeline": false,
+      "schedulerDurationSeconds": 19.000044055,
+      "surface": {
+        "presentations": 447,
+        "rate": 22.333199531663112,
+        "interval_ms": {
+          "n": 446,
+          "mean": 44.77638766367713,
+          "p50": 50.129531,
+          "p95": 50.144531,
+          "max": 50.152396
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 99.89509501847087,
+        "p50": 99.90377966135182,
+        "p95": 99.9122242378138,
+        "max": 99.91584235712104
+      },
+      "frequencies": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2788800,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_max_freq": {
+          "n": 20,
+          "mean": 2803200,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq": {
+          "n": 20,
+          "mean": 1910400,
+          "p50": 1843200,
+          "p95": 1843200,
+          "max": 3187200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq": {
+          "n": 20,
+          "mean": 3187200,
+          "p50": 3187200,
+          "p95": 3187200,
+          "max": 3187200
+        }
+      },
+      "mainThread": {
+        "pid": 18159,
+        "tid": 18159,
+        "name": "AI-LIMIT.exe",
+        "cpu": 63.935519016879454,
+        "runqueue": 2.41616800293256,
+        "wchan": {
+          "futex_wait_queue_me": 5,
+          "0": 15
+        }
+      },
+      "artifacts": {
+        "scene.png": "c11890b25c1e4e5659963f2504990a8848e7c1468beefe873cfc41dae41a1ca8",
+        "analysis.json": "488d872f7bbd1f85080f280f1a03470ed1cb9916910200cca2849c2496f2cf20",
+        "surface.json": "439ef4a132456860b0d62a94adc468f2455ada206b8158fc52705e23f1ec02ff",
+        "load.txt": "820b49240fc205892f3eba200a504af5cb6a8f369a0343e73955cdd5aef1df67"
+      }
+    },
+    "G2": {
+      "pids": {
+        "host": 16969,
+        "guest": 18159,
+        "wineserver": 18048
+      },
+      "startTicks": {
+        "16969": "174086531",
+        "18159": "174087611",
+        "18048": "174087507"
+      },
+      "frameCompletion": "gpu",
+      "hostCopyPipeline": true,
+      "schedulerDurationSeconds": 18.999984315,
+      "surface": {
+        "presentations": 444,
+        "rate": 22.222675621657498,
+        "interval_ms": {
+          "n": 443,
+          "mean": 44.99908188487585,
+          "p50": 50.124688,
+          "p95": 50.140157,
+          "max": 66.843333
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 99.88832586501424,
+        "p50": 99.90073254888947,
+        "p95": 99.91033405039585,
+        "max": 99.91433212653945
+      },
+      "frequencies": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2784000,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_max_freq": {
+          "n": 20,
+          "mean": 2803200,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq": {
+          "n": 20,
+          "mean": 1910400,
+          "p50": 1843200,
+          "p95": 1843200,
+          "max": 3187200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq": {
+          "n": 20,
+          "mean": 3187200,
+          "p50": 3187200,
+          "p95": 3187200,
+          "max": 3187200
+        }
+      },
+      "mainThread": {
+        "pid": 18159,
+        "tid": 18159,
+        "name": "AI-LIMIT.exe",
+        "cpu": 63.201884506397825,
+        "runqueue": 2.423458121681086,
+        "wchan": {
+          "futex_wait_queue_me": 5,
+          "0": 14,
+          "pipe_read": 1
+        }
+      },
+      "artifacts": {
+        "scene.png": "1c0396e53188930b62ec719dd5749eaa848d451d40f6f9926063e4ac2fcc3813",
+        "analysis.json": "32332b3911704f3747958f5b59f63fc50db33b8f62916eee249553c35a947608",
+        "surface.json": "cab5cd47268dd09dfbc4939632a8782e68bf25b9c6df917b341f2196de9b1f7c",
+        "load.txt": "ffe7b0140e6ea38b2ec52025d668f7fca7103e043851d8ff0a902eb66b1e31af"
+      }
+    },
+    "C1": {
+      "pids": {
+        "host": 25230,
+        "guest": 26396,
+        "wineserver": 26278
+      },
+      "startTicks": {
+        "25230": "174137196",
+        "26396": "174138621",
+        "26278": "174138513"
+      },
+      "frameCompletion": "present",
+      "hostCopyPipeline": false,
+      "schedulerDurationSeconds": 19.00009843,
+      "surface": {
+        "presentations": 314,
+        "rate": 15.667496845527834,
+        "interval_ms": {
+          "n": 313,
+          "mean": 63.82640506389777,
+          "p50": 83.520365,
+          "p95": 116.945052,
+          "max": 166.999687
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 73.30319034589164,
+        "p50": 73.61050729695557,
+        "p95": 74.89246857576826,
+        "max": 75.7951732857503
+      },
+      "frequencies": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 20,
+          "mean": 646500000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2745600,
+          "p50": 2707200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_max_freq": {
+          "n": 20,
+          "mean": 2803200,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq": {
+          "n": 20,
+          "mean": 1977600,
+          "p50": 1843200,
+          "p95": 3187200,
+          "max": 3187200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq": {
+          "n": 20,
+          "mean": 3187200,
+          "p50": 3187200,
+          "p95": 3187200,
+          "max": 3187200
+        }
+      },
+      "mainThread": {
+        "pid": 26396,
+        "tid": 26396,
+        "name": "AI-LIMIT.exe",
+        "cpu": 42.80129037205204,
+        "runqueue": 1.6503204820502606,
+        "wchan": {
+          "0": 8,
+          "futex_wait_queue_me": 11,
+          "pipe_read": 1
+        }
+      },
+      "artifacts": {
+        "scene.png": "309bdf5e35e77c490afa2626065cf1cc3b14856650c47c26579c894b4103ff28",
+        "analysis.json": "f91b253955eb102c039a7ebc0a1be45e5191de0de9766bb13a0d139f28b16b94",
+        "surface.json": "2b4b226d932e01fbf7be0fdf1515fa89dca09b816c7deccac7308e6f86a10cf0",
+        "load.txt": "fe8867b5d11c330bdeff30d498d60d42d8553e9ffe155c5d686ac62fd3b8c241"
+      }
+    },
+    "G3": {
+      "pids": {
+        "host": 8349,
+        "guest": 9507,
+        "wineserver": 9390
+      },
+      "startTicks": {
+        "8349": "174235827",
+        "9507": "174237139",
+        "9390": "174237035"
+      },
+      "frameCompletion": "gpu",
+      "hostCopyPipeline": false,
+      "schedulerDurationSeconds": 19.000094159,
+      "surface": {
+        "presentations": 442,
+        "rate": 22.076321709860093,
+        "interval_ms": {
+          "n": 441,
+          "mean": 45.29740113151927,
+          "p50": 50.103595,
+          "p95": 50.116303,
+          "max": 50.123906
+        }
+      },
+      "gpuBusy": {
+        "n": 20,
+        "mean": 99.90361275925484,
+        "p50": 99.90535346915176,
+        "p95": 99.91235179171079,
+        "max": 99.91423985643117
+      },
+      "frequencies": {
+        "/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq": {
+          "n": 20,
+          "mean": 680000000,
+          "p50": 680000000,
+          "p95": 680000000,
+          "max": 680000000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq": {
+          "n": 20,
+          "mean": 2016000,
+          "p50": 2016000,
+          "p95": 2016000,
+          "max": 2016000
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2760000,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy3/scaling_max_freq": {
+          "n": 20,
+          "mean": 2803200,
+          "p50": 2803200,
+          "p95": 2803200,
+          "max": 2803200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq": {
+          "n": 20,
+          "mean": 2021760,
+          "p50": 1843200,
+          "p95": 2956800,
+          "max": 3187200
+        },
+        "/sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq": {
+          "n": 20,
+          "mean": 3187200,
+          "p50": 3187200,
+          "p95": 3187200,
+          "max": 3187200
+        }
+      },
+      "mainThread": {
+        "pid": 9507,
+        "tid": 9507,
+        "name": "AI-LIMIT.exe",
+        "cpu": 66.03633887286148,
+        "runqueue": 2.7076078081240205,
+        "wchan": {
+          "0": 15,
+          "futex_wait_queue_me": 4,
+          "pipe_read": 1
+        }
+      },
+      "artifacts": {
+        "scene.png": "df83437087c98223b35d660845fa4c198e6ad7b338bcb71935117dea0de365ad",
+        "analysis.json": "71bd9f73a7c1f412412f7df0116c90b8b1c6ae98a20d83c71a8c068455b853c6",
+        "surface.json": "5a3dc315ec2947b377eb87684b4c6f60b5ff29835704feb91f3cde4521400d40",
+        "load.txt": "72ea565ee807ec6545c9ee7ab8600cf2b78bc6c1c512a8ccc6458e8da9f6015e"
+      }
+    }
+  },
+  "completionCaveats": [
+    "C1 camera restored to pipe view with a small pitch difference, not pixel-identical replay",
+    "G2 switch activates after queue drain; first frames may overlap mode transition",
+    "No locked clocks or thermal controls",
+    "SurfaceFlinger presentations are not independently identified guest frames",
+    "Input latency not measured",
+    "Guest PID/start bound by adjacent observation windows, not independent before/after PROF guest snapshots"
+  ],
+  "completionProfiles": {
+    "G": {
+      "profSha256": "ce3fd35cfd5d476da3cbeb4d7cd2e56f09a5da9dba45e8b2e33adba8d61e6793",
+      "profIntegrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 16969,
+        "main_thread_id": 18004,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33424676977964,
+        "clock_ns0": 1641462283654392,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [
+          "1 unclosed spans on tid 21931",
+          "1 unpaired regions dropped"
+        ],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "startNs": 1641779868352437,
+      "endNs": 1641797445884548,
+      "guestSummary": {
+        "duration_ms": 17577.532111,
+        "threads": [
+          {
+            "tid": 18159,
+            "name": "AI-LIMIT.exe",
+            "on_cpu_ms": 11466.236111,
+            "sleep_ms": 5270.106,
+            "runnable_ms": 841.19,
+            "wakeups": 64176,
+            "wake_to_run_p90_us": 10.0,
+            "waker_top": [
+              {
+                "tid": 18048,
+                "count": 58085
+              },
+              {
+                "tid": 18191,
+                "count": 4017
+              },
+              {
+                "tid": 18192,
+                "count": 1079
+              },
+              {
+                "tid": 18220,
+                "count": 408
+              },
+              {
+                "tid": 18193,
+                "count": 180
+              }
+            ]
+          },
+          {
+            "tid": 18222,
+            "name": "UnityGfxDeviceW",
+            "on_cpu_ms": 2626.398,
+            "sleep_ms": 14559.175111,
+            "runnable_ms": 391.959,
+            "wakeups": 16608,
+            "wake_to_run_p90_us": 40.0,
+            "waker_top": [
+              {
+                "tid": 18159,
+                "count": 10803
+              },
+              {
+                "tid": 18192,
+                "count": 1094
+              },
+              {
+                "tid": 18191,
+                "count": 1036
+              },
+              {
+                "tid": 18196,
+                "count": 734
+              },
+              {
+                "tid": 18194,
+                "count": 656
+              }
+            ]
+          },
+          {
+            "tid": 18271,
+            "name": "AI-LIMIT.exe",
+            "on_cpu_ms": 2583.299,
+            "sleep_ms": 14974.994111,
+            "runnable_ms": 19.239,
+            "wakeups": 1287,
+            "wake_to_run_p90_us": 10.0,
+            "waker_top": [
+              {
+                "tid": 0,
+                "count": 589
+              },
+              {
+                "tid": 18280,
+                "count": 261
+              },
+              {
+                "tid": 18159,
+                "count": 169
+              },
+              {
+                "tid": 18222,
+                "count": 36
+              },
+              {
+                "tid": 18221,
+                "count": 34
+              }
+            ]
+          },
+          {
+            "tid": 18280,
+            "name": "AI-LIMIT.exe",
+            "on_cpu_ms": 2473.431111,
+            "sleep_ms": 15081.67,
+            "runnable_ms": 22.431,
+            "wakeups": 1946,
+            "wake_to_run_p90_us": 9.0,
+            "waker_top": [
+              {
+                "tid": 18275,
+                "count": 1898
+              },
+              {
+                "tid": 18291,
+                "count": 31
+              },
+              {
+                "tid": 18159,
+                "count": 8
+              },
+              {
+                "tid": 18220,
+                "count": 3
+              },
+              {
+                "tid": 18191,
+                "count": 3
+              }
+            ]
+          },
+          {
+            "tid": 18191,
+            "name": "Job.Worker 1",
+            "on_cpu_ms": 2304.184,
+            "sleep_ms": 13773.095111,
+            "runnable_ms": 1500.253,
+            "wakeups": 52279,
+            "wake_to_run_p90_us": 20.0,
+            "waker_top": [
+              {
+                "tid": 18159,
+                "count": 40081
+              },
+              {
+                "tid": 18196,
+                "count": 2729
+              },
+              {
+                "tid": 18194,
+                "count": 2063
+              },
+              {
+                "tid": 18192,
+                "count": 1894
+              },
+              {
+                "tid": 18193,
+                "count": 1884
+              }
+            ]
+          },
+          {
+            "tid": 18192,
+            "name": "Job.Worker 2",
+            "on_cpu_ms": 1535.602,
+            "sleep_ms": 14175.097111,
+            "runnable_ms": 1866.833,
+            "wakeups": 49514,
+            "wake_to_run_p90_us": 45.0,
+            "waker_top": [
+              {
+                "tid": 18159,
+                "count": 26794
+              },
+              {
+                "tid": 18191,
+                "count": 9869
+              },
+              {
+                "tid": 18190,
+                "count": 3094
+              },
+              {
+                "tid": 18193,
+                "count": 2469
+              },
+              {
+                "tid": 18194,
+                "count": 2308
+              }
+            ]
+          },
+          {
+            "tid": 18221,
+            "name": "dxvk-cs",
+            "on_cpu_ms": 1511.957,
+            "sleep_ms": 15989.072111,
+            "runnable_ms": 76.503,
+            "wakeups": 6269,
+            "wake_to_run_p90_us": 10.0,
+            "waker_top": [
+              {
+                "tid": 18222,
+                "count": 6262
+              },
+              {
+                "tid": 18219,
+                "count": 7
+              }
+            ]
+          },
+          {
+            "tid": 18190,
+            "name": "Job.Worker 0",
+            "on_cpu_ms": 1286.891,
+            "sleep_ms": 15365.015111,
+            "runnable_ms": 925.626,
+            "wakeups": 44292,
+            "wake_to_run_p90_us": 33.0,
+            "waker_top": [
+              {
+                "tid": 18192,
+                "count": 9678
+              },
+              {
+                "tid": 18191,
+                "count": 8870
+              },
+              {
+                "tid": 18159,
+                "count": 8058
+              },
+              {
+                "tid": 18193,
+                "count": 5972
+              },
+              {
+                "tid": 18195,
+                "count": 4494
+              }
+            ]
+          }
+        ],
+        "gpu": 99.89080849342459
+      },
+      "trace": {
+        "trace_sha256": "768eb7ac6140100a45d4aad89147567640202c00373603a47c253754ad1b67c4",
+        "clock_uncertainty_ns": 1109,
+        "capture_overrun": 0,
+        "capture_dropped": 0,
+        "safe_start_ns": 1641779868352437,
+        "safe_end_ns": 1641802891551437
+      },
+      "analysisSha256": "b19bb526ddb67ef08f0213797280266ff4d7bb073540de0a7d8f6a55f87da7af"
+    },
+    "C": {
+      "profSha256": "c3652653eb91ccec63651fad9e91da6d2d66324300da79e670532b260558bcd9",
+      "profIntegrity": {
+        "session_name": "default",
+        "process_name": "XRGameNative",
+        "process_id": 25230,
+        "main_thread_id": 26236,
+        "clock_source": "ArmCntvct",
+        "clock_tick0": 33434409342592,
+        "clock_ns0": 1641969177648574,
+        "clock_numer": 1000000000,
+        "clock_denom": 19200000,
+        "chunks_ok": 1,
+        "chunks_skipped": 0,
+        "truncated": false,
+        "gpu_records": {
+          "context_defs": 0,
+          "zone_begins": 0,
+          "zone_ends": 0,
+          "times": 0,
+          "orphan_times": 0
+        },
+        "diagnostics": [],
+        "dependencies": {},
+        "dependencies_invalid": false,
+        "interval_indices": []
+      },
+      "startNs": 1642881754485240,
+      "endNs": 1642899711754615,
+      "guestSummary": {
+        "duration_ms": 17957.269375,
+        "threads": [
+          {
+            "tid": 26396,
+            "name": "AI-LIMIT.exe",
+            "on_cpu_ms": 7555.007565,
+            "sleep_ms": 9928.28281,
+            "runnable_ms": 473.979,
+            "wakeups": 46982,
+            "wake_to_run_p90_us": 9.0,
+            "waker_top": [
+              {
+                "tid": 26278,
+                "count": 41435
+              },
+              {
+                "tid": 26429,
+                "count": 3775
+              },
+              {
+                "tid": 26430,
+                "count": 1100
+              },
+              {
+                "tid": 26498,
+                "count": 192
+              },
+              {
+                "tid": 26432,
+                "count": 184
+              }
+            ]
+          },
+          {
+            "tid": 26517,
+            "name": "AI-LIMIT.exe",
+            "on_cpu_ms": 2536.331565,
+            "sleep_ms": 15353.54581,
+            "runnable_ms": 67.392,
+            "wakeups": 1939,
+            "wake_to_run_p90_us": 141.20000000000118,
+            "waker_top": [
+              {
+                "tid": 26514,
+                "count": 1840
+              },
+              {
+                "tid": 26531,
+                "count": 79
+              },
+              {
+                "tid": 26396,
+                "count": 9
+              },
+              {
+                "tid": 26278,
+                "count": 5
+              },
+              {
+                "tid": 26462,
+                "count": 3
+              }
+            ]
+          },
+          {
+            "tid": 26510,
+            "name": "AI-LIMIT.exe",
+            "on_cpu_ms": 2427.72,
+            "sleep_ms": 15512.441375,
+            "runnable_ms": 17.108,
+            "wakeups": 1304,
+            "wake_to_run_p90_us": 10.0,
+            "waker_top": [
+              {
+                "tid": 0,
+                "count": 755
+              },
+              {
+                "tid": 26517,
+                "count": 249
+              },
+              {
+                "tid": 26396,
+                "count": 91
+              },
+              {
+                "tid": 26462,
+                "count": 37
+              },
+              {
+                "tid": 26461,
+                "count": 27
+              }
+            ]
+          },
+          {
+            "tid": 26462,
+            "name": "UnityGfxDeviceW",
+            "on_cpu_ms": 1718.796,
+            "sleep_ms": 15987.710375,
+            "runnable_ms": 250.763,
+            "wakeups": 10746,
+            "wake_to_run_p90_us": 35.0,
+            "waker_top": [
+              {
+                "tid": 26396,
+                "count": 6677
+              },
+              {
+                "tid": 26430,
+                "count": 768
+              },
+              {
+                "tid": 26429,
+                "count": 618
+              },
+              {
+                "tid": 26435,
+                "count": 550
+              },
+              {
+                "tid": 26432,
+                "count": 474
+              }
+            ]
+          },
+          {
+            "tid": 26429,
+            "name": "Job.Worker 1",
+            "on_cpu_ms": 1684.299,
+            "sleep_ms": 15287.88581,
+            "runnable_ms": 985.084565,
+            "wakeups": 39985,
+            "wake_to_run_p90_us": 18.0,
+            "waker_top": [
+              {
+                "tid": 26396,
+                "count": 30925
+              },
+              {
+                "tid": 26435,
+                "count": 2028
+              },
+              {
+                "tid": 26430,
+                "count": 1503
+              },
+              {
+                "tid": 26432,
+                "count": 1493
+              },
+              {
+                "tid": 26433,
+                "count": 1466
+              }
+            ]
+          },
+          {
+            "tid": 26430,
+            "name": "Job.Worker 2",
+            "on_cpu_ms": 1225.181,
+            "sleep_ms": 15561.147375,
+            "runnable_ms": 1170.941,
+            "wakeups": 37535,
+            "wake_to_run_p90_us": 37.0,
+            "waker_top": [
+              {
+                "tid": 26396,
+                "count": 21136
+              },
+              {
+                "tid": 26429,
+                "count": 7001
+              },
+              {
+                "tid": 26428,
+                "count": 2156
+              },
+              {
+                "tid": 26432,
+                "count": 1837
+              },
+              {
+                "tid": 26433,
+                "count": 1743
+              }
+            ]
+          },
+          {
+            "tid": 26461,
+            "name": "dxvk-cs",
+            "on_cpu_ms": 980.317,
+            "sleep_ms": 16924.567375,
+            "runnable_ms": 52.385,
+            "wakeups": 4315,
+            "wake_to_run_p90_us": 10.0,
+            "waker_top": [
+              {
+                "tid": 26462,
+                "count": 4275
+              },
+              {
+                "tid": 26459,
+                "count": 32
+              },
+              {
+                "tid": 26460,
+                "count": 8
+              }
+            ]
+          },
+          {
+            "tid": 26428,
+            "name": "Job.Worker 0",
+            "on_cpu_ms": 864.789,
+            "sleep_ms": 16438.127375,
+            "runnable_ms": 654.353,
+            "wakeups": 32401,
+            "wake_to_run_p90_us": 32.0,
+            "waker_top": [
+              {
+                "tid": 26430,
+                "count": 7306
+              },
+              {
+                "tid": 26429,
+                "count": 6859
+              },
+              {
+                "tid": 26396,
+                "count": 6113
+              },
+              {
+                "tid": 26432,
+                "count": 4154
+              },
+              {
+                "tid": 26434,
+                "count": 3178
+              }
+            ]
+          }
+        ],
+        "gpu": 72.89411217954407
+      },
+      "trace": {
+        "trace_sha256": "1d9905f603f1fd82fa3f1fb90be9ff9d281f6e1c9fc8328b4708157a35be262a",
+        "clock_uncertainty_ns": 1109,
+        "capture_overrun": 0,
+        "capture_dropped": 0,
+        "safe_start_ns": 1642881571762050,
+        "safe_end_ns": 1642904652142050
+      },
+      "analysisSha256": "8a848208dfff2286621ff9b43e901f769842a73c54efad50f540d3d790f78d0c"
+    }
+  },
+  "failedAttempts": [
+    {
+      "kind": "TSan",
+      "state": "unavailable",
+      "reason": "Xcode runtime interceptor initialization failed; explicit DYLD preload failed too"
+    },
+    {
+      "kind": "ASan",
+      "state": "unavailable",
+      "reason": "startup deadlock in sanitizer shadow-memory initialization before main; sampled and terminated own test process"
+    },
+    {
+      "kind": "native-debugger",
+      "state": "no-session-created",
+      "reason": "default adapter major unknown; explicit CodeLLDB/liblldb=22 vs lldb-server=21 rejected"
+    },
+    {
+      "kind": "startup",
+      "host_pid": 17508,
+      "state": "LOW_MEMORY",
+      "pipeline": false
+    },
+    {
+      "kind": "startup",
+      "host_pid": 20965,
+      "state": "black after load, queue drained, manually stopped after evidence",
+      "pipeline": false
+    },
+    {
+      "kind": "startup",
+      "host_pid": 31217,
+      "state": "LOW_MEMORY",
+      "pipeline": false,
+      "async": false,
+      "host_cap": 0
+    },
+    {
+      "kind": "startup",
+      "host_pid": 27604,
+      "guest_pid": 28765,
+      "state": "LOW_MEMORY",
+      "pipeline": false,
+      "frameCompletion": "present",
+      "host_cap": 60,
+      "memoryBudget": "default"
+    },
+    {
+      "kind": "startup",
+      "host_pid": 4699,
+      "guest_pid": 5870,
+      "state": "LOW_MEMORY",
+      "pipeline": false,
+      "frameCompletion": "gpu",
+      "host_cap": 60,
+      "memoryBudget": "default"
+    },
+    {
+      "kind": "startup",
+      "host_pid": 7921,
+      "guest_pid": 11546,
+      "state": "LOW_MEMORY",
+      "pipeline": false,
+      "frameCompletion": "gpu",
+      "host_cap": 60,
+      "memoryBudget": "default"
+    }
+  ],
+  "testsLatest": {
+    "JVM": {
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "freshApkAudit": {
+      "files": 124,
+      "errors": 0
+    }
+  },
+  "finalApk": {
+    "apk_sha256": "24b16a2f5232e0735b93ad61f8f750f65e406e0786049e8ca30b7ff3d2575674",
+    "catalog_sha256": "e8f2780a71024d47b4f12ff1b74616354f588573d77ae105d8c93162337732bb",
+    "build_ids": {
+      "libvulkan_renderer.so": "dd64d7f47d1da72b319ad6c089f19750e56936eb",
+      "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+      "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+      "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2"
+    }
+  },
+  "uiPersistence": {
+    "offThenOnSaved": true,
+    "otherFieldsUnchanged": true,
+    "asyncCopyRetained": true,
+    "apk": "fa984dec6e65d8be4d79eb979c49af2845af2d906f06923e891c40defdc1fc73"
+  },
+  "steamDisconnectGuard": {
+    "evidenceTimestamp": "2026-10-02 23:09:48",
+    "exception": "NullPointerException in notifyRunningProcesses userSteamId!!",
+    "fix": "snapshot account ID from captured service; skip report if unavailable",
+    "raceReproducedAfterFix": false
+  },
+  "runtimeBuild": {
+    "source": "https://github.com/tencentmalos/dxvk",
+    "sources": [
+      {
+        "path": ".",
+        "commit": "a6764047e587178283fcde4073ae6e1410af594f",
+        "archiveSha256": "c70f76f875ce3dcf6dbd0420c946ecf04d6a2fb6f679ed9877eaf4feaaba1cb6"
+      },
+      {
+        "path": "include/native/directx",
+        "commit": "9df86f2341616ef1888ae59919feaa6d4fad693d",
+        "archiveSha256": "021d4102f4ed1ef86a508962c8f550b8f54bf49433a6994cff3a6f4ea992fe13"
+      },
+      {
+        "path": "include/spirv",
+        "commit": "04f10f650d514df88b76d25e83db360142c7b174",
+        "archiveSha256": "c3a970c135f3f65130ee980e9531aa62651b7c2c210cd91e83a0b70b5554de83"
+      },
+      {
+        "path": "include/vulkan",
+        "commit": "5d94bb4dcc968cccce1f601324fcaf3eda92a52b",
+        "archiveSha256": "a6a4d80cf1c97617854fd897b4c69d5cd4c24e3712b7f26d2915e0cf4f980dbb"
+      },
+      {
+        "path": "subprojects/dxbc-spirv",
+        "commit": "fe5a4ef1e99357c8b9f57e4cfb1195c3dae9707f",
+        "archiveSha256": "3e743b4c7e522891ac9a07e0121facb50df02ce97f2b86559975c771dcb0ceb7"
+      },
+      {
+        "path": "subprojects/dxbc-spirv/submodules/spirv_headers",
+        "commit": "c8ad050fcb29e42a2f57d9f59e97488f465c436d",
+        "archiveSha256": "47564925640c69eb6bef13ff7bca417d39e568208702e57c23cb6d4de3991b7a"
+      },
+      {
+        "path": "subprojects/libdisplay-info",
+        "commit": "275e6459c7ab1ddd4b125f28d0440716e4888078",
+        "archiveSha256": "e341e1f897220f586c95e1843059031633d780ea08800eea023ce3282730dfe7"
+      }
+    ],
+    "patchSha256": "54c52f1a46c693dfd5740d006beb8843dc8d7baa1f1aaf27b6ec3bc8609ba653",
+    "recipeSha256": "ea070533daf53bcf68d59a944c31eb1a9dcc872097731643671a1e3c1317be4c",
+    "crossFileSha256": "6f038bc020eeeb0c8711ec57d06aab2d7210a383057d4a4d96540f2bbb0d4acb",
+    "latencyProbePatchSha256": "acfa088b32041264888d86e37c460690ff92136d9ffccea65f4f6efdf4fe9252",
+    "gpuCompletionPatchSha256": "c6977ef6a80778754fa0fb8cb6897c4c2184c787598845cd30475b73feef2d40",
+    "architecture": "arm64ec-windows",
+    "purpose": "private-validation",
+    "releaseReady": false,
+    "binaries": {
+      "arm64ec/d3d10core.dll": "523ba8f60ae109112a9145f12adcec493913d9b3064012303a5e68ca4186970c",
+      "arm64ec/d3d11.dll": "11e9de6c1bee9a7694b0956598ab4bf24fc9c7568cc347f9e9a7437970ee2b3f",
+      "arm64ec/d3d8.dll": "180fab5eff589e0f98257e62d10efae09e05352747754e8d7a2e7f45c6eb6789",
+      "arm64ec/d3d9.dll": "c0213ee14bf4a1430f8359cacba6d82be4ece3893b3217b14705a568087b7abc",
+      "arm64ec/dxgi.dll": "4059c76395e1718e9103139fa8a0b8251468485e42e4e8ec117ab8d5079c81f6"
+    }
+  },
+  "lifecycleG3": {
+    "hostPid": 8349,
+    "guestPid": 9507,
+    "sceneToTitle": true,
+    "normalMenuExit": true,
+    "exitCallback": "guest_terminated",
+    "externalLauncherReturn": true,
+    "newCrashRecord": false,
+    "retainedOldCrashTimestamp": "2026-10-02 23:09:48"
+  },
+  "sourceImplementationSha256": {
+    "app/src/main/cpp/winlator/PresentCopyQueue.h": "a8867bd74c2d85df4f7e9b0accebb8a9006331ebb2e48ec0600cbe96f3779245",
+    "app/src/main/cpp/winlator/VulkanRendererContext.cpp": "4b545be7a805e4466b4ed67ab4c0fb76a3527256f2dcedfbcb61f8e22c53e596",
+    "app/src/main/java/com/winlator/xserver/extensions/PresentExtension.java": "cf772c2448d0e3d5fd7fa91d98e65919c6585c1789d7650d7282070e97403a13",
+    "app/src/main/java/com/winlator/core/DXVKHelper.java": "7e63aa2007378def81685ea7fab65be5f19f6d1f92b47cdb8c2206b28514c201",
+    "app/src/main/java/app/gamenative/service/SteamService.kt": "0e56a3c0a278f88ed6991470aa4f5eb42ecba55ba4b72eb6728e3f17d1c0d059"
+  },
+  "finalObserved": {
+    "pids": {
+      "host": 19230,
+      "guest": 20379,
+      "wineserver": 20260
+    },
+    "schedulerDurationSeconds": 19.000014733,
+    "surface": {
+      "presentations": 449,
+      "rate": 22.48337051312878,
+      "interval_ms": {
+        "n": 448,
+        "mean": 44.477317109375,
+        "p50": 50.102865,
+        "p95": 50.114584,
+        "max": 50.123437
+      }
+    },
+    "gpuBusy": {
+      "n": 20,
+      "mean": 98.74943986720582,
+      "p50": 99.89927457750173,
+      "p95": 99.91390675817223,
+      "max": 99.91400748134912
+    },
+    "pacer": {
+      "pid": 19230,
+      "tid": 22265,
+      "name": "PresentPacer-CP",
+      "cpu": 0.0,
+      "runqueue": 0.0,
+      "wchan": {
+        "futex_wait_queue_me": 20
+      }
+    },
+    "startTicks": {
+      "19230": "174344236",
+      "20379": "174345377",
+      "20260": "174345270"
+    }
+  },
+  "cleanupAtCheckpoint": {
+    "date": "2026-10-03",
+    "adbDevices": [],
+    "status": "Device disconnected before final normal exit and diagnostic setting restoration; last known state only.",
+    "lastKnown": {
+      "gamePaused": true,
+      "hostFrameRateLimit": 60,
+      "renderAhead": "gpu",
+      "copyPipeline": false,
+      "asyncCopyRequested": true,
+      "asyncCopyActive": false,
+      "profilerRecording": false,
+      "profilerCaptureActive": false,
+      "dxvkDiagnosticLoggingRestored": false
+    },
+    "finalApkNormalExitVerified": false,
+    "pacerRearmCpuTimeNs": {
+      "before": 2411374500,
+      "after": 4255356357
+    },
+    "pacerRearmObservation": "CPU time advanced after re-enabling the cap; gameplay still presented."
+  },
+  "checkpointVerification": {
+    "date": "2026-10-03",
+    "jvm": {
+      "tests": 21,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        "ProfileProgressGateTest",
+        "PresentCopySettingsTest",
+        "EnvVarsTest",
+        "DXVKInlineConfigTest",
+        "SbsTheaterSettingsTest"
+      ]
+    },
+    "native": [
+      "PresentCopyQueue normal: PASS",
+      "PresentCopyQueue XRGAME_PROFILE: PASS",
+      "SBS theater projection: PASS"
+    ],
+    "submodulePinsChanged": false,
+    "sourceHashMatch": true,
+    "diffCheck": "pass",
+    "privateTestLogSha256": "4077bab46d828cfa97256a7d0c4afaf609b107caa89fb05c19eeced934f4c6c5"
+  }
+}

@@ -145,12 +145,12 @@ public:
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeQueueWindowContentAHB(
-    JNIEnv* env, jobject, jlong handle, jlong id, jlong ahbPtr, jlong traceFrame, jobject callback) {
+    JNIEnv* env, jobject, jlong handle, jlong id, jlong ahbPtr, jlong traceFrame, jboolean pipeline, jobject callback) {
     auto* renderer = reinterpret_cast<VulkanRendererContext*>(handle);
     if (!renderer || !ahbPtr || !callback) return false;
     auto owner = std::make_shared<PresentJavaCallback>(env, callback);
     if (!owner->callback || !owner->method || env->ExceptionCheck()) return false;
-    return renderer->queueWindowContentAHB(id, reinterpret_cast<AHardwareBuffer*>(ahbPtr), traceFrame,
+    return renderer->queueWindowContentAHB(id, reinterpret_cast<AHardwareBuffer*>(ahbPtr), traceFrame, pipeline,
         [owner](PresentCopyQueue::Result result) { owner->complete(result); });
 }
 extern "C" JNIEXPORT void JNICALL
@@ -193,6 +193,12 @@ Java_com_winlator_renderer_VulkanRenderer_nativeSetTransform(
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeSetPointerPos(JNIEnv*, jobject, jlong handle, jshort x, jshort y) {
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle); if (r) r->updatePointerPosition(x,y);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeSetSbsTheater(
+    JNIEnv*, jobject, jlong handle, jboolean enabled, jfloat width, jfloat distance) {
+    if (handle) reinterpret_cast<VulkanRendererContext*>(handle)->setSbsTheater(enabled, width, distance);
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeSetCursorVisible(JNIEnv*, jobject, jlong handle, jboolean v) {

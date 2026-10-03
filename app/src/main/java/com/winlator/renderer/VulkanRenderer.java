@@ -45,6 +45,28 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     public final XServerView xServerView;
     private final XServer xServer;
     private long nativeHandle = 0;
+    private volatile boolean sbsTheaterSession = false;
+    private boolean sbsTheaterEnabled = false;
+    private float sbsTheaterWidth = 1.6f, sbsTheaterDistance = 2.0f;
+
+    /** Ordinary games use the normal compositor/input path, with two quad views. */
+    public void setSbsTheater(boolean enabled, float widthMeters, float distanceMeters) {
+        if (!app.gamenative.BuildConfig.XRGAME) return; // Other flavors use prebuilt JNI.
+        synchronized (lock) {
+            sbsTheaterSession = true;
+            sbsTheaterEnabled = enabled;
+            sbsTheaterWidth = widthMeters;
+            sbsTheaterDistance = distanceMeters;
+            applySbsTheaterLocked();
+        }
+    }
+
+    private void applySbsTheaterLocked() {
+        if (sbsTheaterSession && nativeHandle != 0)
+            nativeSetSbsTheater(nativeHandle, sbsTheaterEnabled, sbsTheaterWidth, sbsTheaterDistance);
+    }
+
+    private native void nativeSetSbsTheater(long handle, boolean enabled, float widthMeters, float distanceMeters);
     private boolean sampleHardwareBuffers = false;
     private final HardwareBufferLeases hardwareLeases = new HardwareBufferLeases();
     private final java.util.HashMap<Integer, Long> copyDrawables = new java.util.HashMap<>();
@@ -296,6 +318,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                         xrTargetAhbPtr = 0;
                     } else {
                         enableXrTargetLocked();
+                        applySbsTheaterLocked();
                         applyFrameGenerationSettingsLocked();
                         initComplete = true;
                         xServerView.queueEvent(this::updateScene);
@@ -304,6 +327,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                 }
                 nativeHandle = nativeInit(surface, xServer.screenInfo.width, xServer.screenInfo.height, driverPath, driverLibraryName, nativeLibDir, frameGenArmed);
                 if (nativeHandle != 0) {
+                    applySbsTheaterLocked();
                     nativeSetForeignAhbOwnership(nativeHandle, foreignAhbOwnership);
                     nativeSetPresentMode(nativeHandle, pendingPresentMode);
                     nativeSetFilterMode(nativeHandle, pendingFilterMode);
@@ -650,7 +674,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
         @androidx.annotation.Keep void onComplete(int result);
     }
 
-    public boolean queueHardwarePixmap(Window window, GPUImage image, long traceFrame, CopyCompletion completion) {
+    public boolean queueHardwarePixmap(Window window, GPUImage image, long traceFrame, boolean pipeline, CopyCompletion completion) {
         synchronized (lock) {
             // Do not retire an experimental sampling lease on the X request thread.
             if (nativeHandle == 0 || hardwareLeases.get(window.id) != null) return false;
@@ -660,7 +684,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                 long drawable = did(window.getContent());
                 copyDrawables.put(window.id, drawable);
                 // Native acquires its own AHB reference before we release image's monitor.
-                return nativeQueueWindowContentAHB(nativeHandle, drawable, buffer, traceFrame,
+                return nativeQueueWindowContentAHB(nativeHandle, drawable, buffer, traceFrame, pipeline,
                         result -> {
                             if (result == 0 && hudRef != null) hudRef.update();
                             completion.onComplete(result);
@@ -670,7 +694,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     private native boolean nativeQueueWindowContentAHB(long handle, long id, long ahbPtr,
-                                                       long traceFrame, CopyCompletion completion);
+                                                       long traceFrame, boolean pipeline, CopyCompletion completion);
     private native void nativeCancelWindowCopies(long handle, long id);
 
     private void cancelHardwareCopies(Window window, boolean resized) {
@@ -837,6 +861,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     public void setNativeMode(boolean mode) {
+        if (mode && sbsTheaterSession) return; // SurfaceControl scanout bypasses the quad.
         if (this.nativeMode == mode) return;
         this.nativeMode = mode;
         xRenderingPausedForScanout = false;
@@ -999,6 +1024,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     public void setFrameGenerationEnabled(boolean enabled) {
+        if (sbsTheaterSession) enabled = false;
         synchronized (lock) {
             this.frameGenEnabled = enabled;
             boolean wasRequireCompositor = effectsRequireCompositor;
@@ -1052,7 +1078,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     public void setFrameGenerationArmed(boolean armed) {
-        frameGenArmed = armed;
+        frameGenArmed = armed && !sbsTheaterSession;
     }
 
     public void setSourceFrameCount(long count) {

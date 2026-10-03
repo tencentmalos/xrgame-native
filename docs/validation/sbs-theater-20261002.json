@@ -1,0 +1,884 @@
+{
+  "date": "2026-10-02",
+  "scope": "Ordinary Windows game SBS theater preview on AYN; not PCVR or Swan acceptance",
+  "source": {
+    "branch": "feature/malos/sbs-theater",
+    "baseCommit": "6193851f6ceb1f126839bc0ed2e2e7c5a68c9f1f",
+    "workingTreeChanges": true,
+    "changedSourceSha256": {
+      "app/src/main/cpp/winlator/VulkanRendererContext.cpp": "fb96ba5c61edaa71734e943a5a57244a4489c28ff75aabe77d3739a41c4e54c3",
+      "app/src/main/cpp/winlator/VulkanRendererContext.h": "167d3f184bd59a87ddfcc7e5a84eb7027105829e6c414eb244a58986bba67700",
+      "app/src/main/cpp/winlator/vulkan_jni.cpp": "49890a22ba8e77e431d365cecdef6b857d7a07e278495b9bde6c5192ab76330a",
+      "app/src/main/java/app/gamenative/ui/component/dialog/GraphicsTab.kt": "e95bc1040f18d403ee0d6ca9152207c1e80fd4929d25d493859772da7ee5f60a",
+      "app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt": "1151fe8a03b0234254b747567d62966210e6f2868005d12b260ab47adf5e43a6",
+      "app/src/main/java/app/gamenative/utils/ContainerUtils.kt": "b6d48cd01bcb36da1e909807798181c9d65b8f423ca644851bf74fdc79d9d7f8",
+      "app/src/main/java/com/winlator/container/ContainerData.kt": "61149321c977a23288558c5f341edd4a6d8ea4b9f358356892d7ab3c9aafdf4a",
+      "app/src/main/java/com/winlator/renderer/VulkanRenderer.java": "a13251e587a681e930ca043c12d45447d226a80670a90470b4e314fbb25fd9f6",
+      "app/src/main/res/values-zh-rCN/strings_xrgame.xml": "959b446dd144de8e91e46a88a150424ca44bc72429eab270ecf27ab5dfe5ce39",
+      "app/src/main/res/values/strings_xrgame.xml": "484d2c3f642fe3c667579b8c05d2491484545eecb1cc6c1408f40c3ae6c627f1",
+      "app/src/main/cpp/winlator/SbsTheater.h": "f15808c3f9f29780ee30af2ff8d2b382620ecc8de464e66175d35ac522ee7e67",
+      "app/src/main/java/app/gamenative/ui/screen/xr/SbsTheaterOverlay.kt": "f43b6812650b5a0a8ddee0369436a808c3e0e89c3f0756d8e7bc3d42145e581e",
+      "app/src/main/java/app/gamenative/ui/screen/xr/SbsTheaterSettings.kt": "4be250f4705bcf902fc23ad88c6d34ba91336e16e390cf460b7258d2b3c61f1d",
+      "app/src/test/java/app/gamenative/ui/screen/xr/SbsTheaterSettingsTest.kt": "cce32db1f6dfe47b9b17d522d7a69ea11d39fd8e40d90e6373d135e40227cfab",
+      "tools/xrgame/tests/sbs_theater_test.cpp": "1a9f574dd02b349df7d1ab3e4e8307f1889d8ee64eaa3262c446f9bf1614777d"
+    }
+  },
+  "device": {
+    "model": "AYN Thor",
+    "androidRelease": "13",
+    "api": 33,
+    "pageSize": 4096,
+    "fingerprint": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "bootId": "8bb14501-5800-4b9b-a9ab-7173603812f7",
+    "clkTck": 100
+  },
+  "app": {
+    "package": "com.tencentmalos.xrgamenative",
+    "versionCode": 23,
+    "versionName": "1.2.1",
+    "targetSdk": 36
+  },
+  "builds": [
+    {
+      "name": "build1",
+      "apkSha256": "bcc22a26517181d05acc75df2bc627d1c4c12ad7b3e1010a08fef92f32dbc422",
+      "componentCatalogSha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+      "componentRegistrySha256": "e1b6eb87f701e7be580c2b72320c797b7258be70df7fbac02658cfb562d6c085",
+      "auditPassed": true,
+      "auditFiles": 124,
+      "auditErrors": [],
+      "nativeLibraries": [
+        {
+          "path": "assets/gamenative_xr_unixbridge.so",
+          "sha256": "170f0ec403eb56e5edb0abec0c69a56ea65ba133514445052789e356b86d0cb3",
+          "buildId": "7f8828628f088bbdc9124d99b8c301d82fa9a1cf"
+        },
+        {
+          "path": "lib/arm64-v8a/lib7zx.so",
+          "sha256": "f2f241601699b809776f2a2643faffea774a0eefa08963f7c23a848a6ea520a9",
+          "buildId": "e79db703428a1e9992214bba03dfe9047eb68119"
+        },
+        {
+          "path": "lib/arm64-v8a/libahbimage.so",
+          "sha256": "c3168c4009311e46c65effe7c5d9d5156f4ae7d1df80f80a18c8455c2b5bb09a",
+          "buildId": "b08bfa1613c4a5821fe917795bc7ad664dfa6f07"
+        },
+        {
+          "path": "lib/arm64-v8a/libandroidx.graphics.path.so",
+          "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6",
+          "buildId": "a7846ae06d6bf6cf63fa7c5e056b5de493c71567"
+        },
+        {
+          "path": "lib/arm64-v8a/libarchive-jni.so",
+          "sha256": "92332de41e661c2a5ce05df65c8a0a6367a99a2cb201e3b3eec7039c9cbc669e",
+          "buildId": "d235438c5533e44a6e830f535018c72e8b43b117"
+        },
+        {
+          "path": "lib/arm64-v8a/libasurface_renderer.so",
+          "sha256": "88e64a9c5627712619138992ec9f587648bf416e3443a5b38f08b90797a6cb27",
+          "buildId": "774fe0ddda6bdaf4c9cd248e59fecd7af4294858"
+        },
+        {
+          "path": "lib/arm64-v8a/libc++_shared.so",
+          "sha256": "f4e1e97c1943e60311e47e8b024d78f5b3b7229b3ccc65feb33af83d6025a670",
+          "buildId": "ea306390624df9242cca21aeec76a0427683bd72"
+        },
+        {
+          "path": "lib/arm64-v8a/libdatastore_shared_counter.so",
+          "sha256": "d3e48717c9aa147e0ab21063ba0e8e0211cabf8bf40b222640829519edbf58e1",
+          "buildId": "17db37bd6770ac00dd2d1d2828839fd23a7959a3"
+        },
+        {
+          "path": "lib/arm64-v8a/libdrawable.so",
+          "sha256": "a79ca6a3b26c3cf58c72756ee68da5219278a839292abe2c9de17aec37d298d7",
+          "buildId": "a1050793852b30c9e015ba8c69d458213b570787"
+        },
+        {
+          "path": "lib/arm64-v8a/libevshim.so",
+          "sha256": "7c87bdeb009d21cc163914ecd822d8d94e0172b678628141df44eccd645fe2f8",
+          "buildId": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d"
+        },
+        {
+          "path": "lib/arm64-v8a/libextras.so",
+          "sha256": "fea0b63d9edf5939f96b0633411f9b6393adb0e429f1a0cc167d3d0010d7ee6c",
+          "buildId": "4fc1ac1eba1ec240ee5e392ebaa7752097219dbe"
+        },
+        {
+          "path": "lib/arm64-v8a/libgamenative_dns_v4mapped.so",
+          "sha256": "9fcdb44a4796788414a4f50a80f39efe7cec4f5e89bc454bb5a90039703e86a3",
+          "buildId": "4815e9b00e9a8f4653888b98b0974c225758d43c"
+        },
+        {
+          "path": "lib/arm64-v8a/libgndownload.so",
+          "sha256": "c1e39521b71b5227ab543eaafecca4df94e7c3cf0f55f0fcb5ad260d838d1924",
+          "buildId": "d2351fd2a3bfd2f5ec3f4074e921d6d6f4f46a9e"
+        },
+        {
+          "path": "lib/arm64-v8a/libhook_impl.so",
+          "sha256": "ba09e3a9cdc707f9d061c2378a75b2aec307792abfdc90e8444b56fcd36ef4cd",
+          "buildId": "4ff80aa40482fa55068c6e792df0ea7af30b688a"
+        },
+        {
+          "path": "lib/arm64-v8a/libltdl.so",
+          "sha256": "cf2dff7a6189b7ffeba40a2ba255439c0dda42c6d88eccfbeec126ef2aff7d76",
+          "buildId": "5a068ed046a13338452db8a4fe06206216a5128c"
+        },
+        {
+          "path": "lib/arm64-v8a/libmain_hook.so",
+          "sha256": "2184332b840718ae555f5abcfd68ba77f06cec58c5728ee86e4e5aba3c6261ca",
+          "buildId": "721a7592fd26313b2158dbdc3c225840ee07a3a8"
+        },
+        {
+          "path": "lib/arm64-v8a/libopenxr_loader.so",
+          "sha256": "763141820ead68e92543db0fefadca3dc5687e893072add86ab2fada7f95b3ff",
+          "buildId": "8694d5759369f045621543aa4f73753220badd0d"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulse.so",
+          "sha256": "2025029d0f4712b0b9f57a4edb1cf4d626ea4b73e7e1d1351636c1c01d97aeb7",
+          "buildId": "d9861eaefd76e7b510c0cbe3cf28fdd243e7f0ad"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulseaudio.so",
+          "sha256": "4fdd321ee8663c57ed7c6ae0ccedd1d1186314918a135e25e0708cb989336e1d",
+          "buildId": "ad97886e4ccdf2f02bec63d21c9733da0bfefe45"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulsecommon-13.0.so",
+          "sha256": "224fdea81e26d16f23bcfe4586c1610388a5c96c6bc7b109a7554b136a42d6b5",
+          "buildId": "d370d2dbb757865a1462cc05bb1cdb3426a3ce29"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulsecore-13.0.so",
+          "sha256": "8f329cb1f0558cdc5608da7ac41029f07d102c35c7416a73dd2316ad124d9d73",
+          "buildId": "f11dd288254c8011a77b6f5c68b803917332f3d9"
+        },
+        {
+          "path": "lib/arm64-v8a/libsndfile.so",
+          "sha256": "df7262e8305c987aac6e606fee368872942af9e50e8d8f2fea4799e07043cb5e",
+          "buildId": "9b045131dbb1cbb002815c56611d9095315eea99"
+        },
+        {
+          "path": "lib/arm64-v8a/libvulkan_renderer.so",
+          "sha256": "e9cc2f29a7d61d99523234ca40f3d96f748efaa5e3007884df327546f0c192db",
+          "buildId": "fc4ab4cda26e6d6a4219dba905747011e260532e"
+        },
+        {
+          "path": "lib/arm64-v8a/libwinlator.so",
+          "sha256": "33eee25140f22c0f7b29460a346ae36fdbcb5efdec2ab40e8a60ea30e6a28978",
+          "buildId": "e120a35c35b69960ed4fe4c8993045bddffe4c1b"
+        },
+        {
+          "path": "lib/arm64-v8a/libwinlator_11.so",
+          "sha256": "4697722adab95381f476f535ff4c3bbedc663081da5ad7e9797b7714215d8d53",
+          "buildId": "0831cf9e01bd408ab7cefa64a7bc91df7c1325e8"
+        },
+        {
+          "path": "lib/arm64-v8a/libxconnectorpatch.so",
+          "sha256": "1b06499e0cd883bd7bd174823c5f8e2f38d9ab8ecea4817f06405b8f45cc08b5",
+          "buildId": "abd01470fed8b2351f64a79a601f6f51092b4190"
+        },
+        {
+          "path": "lib/arm64-v8a/libxrgame_debugbus.so",
+          "sha256": "5b93e0f6ccbbb4150945c923c1c62bf859b873fef77a910d9a085c566da61600",
+          "buildId": "30a9c69fe7e2e2c13006718a8591f3d8619cdc23"
+        },
+        {
+          "path": "lib/arm64-v8a/libxrgame_exec_probe.so",
+          "sha256": "adf40da5255166aa62eb0c644890a356908ce4b18444f8ce58c36f3dc0a262ac",
+          "buildId": "b8e19d33f2fd978f0891e5b4a42ae19939e5c1d5"
+        },
+        {
+          "path": "lib/arm64-v8a/libxrimmersive.so",
+          "sha256": "3e90bd637b03696b30930f41f4be9f02358bbd2d68a4ae7af570e4566ccb54c3",
+          "buildId": "b22095d0b7a4ee1002cda6cb2a88c63ae52a448f"
+        },
+        {
+          "path": "lib/arm64-v8a/libzstd-jni-1.5.7-5.so",
+          "sha256": "9f4a912cb337867de6f729a544aaa91aaa8cf50e9dd06ae862e0a3dd16c5fdf0",
+          "buildId": null
+        }
+      ]
+    },
+    {
+      "name": "build2",
+      "apkSha256": "8f9b7d02e220626efc6536a63ab78a586995b03d14190b5bc3423a69495fa4f2",
+      "componentCatalogSha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+      "componentRegistrySha256": "e1b6eb87f701e7be580c2b72320c797b7258be70df7fbac02658cfb562d6c085",
+      "auditPassed": true,
+      "auditFiles": 124,
+      "auditErrors": [],
+      "nativeLibraries": [
+        {
+          "path": "assets/gamenative_xr_unixbridge.so",
+          "sha256": "170f0ec403eb56e5edb0abec0c69a56ea65ba133514445052789e356b86d0cb3",
+          "buildId": "7f8828628f088bbdc9124d99b8c301d82fa9a1cf"
+        },
+        {
+          "path": "lib/arm64-v8a/lib7zx.so",
+          "sha256": "f2f241601699b809776f2a2643faffea774a0eefa08963f7c23a848a6ea520a9",
+          "buildId": "e79db703428a1e9992214bba03dfe9047eb68119"
+        },
+        {
+          "path": "lib/arm64-v8a/libahbimage.so",
+          "sha256": "c3168c4009311e46c65effe7c5d9d5156f4ae7d1df80f80a18c8455c2b5bb09a",
+          "buildId": "b08bfa1613c4a5821fe917795bc7ad664dfa6f07"
+        },
+        {
+          "path": "lib/arm64-v8a/libandroidx.graphics.path.so",
+          "sha256": "41e9a793c43a0f4fddb19e33f346bace464f30f888ba7b9eaf96294ea115bfb6",
+          "buildId": "a7846ae06d6bf6cf63fa7c5e056b5de493c71567"
+        },
+        {
+          "path": "lib/arm64-v8a/libarchive-jni.so",
+          "sha256": "92332de41e661c2a5ce05df65c8a0a6367a99a2cb201e3b3eec7039c9cbc669e",
+          "buildId": "d235438c5533e44a6e830f535018c72e8b43b117"
+        },
+        {
+          "path": "lib/arm64-v8a/libasurface_renderer.so",
+          "sha256": "88e64a9c5627712619138992ec9f587648bf416e3443a5b38f08b90797a6cb27",
+          "buildId": "774fe0ddda6bdaf4c9cd248e59fecd7af4294858"
+        },
+        {
+          "path": "lib/arm64-v8a/libc++_shared.so",
+          "sha256": "f4e1e97c1943e60311e47e8b024d78f5b3b7229b3ccc65feb33af83d6025a670",
+          "buildId": "ea306390624df9242cca21aeec76a0427683bd72"
+        },
+        {
+          "path": "lib/arm64-v8a/libdatastore_shared_counter.so",
+          "sha256": "d3e48717c9aa147e0ab21063ba0e8e0211cabf8bf40b222640829519edbf58e1",
+          "buildId": "17db37bd6770ac00dd2d1d2828839fd23a7959a3"
+        },
+        {
+          "path": "lib/arm64-v8a/libdrawable.so",
+          "sha256": "a79ca6a3b26c3cf58c72756ee68da5219278a839292abe2c9de17aec37d298d7",
+          "buildId": "a1050793852b30c9e015ba8c69d458213b570787"
+        },
+        {
+          "path": "lib/arm64-v8a/libevshim.so",
+          "sha256": "7c87bdeb009d21cc163914ecd822d8d94e0172b678628141df44eccd645fe2f8",
+          "buildId": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d"
+        },
+        {
+          "path": "lib/arm64-v8a/libextras.so",
+          "sha256": "fea0b63d9edf5939f96b0633411f9b6393adb0e429f1a0cc167d3d0010d7ee6c",
+          "buildId": "4fc1ac1eba1ec240ee5e392ebaa7752097219dbe"
+        },
+        {
+          "path": "lib/arm64-v8a/libgamenative_dns_v4mapped.so",
+          "sha256": "9fcdb44a4796788414a4f50a80f39efe7cec4f5e89bc454bb5a90039703e86a3",
+          "buildId": "4815e9b00e9a8f4653888b98b0974c225758d43c"
+        },
+        {
+          "path": "lib/arm64-v8a/libgndownload.so",
+          "sha256": "c1e39521b71b5227ab543eaafecca4df94e7c3cf0f55f0fcb5ad260d838d1924",
+          "buildId": "d2351fd2a3bfd2f5ec3f4074e921d6d6f4f46a9e"
+        },
+        {
+          "path": "lib/arm64-v8a/libhook_impl.so",
+          "sha256": "ba09e3a9cdc707f9d061c2378a75b2aec307792abfdc90e8444b56fcd36ef4cd",
+          "buildId": "4ff80aa40482fa55068c6e792df0ea7af30b688a"
+        },
+        {
+          "path": "lib/arm64-v8a/libltdl.so",
+          "sha256": "cf2dff7a6189b7ffeba40a2ba255439c0dda42c6d88eccfbeec126ef2aff7d76",
+          "buildId": "5a068ed046a13338452db8a4fe06206216a5128c"
+        },
+        {
+          "path": "lib/arm64-v8a/libmain_hook.so",
+          "sha256": "2184332b840718ae555f5abcfd68ba77f06cec58c5728ee86e4e5aba3c6261ca",
+          "buildId": "721a7592fd26313b2158dbdc3c225840ee07a3a8"
+        },
+        {
+          "path": "lib/arm64-v8a/libopenxr_loader.so",
+          "sha256": "763141820ead68e92543db0fefadca3dc5687e893072add86ab2fada7f95b3ff",
+          "buildId": "8694d5759369f045621543aa4f73753220badd0d"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulse.so",
+          "sha256": "2025029d0f4712b0b9f57a4edb1cf4d626ea4b73e7e1d1351636c1c01d97aeb7",
+          "buildId": "d9861eaefd76e7b510c0cbe3cf28fdd243e7f0ad"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulseaudio.so",
+          "sha256": "4fdd321ee8663c57ed7c6ae0ccedd1d1186314918a135e25e0708cb989336e1d",
+          "buildId": "ad97886e4ccdf2f02bec63d21c9733da0bfefe45"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulsecommon-13.0.so",
+          "sha256": "224fdea81e26d16f23bcfe4586c1610388a5c96c6bc7b109a7554b136a42d6b5",
+          "buildId": "d370d2dbb757865a1462cc05bb1cdb3426a3ce29"
+        },
+        {
+          "path": "lib/arm64-v8a/libpulsecore-13.0.so",
+          "sha256": "8f329cb1f0558cdc5608da7ac41029f07d102c35c7416a73dd2316ad124d9d73",
+          "buildId": "f11dd288254c8011a77b6f5c68b803917332f3d9"
+        },
+        {
+          "path": "lib/arm64-v8a/libsndfile.so",
+          "sha256": "df7262e8305c987aac6e606fee368872942af9e50e8d8f2fea4799e07043cb5e",
+          "buildId": "9b045131dbb1cbb002815c56611d9095315eea99"
+        },
+        {
+          "path": "lib/arm64-v8a/libvulkan_renderer.so",
+          "sha256": "7e17879a0e0899bf8a7b8883285fae9debf623366926ac73f3fc498e1f508bc7",
+          "buildId": "1a114382cd8bf29af6b1e8b054f09e48fd349497"
+        },
+        {
+          "path": "lib/arm64-v8a/libwinlator.so",
+          "sha256": "33eee25140f22c0f7b29460a346ae36fdbcb5efdec2ab40e8a60ea30e6a28978",
+          "buildId": "e120a35c35b69960ed4fe4c8993045bddffe4c1b"
+        },
+        {
+          "path": "lib/arm64-v8a/libwinlator_11.so",
+          "sha256": "4697722adab95381f476f535ff4c3bbedc663081da5ad7e9797b7714215d8d53",
+          "buildId": "0831cf9e01bd408ab7cefa64a7bc91df7c1325e8"
+        },
+        {
+          "path": "lib/arm64-v8a/libxconnectorpatch.so",
+          "sha256": "1b06499e0cd883bd7bd174823c5f8e2f38d9ab8ecea4817f06405b8f45cc08b5",
+          "buildId": "abd01470fed8b2351f64a79a601f6f51092b4190"
+        },
+        {
+          "path": "lib/arm64-v8a/libxrgame_debugbus.so",
+          "sha256": "5b93e0f6ccbbb4150945c923c1c62bf859b873fef77a910d9a085c566da61600",
+          "buildId": "30a9c69fe7e2e2c13006718a8591f3d8619cdc23"
+        },
+        {
+          "path": "lib/arm64-v8a/libxrgame_exec_probe.so",
+          "sha256": "adf40da5255166aa62eb0c644890a356908ce4b18444f8ce58c36f3dc0a262ac",
+          "buildId": "b8e19d33f2fd978f0891e5b4a42ae19939e5c1d5"
+        },
+        {
+          "path": "lib/arm64-v8a/libxrimmersive.so",
+          "sha256": "3e90bd637b03696b30930f41f4be9f02358bbd2d68a4ae7af570e4566ccb54c3",
+          "buildId": "b22095d0b7a4ee1002cda6cb2a88c63ae52a448f"
+        },
+        {
+          "path": "lib/arm64-v8a/libzstd-jni-1.5.7-5.so",
+          "sha256": "9f4a912cb337867de6f729a544aaa91aaa8cf50e9dd06ae862e0a3dd16c5fdf0",
+          "buildId": null
+        }
+      ]
+    }
+  ],
+  "unitTests": [
+    {
+      "name": "com.winlator.xserver.extensions.PresentCopySettingsTest",
+      "tests": "1",
+      "skipped": "0",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "app.gamenative.ui.screen.xr.sbs.SbsTrackingTest",
+      "tests": "4",
+      "skipped": "0",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "app.gamenative.ui.screen.xr.SbsTheaterSettingsTest",
+      "tests": "3",
+      "skipped": "0",
+      "failures": "0",
+      "errors": "0"
+    }
+  ],
+  "nativeProjectionTest": "PASS; c++17 -Wall -Wextra -Werror",
+  "runs": [
+    {
+      "build": "build1",
+      "appPid": 9612,
+      "guestPid": 13871,
+      "guestStartTicks": 172382417,
+      "endObservationUptimeSeconds": 1724316.59,
+      "observedGuestLifetimeSeconds": 492.42,
+      "verified": [
+        "MHW ICEBORNE title and main menu in SBS",
+        "size and distance persistence",
+        "temporary flat and SBS preview",
+        "Home/background and manual resume with same guest PID",
+        "QuickMenu exit to library"
+      ],
+      "note": "Duration includes startup, dialogs, UI operations and background interval, not continuous gameplay. Surface destruction was not established."
+    },
+    {
+      "build": "build2",
+      "appPid": 17540,
+      "guestPid": 19972,
+      "guestStartTicks": 172466022,
+      "endObservationUptimeSeconds": 1724804.81,
+      "observedGuestLifetimeSeconds": 144.59,
+      "verified": [
+        "cold launch restores scale 1.3197074 and distance 3.0 m",
+        "top-right settings controls",
+        "reset to scale 1 and distance 2 m",
+        "MHW title and menu",
+        "flat to SBS preview toggle",
+        "QuickMenu exit to library; guest absent afterward"
+      ],
+      "note": "Duration is process start to final observation before exit, not launch latency or a performance benchmark."
+    }
+  ],
+  "leftOnDevice": {
+    "sbsTheaterEnabledForMhw": true,
+    "scale": 1.0,
+    "distanceMeters": 2.0,
+    "windowsVrEnabled": false,
+    "guestRunning": false,
+    "screen": "game library",
+    "temporaryInputDexRemoved": true
+  },
+  "limitations": [
+    "fixed head pose; no head tracking or Swan validation",
+    "same 2D image both eyes, with screen-plane disparity only",
+    "physical controller and audible audio unverified",
+    "no long-play or performance A/B acceptance",
+    "virgl excluded; theater requires Vulkan compositor and disables native scanout/LSFG for the session",
+    "Touch is relative trackpad; Android settings/HUD remain monoscopic"
+  ],
+  "confounders": [
+    "Initial existing container editor normalized dxwrapperConfig.async from 1 to 0 and added vkd3dFeatureLevel. Original complete dxwrapperConfig restored before build2 replay and equality checked. No claim of performance A/B.",
+    "Initial UIAutomator dumps returned null root; initial screenshot and transition/stale frames retained. Default adb keyevent and injected gamepad A did not advance MHW. Virtual-keyboard F injection worked; not physical input acceptance."
+  ],
+  "privateEvidenceDirectory": "xrgame-native-evidence/sbs-theater/20261002 (outside repository)",
+  "privateArtifacts": [
+    {
+      "file": "TEST-app.gamenative.ui.screen.xr.SbsTheaterSettingsTest.xml",
+      "sha256": "dd274569a421da5851319e2d7400c446a89440ff304deb5b517574268dc16b27"
+    },
+    {
+      "file": "TEST-app.gamenative.ui.screen.xr.sbs.SbsTrackingTest.xml",
+      "sha256": "09fed107b47ade1fc35c28be8216ca32de5d1c160f573502716bc95a99b414ae"
+    },
+    {
+      "file": "TEST-com.winlator.xserver.extensions.PresentCopySettingsTest.xml",
+      "sha256": "38e184f962d11c8ea2ab579b0d01cd52d1e1b691054ea4da83edc0dc8d8093e0"
+    },
+    {
+      "file": "adjust-transition.png",
+      "sha256": "3f7e4db696ebc1eb762534b9eef47e86cbe10cee68456a1d8ddb7e5c1e09a050"
+    },
+    {
+      "file": "adjusted.png",
+      "sha256": "96c9317c5f37d9cfb9f8e04a5759eca3274a2fd896aeca0eee65eaccc6cd64b2"
+    },
+    {
+      "file": "apk-audit1.json",
+      "sha256": "0f97bbb1040af85e9da6dc35b65c731702f26c583806609e34c2392f6b3f0d26"
+    },
+    {
+      "file": "apk-audit2.json",
+      "sha256": "a788e7ae559b70fe9ca323359f59092ba4e5f616bafabecf45a117f9bbc3a576"
+    },
+    {
+      "file": "background-uptime.txt",
+      "sha256": "519898594d9f5c4b32f9adbdbb0e17cc4110d597f157d9b2b15f381d36c41ba2"
+    },
+    {
+      "file": "before-install.png",
+      "sha256": "8874d7bf8070d0537c2c5986f9c39f4fd365551ba4e55adb517891d1adbfea68"
+    },
+    {
+      "file": "controls-transition.png",
+      "sha256": "26bf1bcdfa4a90202c1c4b30fd1264997540d3d7fe3c5f8296188777ff7866e3"
+    },
+    {
+      "file": "controls.png",
+      "sha256": "82d32aa7baa486a48c02b986d4c86403c36d94c9e52b4458fec7648d73e17fde"
+    },
+    {
+      "file": "crash-final.log",
+      "sha256": "06b409623a21caa223c3560ed35343102997ce79793084a169dcb9021a217902"
+    },
+    {
+      "file": "crash-initial.log",
+      "sha256": "0ecdfa09d6bcbef5c1e0233874e3f33fb5eee12f48a4329de89e5500ca3d854f"
+    },
+    {
+      "file": "display-choice-transition.png",
+      "sha256": "299a02e76a20c75532563bb244f62a01657590a9988c09c8d1ed94b6ca843cbe"
+    },
+    {
+      "file": "display-choice.png",
+      "sha256": "d85560c106e45c475563b178f180555b2cf61714384d50017d09d688e247fbb8"
+    },
+    {
+      "file": "exit-complete-transition.png",
+      "sha256": "ac868228631214ee0a31f62d83a0246b0d13971f9a23641c9057eb67fab31850"
+    },
+    {
+      "file": "exit-complete.png",
+      "sha256": "dcfd6448e8e508b793b36d68db6a3533b2f852dc8620dca84eb14e739f8ebafa"
+    },
+    {
+      "file": "exit-transition.png",
+      "sha256": "03d859c60efaf92d8b00a263c7b96f3e61d404bd96351145b708723c6ac0bf42"
+    },
+    {
+      "file": "exit.png",
+      "sha256": "4f56aba5d1355ecf5e770ae0728085c099dfc189b099776ddc75e8c275a04b65"
+    },
+    {
+      "file": "final-build.log",
+      "sha256": "cd270411aba715a45e1bcdc437839e8a6ebbd86c9540f14e68203cf07ecf6eeb"
+    },
+    {
+      "file": "flat-transition.png",
+      "sha256": "b860e57ef19c3fd614f0398ea3bd0406b29736bea623b099fc68f9e68190d6fb"
+    },
+    {
+      "file": "graphics-display-mode.png",
+      "sha256": "1bd9d6ad802f999a6a97e74a58198afeb6b2bb7fa5e8428d50576d7567f78b97"
+    },
+    {
+      "file": "graphics-display-mode2.png",
+      "sha256": "e9b85df8f30b16d8515c49b2584064a57e8d4df7e7fa8b57153909a8844d65da"
+    },
+    {
+      "file": "graphics-display-mode3.png",
+      "sha256": "2eee11d3079ba5c5f2e2ced5e72386b5c5f905114c36ed3f59e1d524d066717a"
+    },
+    {
+      "file": "graphics-scroll-transition.png",
+      "sha256": "2ca8313bf4c33899d09c15e8f4b21517cdbfb68f7137564ffb6833d5bf15be7e"
+    },
+    {
+      "file": "graphics-scroll2-transition.png",
+      "sha256": "eb8d9ad6dde49130ea085bd4e475efe948e46cb58c0014a60424800c1043cf52"
+    },
+    {
+      "file": "graphics-scroll3-transition.png",
+      "sha256": "9aaef8cf034628152842dbd2f533c603c8e4a4a135fcb8ce72e843925f038137"
+    },
+    {
+      "file": "graphics-transition.png",
+      "sha256": "33f9bca750f9a381466a992f9a511894a111423c8c62b1da540e451183be7195"
+    },
+    {
+      "file": "graphics.png",
+      "sha256": "8d0749542edf5efa2391bf55b8f7291c15e97fbe895a67f253c8577b2e381106"
+    },
+    {
+      "file": "guest-before-background.stat",
+      "sha256": "ed16f5018a9c5c34929ca707b129193e1372b9986c8b7cae8110131cc8ea831f"
+    },
+    {
+      "file": "input-a-transition.png",
+      "sha256": "47be524bc425a0d72da782fe175a9d604ddfd084670d61edd7053163ec63ac28"
+    },
+    {
+      "file": "input-a.png",
+      "sha256": "5ed6bd3552438872bb0356fe109e5878e91b9d0e6ed06592b9686c8e0de61656"
+    },
+    {
+      "file": "input-devices.txt",
+      "sha256": "d0b7ac0c4f42106da4f069519079c608a00493e72df6e9dd852ed594d4d6eb05"
+    },
+    {
+      "file": "input-f-transition.png",
+      "sha256": "692195a8ed07912cce6f972917d15ad561ce9b2cd75845763145365ca8e10a61"
+    },
+    {
+      "file": "input-f.png",
+      "sha256": "831c78395e584514f90621118f944079c41dd42a78fef4c089d550a3a353a58f"
+    },
+    {
+      "file": "launch1-final-uptime.txt",
+      "sha256": "42df63dd99b7ec7528cffd57fd4e35f7df2483c74db583ede19cfd9f84d45e61"
+    },
+    {
+      "file": "launch1-final.log",
+      "sha256": "200ae9dd9157be3a43274ffb806f50909d7d9862f6c9f6cb14b4bf44f2f4621c"
+    },
+    {
+      "file": "launch1-host-time.txt",
+      "sha256": "d01fdafcdc8c4910de6e28fef6a5722a74e1bd4c57df6c9e5ff2dde8b19b4f82"
+    },
+    {
+      "file": "launch1-transition.png",
+      "sha256": "24141cb4a1e273670c970e5ef47033b31a691c97d7673ee5a5e70ac6dc8890cb"
+    },
+    {
+      "file": "launch1.log",
+      "sha256": "1e3784088ad778784081508633d40fb1241bda8e68d243de1bdffa1be2fe19a4"
+    },
+    {
+      "file": "launch1.png",
+      "sha256": "ae71bc6fa9f0ccdab6a3371d70571cf2cc3910731f472fb6190f1ad2edcec25c"
+    },
+    {
+      "file": "launch2-final-uptime.txt",
+      "sha256": "94f40538a514aa04fa14dc6b3f054f11d75417f87b81d08d388b47c178903d26"
+    },
+    {
+      "file": "launch2-final.log",
+      "sha256": "28a762c20d1f64d3d3a26692ea675db84dc5c26a95ebd5009da682ef17fb5e7a"
+    },
+    {
+      "file": "launch2-guest.stat",
+      "sha256": "e327771608d3146480e804e3ba8235c7c95bf1c8e660c262f708de4550c0de4b"
+    },
+    {
+      "file": "launch2-host-time.txt",
+      "sha256": "239c2d2d3e59d85b250a7e1afcf499014721391dd1f42b464552fe1ab4acec46"
+    },
+    {
+      "file": "launch2-start-uptime.txt",
+      "sha256": "80ed9a366d17c1ba39ee26fc209913300bff2a30f7eb8cc1ae0abb2cbea921e8"
+    },
+    {
+      "file": "launch2-transition.png",
+      "sha256": "43e1c108afa02eaf5fb7580d4e652099f2dd3abd89374563bc38fb426d6ae82a"
+    },
+    {
+      "file": "launch2.log",
+      "sha256": "bcaf294ab8533a742b0a0d825d5373c9dfd04912a7b6b82f60e9a52b60ed520e"
+    },
+    {
+      "file": "launch2.png",
+      "sha256": "8391cb2565555b6e23928c7328244fd280cae27b4e1691b9a74035edcb6b41a6"
+    },
+    {
+      "file": "library.png",
+      "sha256": "3b2cb565d4f22925226cdbe06504714ed314a16e3c6f201c1d17e0454367a8b7"
+    },
+    {
+      "file": "library2.png",
+      "sha256": "8cf328684684b3205a948384c7e085e7c4947df3877070a8be3bb468288a8e3e"
+    },
+    {
+      "file": "main-start.log",
+      "sha256": "f7791a47c12c2e2580e59087e05554ddb2f4612226438c56a7c5204f33e2c298"
+    },
+    {
+      "file": "mhw-config.png",
+      "sha256": "79b8d36caf6f83a0576384fe2bc300d2e1323c0dc5bcd9f823c04ffa8010f67b"
+    },
+    {
+      "file": "mhw-config2.png",
+      "sha256": "3a9501775669e3c6796bffad55289429813086c1d4f3a8bbaf825bb5bc553fdd"
+    },
+    {
+      "file": "mhw-container-adjusted.json",
+      "sha256": "f93cb8c0efde69d1405f71536c46adb3517f6d1554d5b9424d13a04c62d15b04"
+    },
+    {
+      "file": "mhw-container-before.json",
+      "sha256": "3e1a67b97d98ab81160a973b572dc3c4cb2a60a5933575fe91bab8a73073c273"
+    },
+    {
+      "file": "mhw-container-final.json",
+      "sha256": "1e26cbd9e351e688f9130dd95c19864c40d510e24954b323fe9ceccdf20c125f"
+    },
+    {
+      "file": "mhw-container-post-exit.json",
+      "sha256": "95f12cd57de8c9052587a1e25bfb666ca1f0c7e0e5566881163083957739853a"
+    },
+    {
+      "file": "mhw-container-replay.json",
+      "sha256": "70b40151d021d01c109d0cd4c3cf5626c87299eeb0e0d1fbb739a1437ebd7581"
+    },
+    {
+      "file": "mhw-container-sbs.json",
+      "sha256": "1b65aa7d0511783c65751447b2cfb090a47ed399b137f3c9ffa30b65b2db16e5"
+    },
+    {
+      "file": "mhw-detail.png",
+      "sha256": "a7186f7ec60fdeb3d16ceb34c87330517556186e7842b31afb4925f19c890f23"
+    },
+    {
+      "file": "mhw-detail2.png",
+      "sha256": "c4f5a6958d662e6358e4e27b0da476a18471418b8b1d6f6aa277a560b86af5f7"
+    },
+    {
+      "file": "mhw-flat.png",
+      "sha256": "67ab34154e670d6da9755ba57fe9f7e31c4e9c0d71622f98c30b319941af74ea"
+    },
+    {
+      "file": "mhw-loading.png",
+      "sha256": "14fd82eb3bb85c2f46eec386004c2c30d82ffa0dea9201b66d65dc6b04192cb0"
+    },
+    {
+      "file": "mhw-options.png",
+      "sha256": "ef63aa4ce40e79dbd1860460aa4f6357e2e26c695cda1fdc47fd1fa0a6800d33"
+    },
+    {
+      "file": "mhw-options2.png",
+      "sha256": "f742638694ae14c46d1cb3074d9fe745adc07073ef4d815096787cb6c4b1071c"
+    },
+    {
+      "file": "mhw-title-transition.png",
+      "sha256": "e7f30d78cb8aea0683d728067843ca06205416b6904aeca33d0ea894547aa3e8"
+    },
+    {
+      "file": "mhw-title1.png",
+      "sha256": "6d691d4203419f5e19a599262a790bd066259a0672dd86d021bc88911ad38834"
+    },
+    {
+      "file": "physical-id-transition.png",
+      "sha256": "a9a1403bc86d3e6617c087b1f051e3a5b02ac185c1697a2ec7b1f288bcbc6cbe"
+    },
+    {
+      "file": "physical-id.png",
+      "sha256": "2dc62ecde0295d4e248418b04aaa44b82920ade200b6f8a2a8370e0e163dc720"
+    },
+    {
+      "file": "processes-after-exit.txt",
+      "sha256": "047ddd5541e9ffcff5751ed296c82862d85d06c3656610df60beabf9d11e3db8"
+    },
+    {
+      "file": "quickmenu-transition.png",
+      "sha256": "445cfbc194e776f5494f5378690c8a4d4fd1407026b4e12cc4c8e602f5a14a1d"
+    },
+    {
+      "file": "quickmenu.png",
+      "sha256": "076c3f34c810cd891134ad6079c3aea222595d2e75195f821254ecd78bc182f9"
+    },
+    {
+      "file": "replay-controls-transition.png",
+      "sha256": "12dc3f112b3c334bedf248f183a77a89e336a47874d4b74bac341f33d2b2c340"
+    },
+    {
+      "file": "replay-controls.png",
+      "sha256": "aa78233f12ca52abfa681cfa1d648d2daca6ad547c6b8dd49ddd07e9d2cdd641"
+    },
+    {
+      "file": "replay-detail-transition.png",
+      "sha256": "9ddd20f9bedad53206f38c4fa8546248946400d825451626f4885d0ea5081688"
+    },
+    {
+      "file": "replay-detail.png",
+      "sha256": "05437309d67236082d07d1f8b0365d2f67cece9b2fcdb9a86d8e67f4b551a78e"
+    },
+    {
+      "file": "replay-exit-complete.png",
+      "sha256": "13e40df989b7edb417c278900fb593c7d14144f3323a2151c13831a9eebc9e11"
+    },
+    {
+      "file": "replay-exit-menu-transition.png",
+      "sha256": "b2ed12ca3f59c4f7b7bdfeb7906668ee09ccdfcb65baddbf9d718198c439b83c"
+    },
+    {
+      "file": "replay-exit-menu.png",
+      "sha256": "d73208b1098424adba343d4d85a7e4eaa65780d87b0a2f127623cdbbcd357d79"
+    },
+    {
+      "file": "replay-exit-transition.png",
+      "sha256": "0aaa2116826df26c0d8479012fbf24ecd222ab65417ff414ac5bebfbfe155b00"
+    },
+    {
+      "file": "replay-exit.png",
+      "sha256": "f1a8a5a7661a1095354c4e65b4e8bd8a603e215818ce8845148e45c8999f8f61"
+    },
+    {
+      "file": "replay-flat-transition.png",
+      "sha256": "2133ce1dc744882379aa8f1f8365b15a471df3cd7c6d5dc2cc31fb001a63c7a4"
+    },
+    {
+      "file": "replay-flat.png",
+      "sha256": "9c29f49909c96d7546a4444d3523f38dcd575c6dd14bb0b095d3f57af2233092"
+    },
+    {
+      "file": "replay-library-transition.png",
+      "sha256": "b0ae51b693988e3b7972eebfdfbd1a4720c2e78a77af0ad3f92770502d1dd5f1"
+    },
+    {
+      "file": "replay-library.png",
+      "sha256": "c5852fc8d7dd52adcca994b5b9564f0b3d18effbd42c3b96ecd857fcb48b03e1"
+    },
+    {
+      "file": "replay-loaded.png",
+      "sha256": "af87bf41de6e3281f79e778f6e9a7860a622b8bc95e9082e5465e07f9cd16f4f"
+    },
+    {
+      "file": "replay-menu-transition.png",
+      "sha256": "ed8e37cd58ad46233dfa9b4d697207598c125f71d963c98a59d812271d30c003"
+    },
+    {
+      "file": "replay-menu.png",
+      "sha256": "5c89254e9f4f092f73176824555ec3f4965a4eec3a38f38cfb8d1ba5b7dfef51"
+    },
+    {
+      "file": "replay-reset-transition.png",
+      "sha256": "e6c44f8c99206592f7847dd8a23b00bc96d0307aad6d247d59959aecc6b4c57a"
+    },
+    {
+      "file": "replay-reset.png",
+      "sha256": "320203a150fb4917c9f9c8fb1abe31a31b75404f91341ec77ad535ee245a6bdd"
+    },
+    {
+      "file": "replay-title.png",
+      "sha256": "5ab63eab154d04915dd33f497880c47d5492ce58e1f6c9ea2339e405bdbb34e1"
+    },
+    {
+      "file": "replay-title2.png",
+      "sha256": "d712423f236f5d3a9308cd9dfdf056c883c67a0aff0384afcfa3f361973b711d"
+    },
+    {
+      "file": "resume-transition.png",
+      "sha256": "ff9678a5af3c0d98c23a2bc47cc9e2dce83a3f293232f6408b9b6454590a5f61"
+    },
+    {
+      "file": "resume.png",
+      "sha256": "bd0c73225937334dc2fb64eb116d109edf45232b79c28a1639245dda1f69a65f"
+    },
+    {
+      "file": "resumed-menu-transition.png",
+      "sha256": "c536118dba5ef30f17d9a44952181f294c8930551d9bb056017be2eb2490d3b4"
+    },
+    {
+      "file": "resumed-menu.png",
+      "sha256": "84915050f24d049c4d20337489cc718e284a49b17d9e50071d026806a4462507"
+    },
+    {
+      "file": "save-transition.png",
+      "sha256": "85a463edbc32f236a09459e210560037344df9548c474ff88f8c6bedc992f34b"
+    },
+    {
+      "file": "saved.png",
+      "sha256": "697b6105c45b83d279173a39a3ef4bee5fe9cf226bb27f8b29f7f698621df8c9"
+    },
+    {
+      "file": "title-controls-transition.png",
+      "sha256": "c480fb7b567ea6de1a9b15d4402d2345a6aae1603bb34b139630e52869e54224"
+    },
+    {
+      "file": "title-controls.png",
+      "sha256": "03ae7a3435858b82187d828ad3b765f99c90aa13d45d913c498c3e7bb97a6b09"
+    },
+    {
+      "file": "title-input-transition.png",
+      "sha256": "f67a4c83617168487a44e8d772bc18aacb172df8c02e84a76d186f51e9a7a16b"
+    },
+    {
+      "file": "title-input.png",
+      "sha256": "ae7488a79a0306fc166971d04258c97683af5a5dd7217dad87894962e0a2f895"
+    },
+    {
+      "file": "virtual-enter-transition.png",
+      "sha256": "c50deaa4b496534346ef33dc5dcca4c77de44ea4055374de81a4c3f26a490db1"
+    },
+    {
+      "file": "virtual-enter.png",
+      "sha256": "f8fbf5b37ad311c339d26b211c7d2e9ca2b4780ee640a994adcd84804afb70ed"
+    },
+    {
+      "file": "virtual-f-transition.png",
+      "sha256": "ef5db3c926d19bc6fd6c901edf6e212a1715ac11444de3408e3b4709cbdb264d"
+    },
+    {
+      "file": "virtual-f.png",
+      "sha256": "dcd63424619983b6398091f6a24c96081c7eaa8453c2c38f6c507fe4eec33760"
+    },
+    {
+      "file": "xrgame-sbs-theater-build.log",
+      "sha256": "71601e8ea12ea7549aa3eedaaa4e8bc9a4a6ef170b3bccfdeeba43965a5be2e8"
+    },
+    {
+      "file": "xrgame-sbs-theater-tests.log",
+      "sha256": "050a65e37ccfe5540353650f520ade6dbf1062b9712760b105bdc37060695e96"
+    }
+  ]
+}

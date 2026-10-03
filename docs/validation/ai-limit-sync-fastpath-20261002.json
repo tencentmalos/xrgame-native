@@ -1,0 +1,1205 @@
+{
+  "schema": 1,
+  "date": "2026-10-02",
+  "status": "investigation; no performance fix claimed",
+  "previousEvidence": "ai-limit-profiling-20261002.json",
+  "apk_sha256": "9d8ef4e89a14d7b97e263a2859828b8e8ca71525489817086a19adab925e4222",
+  "catalog_sha256": "dbf85e43cfb5e1f604507a5cb466cd4ffb71e57560a4830b33f02a6fadb8935f",
+  "apk_library_build_ids": {
+    "lib7zx.so": "e79db703428a1e9992214bba03dfe9047eb68119",
+    "libahbimage.so": "b08bfa1613c4a5821fe917795bc7ad664dfa6f07",
+    "libandroidx.graphics.path.so": "a7846ae06d6bf6cf63fa7c5e056b5de493c71567",
+    "libarchive-jni.so": "d235438c5533e44a6e830f535018c72e8b43b117",
+    "libasurface_renderer.so": "774fe0ddda6bdaf4c9cd248e59fecd7af4294858",
+    "libc++_shared.so": "ea306390624df9242cca21aeec76a0427683bd72",
+    "libdatastore_shared_counter.so": "17db37bd6770ac00dd2d1d2828839fd23a7959a3",
+    "libdrawable.so": "a1050793852b30c9e015ba8c69d458213b570787",
+    "libevshim.so": "5d357cd7a9756016f8b6eb3d1bfc9cc23edb262d",
+    "libextras.so": "4fc1ac1eba1ec240ee5e392ebaa7752097219dbe",
+    "libgamenative_dns_v4mapped.so": "4815e9b00e9a8f4653888b98b0974c225758d43c",
+    "libgndownload.so": "d2351fd2a3bfd2f5ec3f4074e921d6d6f4f46a9e",
+    "libhook_impl.so": "4ff80aa40482fa55068c6e792df0ea7af30b688a",
+    "libltdl.so": "5a068ed046a13338452db8a4fe06206216a5128c",
+    "libmain_hook.so": "721a7592fd26313b2158dbdc3c225840ee07a3a8",
+    "libopenxr_loader.so": "8694d5759369f045621543aa4f73753220badd0d",
+    "libpulse.so": "d9861eaefd76e7b510c0cbe3cf28fdd243e7f0ad",
+    "libpulseaudio.so": "ad97886e4ccdf2f02bec63d21c9733da0bfefe45",
+    "libpulsecommon-13.0.so": "d370d2dbb757865a1462cc05bb1cdb3426a3ce29",
+    "libpulsecore-13.0.so": "f11dd288254c8011a77b6f5c68b803917332f3d9",
+    "libsndfile.so": "9b045131dbb1cbb002815c56611d9095315eea99",
+    "libvulkan_renderer.so": "2151525d5ac80b73f293814fba05741c15c618b9",
+    "libwinlator.so": "e120a35c35b69960ed4fe4c8993045bddffe4c1b",
+    "libwinlator_11.so": "0831cf9e01bd408ab7cefa64a7bc91df7c1325e8",
+    "libxconnectorpatch.so": "abd01470fed8b2351f64a79a601f6f51092b4190",
+    "libxrgame_debugbus.so": "8870cb9946e98ee7bace9c44359943c57660e37c",
+    "libxrgame_exec_probe.so": "b8e19d33f2fd978f0891e5b4a42ae19939e5c1d5",
+    "libxrimmersive.so": "67ce8e84096bc52e98dc583441bd10c8780981b2",
+    "libzstd-jni-1.5.7-5.so": null
+  },
+  "device": {
+    "model": "AYN Thor",
+    "fingerprint": "qti/kalama/kalama:13/TKQ1.231222.001/eng.Thor.20260206.163241:user/release-keys",
+    "android": "13",
+    "sdk": "33",
+    "kernel": "Linux localhost 5.15.123-android13-8-gafd857749d1f #1 SMP PREEMPT Thu Feb 5 07:59:03 UTC 2026 aarch64 Toybox",
+    "gpu_model": "Adreno740v2",
+    "boot_id": "8bb14501-5800-4b9b-a9ab-7173603812f7"
+  },
+  "pids": {
+    "host": 11333,
+    "game": 19457,
+    "wineserver": 19344
+  },
+  "start_ticks": {
+    "11333": "173179329",
+    "19457": "173273981",
+    "19344": "173273851"
+  },
+  "ntdll_sha256": "0fb8a4da8ea7c5e2471a944473d231f53a9f2b00fb7a9aee3880c281e77cc85d",
+  "ntdll_build_id": null,
+  "sourcePins": {
+    "ntsync": "7ce6435e5979b1cb5341aa4b299f31e8937fe121",
+    "dxvkBase": "a6764047e587178283fcde4073ae6e1410af594f",
+    "dxvkPatchSha256": "54c52f1a46c693dfd5740d006beb8843dc8d7baa1f1aaf27b6ec3bc8609ba653",
+    "shadps4ReadOnlyReference": "1c56a3f1f3fd5e32133641232bfa230fa0df124d"
+  },
+  "longWaitsSameB2Window": {
+    "sdkSha256": "9e2c4a192667d9da0a532a73420f25f76495313804eaa2f274d3799d65a97c0f",
+    "window": {
+      "start_ns": 1633905064371582,
+      "end_ns": 1633922770738425,
+      "offset_ns": 17582
+    },
+    "threads": {
+      "19457": {
+        "name": "AI-LIMIT.exe",
+        "wakers": [
+          [
+            "19573",
+            {
+              "count": 154,
+              "ms": 8425.890842999997,
+              "longCount": 136,
+              "longMs": 8423.618842999998,
+              "longMaxMs": 76.646,
+              "name": "dxvk-frame"
+            }
+          ],
+          [
+            "19344",
+            {
+              "count": 39337,
+              "ms": 664.2539999998737,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "wineserver"
+            }
+          ],
+          [
+            "19496",
+            {
+              "count": 2493,
+              "ms": 39.406000000000276,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 1"
+            }
+          ],
+          [
+            "19497",
+            {
+              "count": 955,
+              "ms": 29.100999999999942,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 2"
+            }
+          ],
+          [
+            "19501",
+            {
+              "count": 43,
+              "ms": 19.516000000000005,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 6"
+            }
+          ],
+          [
+            "19498",
+            {
+              "count": 117,
+              "ms": 18.281999999999993,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 3"
+            }
+          ],
+          [
+            "19494",
+            {
+              "count": 28,
+              "ms": 15.186,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 0"
+            }
+          ],
+          [
+            "19499",
+            {
+              "count": 130,
+              "ms": 13.819000000000004,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 4"
+            }
+          ],
+          [
+            "19500",
+            {
+              "count": 33,
+              "ms": 9.663000000000002,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 5"
+            }
+          ],
+          [
+            "19608",
+            {
+              "count": 3,
+              "ms": 3.177,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19590",
+            {
+              "count": 48,
+              "ms": 2.734,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "audio_client_ma"
+            }
+          ],
+          [
+            "19553",
+            {
+              "count": 33,
+              "ms": 0.7670000000000003,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "wine_xinput_hid"
+            }
+          ],
+          [
+            "19579",
+            {
+              "count": 1,
+              "ms": 0.264,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19549",
+            {
+              "count": 2,
+              "ms": 0.16,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19594",
+            {
+              "count": 2,
+              "ms": 0.128,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19585",
+            {
+              "count": 2,
+              "ms": 0.062,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19530",
+            {
+              "count": 1,
+              "ms": 0.016,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "UnityGfxDeviceW"
+            }
+          ]
+        ]
+      },
+      "19530": {
+        "name": "UnityGfxDeviceW",
+        "wakers": [
+          [
+            "19457",
+            {
+              "count": 7689,
+              "ms": 15596.28984300011,
+              "longCount": 536,
+              "longMs": 12201.049843000004,
+              "longMaxMs": 77.453,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19497",
+            {
+              "count": 781,
+              "ms": 21.681999999999995,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 2"
+            }
+          ],
+          [
+            "19496",
+            {
+              "count": 753,
+              "ms": 20.855999999999987,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 1"
+            }
+          ],
+          [
+            "19501",
+            {
+              "count": 479,
+              "ms": 12.603999999999996,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 6"
+            }
+          ],
+          [
+            "19498",
+            {
+              "count": 429,
+              "ms": 11.383999999999999,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 3"
+            }
+          ],
+          [
+            "19500",
+            {
+              "count": 356,
+              "ms": 10.548999999999987,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 5"
+            }
+          ],
+          [
+            "19499",
+            {
+              "count": 381,
+              "ms": 9.997999999999982,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 4"
+            }
+          ],
+          [
+            "19494",
+            {
+              "count": 258,
+              "ms": 7.125999999999994,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "Job.Worker 0"
+            }
+          ],
+          [
+            "19590",
+            {
+              "count": 46,
+              "ms": 1.9849999999999999,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "audio_client_ma"
+            }
+          ],
+          [
+            "19344",
+            {
+              "count": 35,
+              "ms": 0.9890000000000003,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "wineserver"
+            }
+          ],
+          [
+            "19528",
+            {
+              "count": 99,
+              "ms": 0.6650000000000004,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "dxvk-cs"
+            }
+          ],
+          [
+            "19594",
+            {
+              "count": 2,
+              "ms": 0.369,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19608",
+            {
+              "count": 3,
+              "ms": 0.198,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19549",
+            {
+              "count": 4,
+              "ms": 0.179,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "AI-LIMIT.exe"
+            }
+          ],
+          [
+            "19526",
+            {
+              "count": 1,
+              "ms": 0.061,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "dxvk-submit"
+            }
+          ]
+        ]
+      },
+      "19527": {
+        "name": "dxvk-queue",
+        "wakers": [
+          [
+            "867",
+            {
+              "count": 796,
+              "ms": 11939.797999999997,
+              "longCount": 407,
+              "longMs": 11776.283999999992,
+              "longMaxMs": 50.848,
+              "name": "kgsl-events"
+            }
+          ],
+          [
+            "19526",
+            {
+              "count": 165,
+              "ms": 5079.814000000002,
+              "longCount": 136,
+              "longMs": 5077.857000000003,
+              "longMaxMs": 46.187,
+              "name": "dxvk-submit"
+            }
+          ],
+          [
+            "875",
+            {
+              "count": 11,
+              "ms": 2.365,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kgsl_hwsched"
+            }
+          ],
+          [
+            "4589",
+            {
+              "count": 5,
+              "ms": 2.1,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:3"
+            }
+          ],
+          [
+            "13660",
+            {
+              "count": 4,
+              "ms": 0.9219999999999999,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:0"
+            }
+          ],
+          [
+            "21016",
+            {
+              "count": 2,
+              "ms": 0.665,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:1"
+            }
+          ],
+          [
+            "19528",
+            {
+              "count": 1,
+              "ms": 0.005,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "dxvk-cs"
+            }
+          ]
+        ]
+      },
+      "19528": {
+        "name": "dxvk-cs",
+        "wakers": [
+          [
+            "19530",
+            {
+              "count": 3716,
+              "ms": 16695.236843000013,
+              "longCount": 543,
+              "longMs": 15143.335843000008,
+              "longMaxMs": 96.017,
+              "name": "UnityGfxDeviceW"
+            }
+          ],
+          [
+            "19526",
+            {
+              "count": 24,
+              "ms": 1.0030000000000003,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "dxvk-submit"
+            }
+          ],
+          [
+            "19527",
+            {
+              "count": 1,
+              "ms": 0.032,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "dxvk-queue"
+            }
+          ]
+        ]
+      },
+      "19571": {
+        "name": "WSI swapchain q",
+        "wakers": [
+          [
+            "867",
+            {
+              "count": 725,
+              "ms": 12045.290843000012,
+              "longCount": 407,
+              "longMs": 11964.141000000005,
+              "longMaxMs": 51.925,
+              "name": "kgsl-events"
+            }
+          ],
+          [
+            "19526",
+            {
+              "count": 158,
+              "ms": 5427.702000000001,
+              "longCount": 136,
+              "longMs": 5426.728999999999,
+              "longMaxMs": 50.531,
+              "name": "dxvk-submit"
+            }
+          ],
+          [
+            "19572",
+            {
+              "count": 1,
+              "ms": 0.075,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "WSI swapchain e"
+            }
+          ]
+        ]
+      },
+      "19573": {
+        "name": "dxvk-frame",
+        "wakers": [
+          [
+            "19572",
+            {
+              "count": 290,
+              "ms": 6519.705843000003,
+              "longCount": 136,
+              "longMs": 6268.899000000004,
+              "longMaxMs": 53.802,
+              "name": "WSI swapchain e"
+            }
+          ],
+          [
+            "867",
+            {
+              "count": 458,
+              "ms": 5975.942,
+              "longCount": 272,
+              "longMs": 5936.599999999999,
+              "longMaxMs": 39.899,
+              "name": "kgsl-events"
+            }
+          ],
+          [
+            "19526",
+            {
+              "count": 148,
+              "ms": 5016.933999999998,
+              "longCount": 136,
+              "longMs": 5016.375999999998,
+              "longMaxMs": 44.292,
+              "name": "dxvk-submit"
+            }
+          ],
+          [
+            "4589",
+            {
+              "count": 1,
+              "ms": 0.281,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:3"
+            }
+          ],
+          [
+            "19590",
+            {
+              "count": 2,
+              "ms": 0.148,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "audio_client_ma"
+            }
+          ]
+        ]
+      },
+      "19572": {
+        "name": "WSI swapchain e",
+        "wakers": [
+          [
+            "19571",
+            {
+              "count": 148,
+              "ms": 11137.305000000004,
+              "longCount": 137,
+              "longMs": 11132.520000000004,
+              "longMaxMs": 91.942,
+              "name": "WSI swapchain q"
+            }
+          ],
+          [
+            "19301",
+            {
+              "count": 270,
+              "ms": 6448.617842999999,
+              "longCount": 135,
+              "longMs": 6176.029000000002,
+              "longMaxMs": 53.585,
+              "name": "Thread-14099"
+            }
+          ]
+        ]
+      },
+      "19526": {
+        "name": "dxvk-submit",
+        "wakers": [
+          [
+            "19528",
+            {
+              "count": 316,
+              "ms": 17326.547842999997,
+              "longCount": 273,
+              "longMs": 17313.854842999994,
+              "longMaxMs": 113.313,
+              "name": "dxvk-cs"
+            }
+          ],
+          [
+            "4589",
+            {
+              "count": 33,
+              "ms": 5.622999999999999,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:3"
+            }
+          ],
+          [
+            "19344",
+            {
+              "count": 95,
+              "ms": 2.990999999999997,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "wineserver"
+            }
+          ],
+          [
+            "21016",
+            {
+              "count": 11,
+              "ms": 2.4079999999999995,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:1"
+            }
+          ],
+          [
+            "19527",
+            {
+              "count": 12,
+              "ms": 1.227,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "dxvk-queue"
+            }
+          ],
+          [
+            "13660",
+            {
+              "count": 4,
+              "ms": 1.1179999999999999,
+              "longCount": 0,
+              "longMs": 0,
+              "longMaxMs": 0,
+              "name": "kworker/u16:0"
+            }
+          ]
+        ]
+      }
+    }
+  },
+  "separate15sWaiterOccupancy": {
+    "19457": {
+      "samples": 1500,
+      "stableNtsync": 708,
+      "racyNtsync": 5,
+      "kinds": [
+        {
+          "syscall": -1,
+          "futexOp": null,
+          "count": 735
+        },
+        {
+          "syscall": 98,
+          "futexOp": 0,
+          "count": 713
+        },
+        {
+          "syscall": 63,
+          "futexOp": null,
+          "count": 47
+        },
+        {
+          "syscall": 98,
+          "futexOp": 128,
+          "count": 4
+        },
+        {
+          "syscall": 98,
+          "futexOp": 9,
+          "count": 1
+        }
+      ],
+      "objectSets": [
+        {
+          "objects": [
+            {
+              "slot": 2347,
+              "generation": 0,
+              "type": 3,
+              "word": 4294967296
+            },
+            {
+              "slot": 3662,
+              "generation": 0,
+              "type": 1,
+              "word": 68719476736
+            },
+            {
+              "slot": 3663,
+              "generation": 0,
+              "type": 3,
+              "word": 4294967296
+            }
+          ],
+          "samples": 708
+        }
+      ]
+    },
+    "19496": {
+      "samples": 1500,
+      "stableNtsync": 0,
+      "racyNtsync": 0,
+      "kinds": [
+        {
+          "syscall": 98,
+          "futexOp": 128,
+          "count": 1245
+        },
+        {
+          "syscall": -1,
+          "futexOp": null,
+          "count": 255
+        }
+      ],
+      "objectSets": []
+    },
+    "19497": {
+      "samples": 1500,
+      "stableNtsync": 0,
+      "racyNtsync": 0,
+      "kinds": [
+        {
+          "syscall": 98,
+          "futexOp": 128,
+          "count": 1306
+        },
+        {
+          "syscall": -1,
+          "futexOp": null,
+          "count": 194
+        }
+      ],
+      "objectSets": []
+    },
+    "19530": {
+      "samples": 1500,
+      "stableNtsync": 1267,
+      "racyNtsync": 47,
+      "kinds": [
+        {
+          "syscall": 98,
+          "futexOp": 0,
+          "count": 1314
+        },
+        {
+          "syscall": -1,
+          "futexOp": null,
+          "count": 183
+        },
+        {
+          "syscall": 98,
+          "futexOp": 128,
+          "count": 3
+        }
+      ],
+      "objectSets": [
+        {
+          "objects": [
+            {
+              "slot": 3062,
+              "generation": 0,
+              "type": 1,
+              "word": 9223372032559808512
+            }
+          ],
+          "samples": 1267
+        }
+      ]
+    }
+  },
+  "separate20sCounters": {
+    "elapsedSeconds": 20.000867701,
+    "delta": [
+      25407,
+      1807,
+      21833,
+      21833,
+      66189,
+      0,
+      0,
+      25945,
+      20651,
+      23364,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "ratesPerSecond": [
+      1270.294888192761,
+      90.34608033078754,
+      1091.6026407648503,
+      1091.6026407648503,
+      3309.306425575261,
+      0.0,
+      0.0,
+      1297.1937211855466,
+      1032.5052047100683,
+      1168.1493197833538,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "initialFastPercent": 7.112213169598929
+  },
+  "observer50Hz": {
+    "samples": 2000,
+    "elapsedNs": 10000208226,
+    "observerCpuNs": 436166383,
+    "oneCorePercent": 4.361573010709828,
+    "scope": "entire observer CPU including proc reads and output; excludes adb/host work; no measured game FPS overhead"
+  },
+  "sameGenerationHandleCache": [
+    {
+      "handle": "0x42c",
+      "refcount": 1,
+      "fd": 3062,
+      "access": "0x1f0002",
+      "type": 4,
+      "closed": 0
+    },
+    {
+      "handle": "0x82c",
+      "refcount": 1,
+      "fd": 3662,
+      "access": "0x1f0003",
+      "type": 4,
+      "closed": 0
+    },
+    {
+      "handle": "0x830",
+      "refcount": 1,
+      "fd": 3662,
+      "access": "0x1f0003",
+      "type": 4,
+      "closed": 0
+    },
+    {
+      "handle": "0x85c",
+      "refcount": 1,
+      "fd": 3663,
+      "access": "0x1f0003",
+      "type": 2,
+      "closed": 0
+    }
+  ],
+  "dxvkFramePerfA2": {
+    "on": 10101010,
+    "off": 7987835035,
+    "on_samples": 1,
+    "off_samples": 482,
+    "off_stacks": [
+      [
+        "libc.so!syscall <- libc.so!pthread_cond_timedwait <- libvulkan_freedreno.so!u_cnd_monotonic_timedwait <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        2924292236
+      ],
+      [
+        "libc.so!__ioctl <- libvulkan_freedreno.so!wait_timestamp_safe(int, unsigned int, unsigned int, unsigned long) <- libvulkan_freedreno.so!kgsl_syncobj_wait(tu_device*, kgsl_syncobj*, unsigned long) <- libvulkan_freedreno.so!vk_sync_timeline_wait <- libvulkan_freedreno.so!vk_common_WaitSemaphores <- libvulkan_freedreno.so!wsi_swapchain_wait_for_present_semaphore <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        2660391038
+      ],
+      [
+        "libc.so!syscall <- ntdll.so!__wine_syscall_dispatcher",
+        2386813589
+      ],
+      [
+        "libc.so!__ioctl <- libvulkan_freedreno.so!wait_timestamp_safe(int, unsigned int, unsigned int, unsigned long) <- libvulkan_freedreno.so!kgsl_syncobj_wait(tu_device*, kgsl_syncobj*, unsigned long) <- libvulkan_freedreno.so!vk_sync_timeline_gc_locked <- libvulkan_freedreno.so!vk_sync_timeline_wait <- libvulkan_freedreno.so!vk_common_WaitSemaphores <- libvulkan_freedreno.so!wsi_swapchain_wait_for_present_semaphore <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        4473123
+      ],
+      [
+        "[anonymous]!unknown",
+        3503594
+      ],
+      [
+        "libc.so!syscall <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core19wake_waiters_if_any.llvm.7745302680965061097 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core11sem_release <- ntdll.so!ntsync_sem_release <- ntdll.so!linux_release_semaphore_obj <- ntdll.so!NtReleaseSemaphore <- ntdll.so!__wine_syscall_dispatcher",
+        2781717
+      ],
+      [
+        "libc.so!syscall <- libc.so!NonPI::MutexLockWithTimeout(pthread_mutex_internal_t*, bool, timespec const*) <- libc.so!pthread_mutex_lock <- libc.so!pthread_cond_timedwait <- libvulkan_freedreno.so!u_cnd_monotonic_timedwait <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        1514479
+      ],
+      [
+        "libc.so!sigwaitinfo64 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core19wake_waiters_if_any.llvm.7745302680965061097 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core11sem_release <- ntdll.so!ntsync_sem_release <- ntdll.so!linux_release_semaphore_obj <- ntdll.so!NtReleaseSemaphore <- ntdll.so!__wine_syscall_dispatcher",
+        790937
+      ],
+      [
+        "ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core11wake_object.llvm.7745302680965061097 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core19wake_waiters_if_any.llvm.7745302680965061097 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core11sem_release <- ntdll.so!ntsync_sem_release <- ntdll.so!linux_release_semaphore_obj <- ntdll.so!NtReleaseSemaphore <- ntdll.so!__wine_syscall_dispatcher",
+        658594
+      ],
+      [
+        "ntdll.so!__wine_unix_call_dispatcher",
+        590156
+      ],
+      [
+        "libc.so!ioctl <- libvulkan_freedreno.so!wait_timestamp_safe(int, unsigned int, unsigned int, unsigned long) <- libvulkan_freedreno.so!kgsl_syncobj_wait(tu_device*, kgsl_syncobj*, unsigned long) <- libvulkan_freedreno.so!vk_sync_timeline_wait <- libvulkan_freedreno.so!vk_common_WaitSemaphores <- libvulkan_freedreno.so!wsi_swapchain_wait_for_present_semaphore <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        420937
+      ],
+      [
+        "libc.so!__ioctl <- libvulkan_freedreno.so!kgsl_device_check_status(tu_device*) <- libvulkan_freedreno.so!vk_common_WaitSemaphores <- libvulkan_freedreno.so!wsi_swapchain_wait_for_present_semaphore <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        405938
+      ],
+      [
+        "libvulkan_freedreno.so!vk_common_WaitSemaphores <- libvulkan_freedreno.so!wsi_swapchain_wait_for_present_semaphore <- libvulkan_freedreno.so!x11_wait_for_present <- winevulkan.so!thunk64_vkWaitForPresent2KHR <- ntdll.so!__wine_unix_call_dispatcher",
+        174531
+      ],
+      [
+        "libc.so!syscall <- libc.so!NonPI::MutexLockWithTimeout(pthread_mutex_internal_t*, bool, timespec const*) <- libc.so!pthread_mutex_lock <- ntdll.so!_RNvMs0_NtCslYxrmkASYgU_14ntsync_android4coreNtB5_6Region10lock_guard.llvm.7745302680965061097 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core19wake_waiters_if_any.llvm.7745302680965061097 <- ntdll.so!_RNvNtCslYxrmkASYgU_14ntsync_android4core11sem_release <- ntdll.so!ntsync_sem_release <- ntdll.so!linux_release_semaphore_obj <- ntdll.so!NtReleaseSemaphore <- ntdll.so!__wine_syscall_dispatcher",
+        168698
+      ],
+      [
+        "[anonymous]!unknown <- unknown!unknown",
+        148959
+      ]
+    ]
+  },
+  "samplerValidation": [
+    {
+      "name": "final-stale-generation",
+      "exitCode": 4,
+      "expected": 4,
+      "stdoutBytes": 0,
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "name": "final-wrong-region",
+      "exitCode": 5,
+      "expected": 5,
+      "stdoutBytes": 0,
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "name": "final-invalid-rate",
+      "exitCode": 2,
+      "expected": 2,
+      "stdoutBytes": 0,
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "name": "final-one-thread",
+      "exitCode": 0,
+      "expected": 0,
+      "stdoutBytes": 2527,
+      "stderr": "{\"pid\":19457,\"startTicks\":173273981,\"samples\":10,\"elapsedNs\":1000239427,\"observerCpuNs\":5069688}\n",
+      "pass": true
+    }
+  ],
+  "cleanup": {
+    "debuggerSessionCreated": false,
+    "rootUsed": false,
+    "packageChanged": false,
+    "gameSettingsChanged": false,
+    "temporaryTransferRemoved": true,
+    "noSamplerProcess": true,
+    "guestTracerPid": "TracerPid:\t0"
+  },
+  "limitations": [
+    "Object sampler is non-atomic occupancy, not call counts or wait timing.",
+    "Original B2 scheduler, A2 perf, and new object/counter windows are independent.",
+    "No measured GPU pass duration or swapchain MaximumFrameLatency value.",
+    "No proof all Present wait can or should be removed.",
+    "No measured FPS benefit or production runtime changes."
+  ],
+  "privateArtifacts": {
+    "before.png": {
+      "bytes": 1050399,
+      "sha256": "3d6055b39d91e73b5279c5b90fadcf3b5ed6aa793c296c1d0604a4aaa5ddfc93"
+    },
+    "counters.jsonl": {
+      "bytes": 7462,
+      "sha256": "5e2f931d11731ae77c3e0e37ca1dc199a61426a5a0cf6abd65d83d8c127dd169"
+    },
+    "failed-attempts.json": {
+      "bytes": 383,
+      "sha256": "bea81979e46f312db80eaf12a94d2f9f8f237c0aa217d63452c95e620562dfd0"
+    },
+    "final-invalid-rate.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-one-thread.out": {
+      "bytes": 2527,
+      "sha256": "f8d915e80c418d66c3c03ab0085a163181d593e7ed84ecb8ea9a3dfb5c2a1e8c"
+    },
+    "final-sampler-validation.json": {
+      "bytes": 667,
+      "sha256": "913f480636ca4ec1c8a71be78c07aa896d3ea4abd742857e2427fedc59dba31e"
+    },
+    "final-stale-generation.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final-wrong-region.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "final.png": {
+      "bytes": 1847131,
+      "sha256": "97ddcee0269853e84aa40e5ff9948dc6d425a0b4174afb205b7c632a3478f6d5"
+    },
+    "foreground.png": {
+      "bytes": 1050753,
+      "sha256": "d11a3fc5d5da02a345d61bf5acb8ec0fe4dd650a95b200bf19039047469673e5"
+    },
+    "guest-stat-after.txt": {
+      "bytes": 320,
+      "sha256": "eedf418ed95b0f59e0736e375877f8cf6accf32fa99c742db6a8a70d703f6afc"
+    },
+    "guest-status-after.txt": {
+      "bytes": 1095,
+      "sha256": "9f344ad1dc1f002229ba496ee667cba2ebddfe3f87fbf1d08e562ce8838af22f"
+    },
+    "inproc-cache-pages.bin": {
+      "bytes": 69711,
+      "sha256": "6faceeba1f20970b90b021900191c4c01ae196cd2aa28d9a1691d3c6ee0f5917"
+    },
+    "inproc-objects.json": {
+      "bytes": 498,
+      "sha256": "45dc8d0d35cf249808668bd72dd889d0ab160d059d2be64de4d99ad0d5b043d3"
+    },
+    "invalid-rate.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "long-wakes.json": {
+      "bytes": 14928,
+      "sha256": "2c2452689f3b868652b9a336aafe114b3d838e697952e84478d44128d5286a23"
+    },
+    "long-wakes.py": {
+      "bytes": 1650,
+      "sha256": "f7a243bcc7b8e411fce99033052aeb1dd0e41742ec9a5aa754547278bfbe8ba0"
+    },
+    "maps.txt": {
+      "bytes": 483100,
+      "sha256": "e39ec8a5850742ee80db8c00b7daef7094fd0f7fbdc6c12b2002d74402223cf1"
+    },
+    "observer-50hz.json": {
+      "bytes": 239,
+      "sha256": "e0f196d0eb43c07454f08b53fd0282e5761908bed27465d509b2445ea5e9a75f"
+    },
+    "one-thread.out": {
+      "bytes": 2230,
+      "sha256": "dc68d6f5c756a8b48adaaf131a97232417b1af8ea3a74879eb222ecf7f6fd0d3"
+    },
+    "processes-after.txt": {
+      "bytes": 16261,
+      "sha256": "f60a7f4f9ecdb13a0b2a517154cdde932a47d065c6d5b92c5c231ea19ec9bc67"
+    },
+    "resumed.png": {
+      "bytes": 1891373,
+      "sha256": "3c88630b01349cd3ceb910a8e48ab6ed899e0cb3f68cf261dcc68ea0784b9a73"
+    },
+    "sampler-validation.json": {
+      "bytes": 535,
+      "sha256": "14243a887ec69483e51f578cbff4a20d6269063dba0ccce4f935b0735327c13a"
+    },
+    "screen-after.png": {
+      "bytes": 1877709,
+      "sha256": "4c3b455558c9a11257182bb6ebe23b087484c5c3a3ed50f284555e4f26c3091d"
+    },
+    "stale-generation.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stat.txt": {
+      "bytes": 325,
+      "sha256": "9726ae1cc1b5c5f31780c57fc17045ee2450288c85cbe48289f7df446bbde02f"
+    },
+    "wait-objects-50hz.txt": {
+      "bytes": 318488,
+      "sha256": "e3c8bffa624e095226598d06755ebb659bc0fd51f5012401b826954884fba478"
+    },
+    "wait-objects.jsonl": {
+      "bytes": 946813,
+      "sha256": "1a66d6569d0842588faad48919498e1ccbf4cd6fb7392447c40f1628a7f04896"
+    },
+    "wineserver-stat-after.txt": {
+      "bytes": 322,
+      "sha256": "7be8933e3381941ea83f60251cb0cb18f3636e18bc7ef44cf0ea711297b7741b"
+    },
+    "wrong-region.out": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "samplerSourceSha256": "8c92127f6a0e516b94a9b32dc94ef1d864213d9209b8f388da8fe548bf813715",
+  "samplerBinarySha256": "8e24e3169cfc8941bec52d8f99fea95d0605857598582b208b5a6f2ded44e60c"
+}

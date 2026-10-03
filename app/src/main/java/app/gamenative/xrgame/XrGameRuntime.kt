@@ -154,27 +154,29 @@ object XrGameRuntime {
     }
 
     fun configureGraphics(context: Context, container: Container, env: EnvVars) {
-        val source = File(context.filesDir, "contents/adrenotools/${XrGameRuntimeVersions.TURNIP}")
-        val library = File(source, "libvulkan_freedreno.so")
-        val record = JSONObject(File(source, "xrgame-build.json").readText())
-        val sha = record.getJSONObject("files").getJSONObject(library.name).getString("sha256")
-        check(XrGameComponents.verify(library, sha)) { "XRGame Turnip is missing or corrupt" }
-        val imageFs = ImageFs.find(context)
-        for (name in listOf("libxcb-dri3.so", "libxcb-present.so")) {
-            val dependency = File(source, name)
-            val dependencySha = record.getJSONObject("files").getJSONObject(name).getString("sha256")
-            check(XrGameComponents.verify(dependency, dependencySha)) { "XRGame driver dependency is missing or corrupt: $name" }
-            val target = File(imageFs.libDir, name)
-            if (!XrGameComponents.verify(target, dependencySha)) dependency.copyTo(target, overwrite = true)
+        XrGameProfiler.region("runtime.driver.stage").use {
+            val source = File(context.filesDir, "contents/adrenotools/${XrGameRuntimeVersions.TURNIP}")
+            val library = File(source, "libvulkan_freedreno.so")
+            val record = JSONObject(File(source, "xrgame-build.json").readText())
+            val sha = record.getJSONObject("files").getJSONObject(library.name).getString("sha256")
+            check(XrGameComponents.verify(library, sha)) { "XRGame Turnip is missing or corrupt" }
+            val imageFs = ImageFs.find(context)
+            for (name in listOf("libxcb-dri3.so", "libxcb-present.so")) {
+                val dependency = File(source, name)
+                val dependencySha = record.getJSONObject("files").getJSONObject(name).getString("sha256")
+                check(XrGameComponents.verify(dependency, dependencySha)) { "XRGame driver dependency is missing or corrupt: $name" }
+                val target = File(imageFs.libDir, name)
+                if (!XrGameComponents.verify(target, dependencySha)) dependency.copyTo(target, overwrite = true)
+            }
+            val dest = File(imageFs.libDir, library.name)
+            if (!XrGameComponents.verify(dest, sha)) library.copyTo(dest, overwrite = true)
+            val icd = File(imageFs.shareDir, "vulkan/icd.d/freedreno_icd.aarch64.json")
+            icd.parentFile?.mkdirs()
+            icd.writeText(JSONObject().put("file_format_version", "1.0.0").put("ICD", JSONObject()
+                .put("library_path", dest.absolutePath).put("api_version", "1.3.0")).toString())
+            env.put("VK_ICD_FILENAMES", icd.absolutePath)
+            if (!container.isUseDRI3) env.put("MESA_VK_WSI_DEBUG", "sw")
         }
-        val dest = File(imageFs.libDir, library.name)
-        if (!XrGameComponents.verify(dest, sha)) library.copyTo(dest, overwrite = true)
-        val icd = File(imageFs.shareDir, "vulkan/icd.d/freedreno_icd.aarch64.json")
-        icd.parentFile?.mkdirs()
-        icd.writeText(JSONObject().put("file_format_version", "1.0.0").put("ICD", JSONObject()
-            .put("library_path", dest.absolutePath).put("api_version", "1.3.0")).toString())
-        env.put("VK_ICD_FILENAMES", icd.absolutePath)
-        if (!container.isUseDRI3) env.put("MESA_VK_WSI_DEBUG", "sw")
     }
 
     /** Apply after user environment merging: this driver has no X11 DRM presentation path. */

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 
 import app.gamenative.powercontrol.PowerManager;
+import app.gamenative.xrgame.XrGameProfiler;
 
 public class XEnvironment implements Iterable<EnvironmentComponent> {
     private final Context context;
@@ -77,34 +78,47 @@ public class XEnvironment implements Iterable<EnvironmentComponent> {
     }
 
     public void startEnvironmentComponents() {
-        FileUtils.clear(getTmpDir(getContext()));
-        for (EnvironmentComponent environmentComponent : this) environmentComponent.start();
+        try (XrGameProfiler.Region profile = XrGameProfiler.region("host.environment.start")) {
+            FileUtils.clear(getTmpDir(getContext()));
+            for (EnvironmentComponent component : this) {
+                String stage = component instanceof XServerComponent ? "host.xserver.start" :
+                    component instanceof PulseAudioComponent || component instanceof ALSAServerComponent ? "host.audio.start" :
+                    component instanceof BionicProgramLauncherComponent ? "host.wine.start" : "host.helper.start";
+                try (XrGameProfiler.Region region = XrGameProfiler.region(stage)) { component.start(); }
+            }
+        }
     }
 
     public void stopEnvironmentComponents() {
-        for (EnvironmentComponent environmentComponent : this) environmentComponent.stop();
+        try (XrGameProfiler.Region profile = XrGameProfiler.region("host.environment.stop")) {
+            for (EnvironmentComponent environmentComponent : this) environmentComponent.stop();
+        }
     }
 
     public void onPause() {
-        // Pause game processes FIRST
-        pauseGameProcesses();
+        try (XrGameProfiler.Region profile = XrGameProfiler.region("host.environment.pause")) {
+            // Pause game processes FIRST
+            pauseGameProcesses();
 
-        // Then pause audio components
-        PulseAudioComponent pulseAudioComponent = getComponent(PulseAudioComponent.class);
-        if (pulseAudioComponent != null) pulseAudioComponent.pause();
-        ALSAServerComponent alsaServerComponent = getComponent(ALSAServerComponent.class);
-        if (alsaServerComponent != null) alsaServerComponent.pause();
+            // Then pause audio components
+            PulseAudioComponent pulseAudioComponent = getComponent(PulseAudioComponent.class);
+            if (pulseAudioComponent != null) pulseAudioComponent.pause();
+            ALSAServerComponent alsaServerComponent = getComponent(ALSAServerComponent.class);
+            if (alsaServerComponent != null) alsaServerComponent.pause();
+        }
     }
 
     public void onResume() {
-        // Resume audio so it's ready when game processes wake up
-        PulseAudioComponent pulseAudioComponent = getComponent(PulseAudioComponent.class);
-        if (pulseAudioComponent != null) pulseAudioComponent.resume();
-        ALSAServerComponent alsaServerComponent = getComponent(ALSAServerComponent.class);
-        if (alsaServerComponent != null) alsaServerComponent.resume();
+        try (XrGameProfiler.Region profile = XrGameProfiler.region("host.environment.resume")) {
+            // Resume audio so it's ready when game processes wake up
+            PulseAudioComponent pulseAudioComponent = getComponent(PulseAudioComponent.class);
+            if (pulseAudioComponent != null) pulseAudioComponent.resume();
+            ALSAServerComponent alsaServerComponent = getComponent(ALSAServerComponent.class);
+            if (alsaServerComponent != null) alsaServerComponent.resume();
 
-        // Then resume game processes
-        resumeGameProcesses();
+            // Then resume game processes
+            resumeGameProcesses();
+        }
     }
 
     public void pauseGameProcesses() {

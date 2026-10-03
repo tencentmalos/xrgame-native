@@ -386,6 +386,7 @@ object ContainerUtils {
             // LSFG Vulkan frame generation
             lsfgEnabled = container.getExtra(LsfgVkManager.EXTRA_ARMED, "false").toBoolean(),
             windowsVrEnabled = container.getExtra("windowsVrEnabled", "false").toBoolean(),
+            sbsTheaterEnabled = container.getExtra("sbsTheaterEnabled", "false").toBoolean(),
             xrPresentationMode = container.getExtra("xrPresentationMode", "sbs"),
             openCompositeEnabled = container.getExtra("windowsVrOpenCompositeEnabled", "false").toBoolean(),
         )
@@ -577,7 +578,8 @@ object ContainerUtils {
         container.putExtra("sharpnessDenoise", containerData.sharpnessDenoise.toString())
         // LSFG Vulkan frame generation
         container.putExtra(LsfgVkManager.EXTRA_ARMED, containerData.lsfgEnabled.toString())
-        container.putExtra("windowsVrEnabled", containerData.windowsVrEnabled.toString())
+        container.putExtra("windowsVrEnabled", (containerData.windowsVrEnabled && !containerData.sbsTheaterEnabled).toString())
+        container.putExtra("sbsTheaterEnabled", containerData.sbsTheaterEnabled.toString())
         container.putExtra("xrPresentationMode", containerData.xrPresentationMode)
         container.putExtra("windowsVrOpenCompositeEnabled", containerData.openCompositeEnabled.toString())
         try {

@@ -350,7 +350,7 @@ capture must accompany a device validation record.
 fixed DXVK commit and each pinned nested checkout into a build source copy, applies
 `patches/dxvk-present-deferred-clears.patch`, and records archive/patch/recipe/DLL
 hashes in `xrgame-dxvk-build.json`. The original checkouts stay unchanged.
-The default component is `11.0-a676404-arm64ec-xrg2`; package-components rejects DLLs
+The current private validation component is `11.0-a676404-arm64ec-xrg4`; package-components rejects DLLs
 or a patch that do not match the build record and includes the patch and record.
 The normal `xrgame-build.json` file inventory is still required for installation.
 
@@ -360,6 +360,41 @@ fixture; `--clear-readback` and `--clear-flush` are diagnostic controls. Readbac
 fixture-only and is not part of the display implementation. Build and device results
 are recorded in `docs/validation/personal-p3-debuggers-20260927.md`; the source-build
 record alone does not establish device correctness or public-release readiness.
+
+### DXVK frame completion and bounded latency diagnostics
+
+The xrg4 recipe additionally applies `dxvk-waitable-frame-latency.patch` and
+`dxvk-present-gpu-completion.patch`; their SHA-256 values enter the build record
+and package inventory. `package-dxvk-latency-validation.py` can assemble a private
+incremental component from the exact verified xrg2 archive plus rebuilt DLLs.
+It verifies the base SHA, source pin, patches, recipe and every DLL before
+publishing the local archive. This is not a public runtime release.
+
+- Per-game Graphics → **Render ahead (experimental)** persists
+  `XRGAME_DXVK_FRAME_COMPLETION=gpu`; unset or `present` uses the normal path.
+  Restart is required. Default off, D3D9–11 only. It selects DXVK's existing
+  GPU-completion frame-latency fallback, allowing the next frame before the
+  presentation wait completes. Vulkan/X11 Complete/Idle and image reuse remain
+  real. Extra queued work can increase input latency, which has not been measured.
+- `XRGAME_DXGI_FRAME_LATENCY_TRACE=1` logs swapchain flags, buffer count, effective
+  latency and the first eight SetFrameLatency calls. Also set `DXVK_LOG_LEVEL=info`
+  and an explicit writable `DXVK_LOG_PATH` while diagnosing; ordinary logging is off.
+- `XRGAME_DXGI_FRAME_LATENCY=1|2` is a separate waitable-swapchain diagnostic override.
+  It is unused for AI LIMIT: that game already sets latency 2. Invalid requests
+  still fail the original API validation. Unset leaves the API behavior unchanged.
+
+These changes do not alter Wine/FEX/Turnip pins. See
+`docs/validation/ai-limit-present-pipeline-20261002.md` for bounded device evidence,
+including the separate default-off host copy submission/retirement experiment.
+The CPU Present pacer now sleeps while its queue is empty and wakes on enqueue
+or shutdown; a pending earlier deadline also wakes a timed wait.
+
+For AI LIMIT's private loading experiment, `DXVK_CONFIG=dxvk.maxMemoryBudget=3072`
+sets an allocator **soft** budget in MiB. It is neither a hard memory limit nor
+the reported VRAM size, and is not a global default. Android LOW_MEMORY exits and
+successful replays remain in the evidence. picoXr-generated inline `DXVK_CONFIG`
+now uses raw, semicolon-separated values as required by DXVK's parser and execve;
+the upstream flavors keep their existing formatting.
 
 
 ### FEX context-resume diagnosis (private fixture only)
@@ -421,6 +456,35 @@ normalizing by frame requests. `futex_sleeps` counts attempts, not actual sleeps
 without separate instrumentation. Do not enable NTSYNC_DEBUG or disable SIGUSR1
 protection merely to read these existing counters. See the
 [device results and exact counter semantics](../../docs/validation/mhw-sync-20260927.md).
+
+### Sample the objects behind a blocked ntsync wait
+
+`sample-ntsync-waits.c` is a bounded, read-only Android arm64 diagnostic for the
+same pinned ntsync v9 layout. Build with NDK clang (API 28),
+`-O2 -Wall -Wextra -Werror`. Verify the loaded ntdll SHA and current PID/start
+ticks first; resolve the session's v9 shared mapping from that PID's maps:
+
+```text
+/system/bin/linker64 <reader> <PID> <start-ticks> <shared-mapping-base> <seconds> <interval-ms> <TID> [TID ...]
+```
+
+It checks each thread generation, reads the kernel's current syscall, resolves
+shared futex waiter/slot identities, and repeats syscall/node/slot reads to
+reject observed races. It never locks or writes the shared region. `stable`
+is best-effort consistency, not an atomic snapshot. Samples measure occupancy,
+not call counts, exact sleep duration, or a complete object lifecycle. Keep
+`stable:false` rows and exclude them from object attribution. Slot generations
+and addresses cannot be reused across process/session identities.
+
+Limits: 1–60 seconds, 5–1000 ms intervals, at most 8 explicitly selected threads.
+Prefer one thread at 100 ms; short 10–20 ms diagnostic windows cost more. On AYN,
+4 threads at 20 ms cost 436.166 ms observer CPU over 10 seconds (4.36% of one core),
+excluding ADB/host work; this is not a measured game FPS overhead. The final
+observer elapsed/CPU summary goes to stderr, data rows to stdout. Exit codes:
+2 invalid arguments, 3 memory access denied, 4 stale/missing generation,
+5 unsupported/incorrect region, 6 allocation failure, 7 syscall observation failed.
+There is no resident service and no profiler requirement. See the
+[AI LIMIT object and wake-duration evidence](../../docs/validation/ai-limit-sync-fastpath-20261002.md).
 
 
 ### Wine media startup checks

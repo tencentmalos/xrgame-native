@@ -10,10 +10,17 @@ public final class XrGameProfiler {
         Region region(String name);
         void mark(String name);
         void present();
+        default void counter(int id, long value) {}
     }
     private static final Region NO_REGION = () -> {};
     private static volatile Backend backend;
     private XrGameProfiler() {}
+
+    public static Region noop() { return NO_REGION; }
+    public static void counter(int id, long sample) {
+        Backend value = backend;
+        if (value != null) value.counter(id, sample);
+    }
 
     public static void initialize(Context context) {
         if (!BuildConfig.XRGAME || !BuildConfig.DEBUG) return;

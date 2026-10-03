@@ -24,7 +24,7 @@ add_library(xrimmersive SHARED
 
 find_package(OpenXR REQUIRED CONFIG)
 
-target_link_libraries(xrimmersive
+target_link_libraries(xrimmersive PRIVATE
     OpenXR::openxr_loader
     EGL
     GLESv3

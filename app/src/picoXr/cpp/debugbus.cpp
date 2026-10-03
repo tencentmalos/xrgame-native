@@ -8,6 +8,7 @@
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
+#include "profiler_core.h"
 
 namespace {
 constexpr size_t max_response = 128 * 1024;
@@ -104,6 +105,7 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
         // rebinding race or Foundation worker threads are needed for Android dumpsys.
         spatial::debugbus::DebugCommandRegistry registry;
         spatial::debugbus::profiler::RegisterProfilerRingCommands(registry);
+        registry.Register("instrumentation", "Host probes: instrumentation [off|coarse|detail]", xrgameProfileCommand);
         registry.Register("bridge", "Foundation revision and transport", [](const auto& a) {
             if (!a.empty()) return std::string("{\"error\":\"unexpected_arguments\"}");
             return std::string("{\"schema\":1,\"foundation\":\"") + XRGAME_FOUNDATION_REVISION +

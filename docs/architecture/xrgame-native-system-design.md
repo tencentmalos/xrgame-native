@@ -615,7 +615,7 @@ Host attach/inspect/pause/resume/cleanup 与 guest 基础链路已有实测。FE
 | 手柄只有键盘提示 | Android 检测、共享状态、SDL 虚拟设备、Wine/XInput 逐段检查 | evshim/winebus 日志、只读 XInput 探针 |
 | 存档/DLC 不见 | 账号与路径一致性、许可集合、Cloud 传输是否真正成功 | 映射、文件哈希、明确的 owned DLC 列表 |
 
-时钟也要区分：Android elapsed realtime 包含休眠，Present trace 使用 CLOCK_MONOTONIC；不同基准不能直接相减。完整接口与清理要求见 [DebugBus](../debugging/debugbus.md) 和 [调试能力复核](../validation/spec-observability-review-20260926.md)。
+时钟也要区分：Android elapsed realtime 包含休眠，Present trace 使用 CLOCK_MONOTONIC；不同基准不能直接相减。完整接口与清理要求见 [DebugBus](../debugging/debugbus.md)、[Litep 桩点覆盖与层级](../debugging/litep.md) 和 [调试能力复核](../validation/spec-observability-review-20260926.md)。
 
 ## 13. 当前状态与后续演进
 
@@ -633,22 +633,39 @@ Host attach/inspect/pause/resume/cleanup 与 guest 基础链路已有实测。FE
 
 当前最近的 UI 包身份及证据入口见 [MHR 2026-09-29](../validation/mhr-present-async-20260929.md)。本系统文档不复制所有历史 SHA/PID，避免多个摘要在二进制更新后互相矛盾；新的设备结论应继续写独立验证记录。
 
-### 13.2 XR 的位置：已有代码，当前未做设备验收
+### 13.2 XR 与普通游戏的 SBS 影院（2026-10-02 更新）
 
 ```mermaid
 flowchart TB
-    Flat["普通 Windows 游戏"] -.-> Theater["规划：2D 影院模式<br/>窗口纹理放入 XR 场景"]
-    VR["Windows VR 应用"] -.-> WinXR["Windows OpenXR runtime PE"]
-    OpenVR["OpenVR 应用"] -.-> OC["后续按需：OpenComposite"]
-    OC -.-> WinXR
-    WinXR -.-> Unix["Wine unixlib<br/>socket / 图像句柄桥"]
-    Unix -.-> HostXR["Android xrimmersive<br/>传输与投影代码"]
-    Theater -.-> HostXR
+    Flat["普通 Windows 游戏"] --> X["Wine / XServer<br/>普通窗口纹理与光标"]
+    X --> Theater["SBS 影院<br/>同一 render pass 的两个视口"]
+    Theater --> AYN["AYN Android 屏幕"]
+    VR["Windows VR 应用"] --> WinXR["Windows OpenXR runtime PE"]
+    OpenVR["OpenVR 应用"] --> OC["OpenComposite"]
+    OC --> WinXR
+    WinXR --> Unix["Wine unixlib<br/>socket / 图像句柄桥"]
+    Unix --> HostXR["Android xrimmersive<br/>传输与投影代码"]
+    HostXR --> SBS["GLES SBS<br/>两个独立的 guest 眼图像"]
+    SBS --> AYN
     HostXR -.-> Loader["设备 OpenXR loader / runtime"]
+    X -.-> Quad["头显影院 quad：待设备验收"]
+    Quad -.-> Loader
     Loader -.-> Swan["Swan 双眼、控制器与生命周期"]
 ```
 
-此图是后续连接关系，不是当前 AYN 平面显示的数据路径。XR bridge 的 PE/unixlib 和 Android 代码已有构建基础，但设备扩展、双眼提交、输入、摘戴及前后台恢复必须在 Swan 分别验证。Foundation 音频/输入和 Mac 全构建迁移同样未因本次文档整理而重新启动。
+普通游戏从「编辑容器 → 图形 → 显示模式 → SBS 影院 — 非 VR 游戏」进入。
+该模式仍走普通 XServerScreen、Wine、键盘/手柄和音频链路，不创建 Windows VR runtime。
+宿主沿用现有大屏的尺寸/距离配置，以 64 mm 眼距、每眼 60° 水平视角模拟固定双眼；
+窗口、光标按同一投影绘制，保留画面比例。右上角「影院设置」可调大小、距离、重置或临时预览平面。
+此预览使用 Vulkan 合成器；GL/SurfaceFlinger 选择在本次会话临时覆盖，插帧停用，触屏使用相对触控板。
+
+两个视口复用已准备好的窗口纹理和原有提交/fence，不增加 PixelCopy、CPU 读回或新的中间图像。
+这只省掉影院自身可能引入的额外拷贝；原有 Present/AHB GPU copy 仍由容器设置决定。
+普通游戏画面本身仍是单目内容，双眼视差只表示虚拟屏幕的距离。
+
+AYN 普通影院证据见 [SBS 影院](../validation/sbs-theater-20261002.md)，真实 VR 的 Alyx 独立眼图像证据见
+[VR SBS](../validation/vr-sbs-20261002.md)。Swan 的头部追踪、设备扩展、摘戴和完整输入仍待验证。
+Foundation 音频/输入和 Mac 全构建迁移继续延后。
 
 ## 14. 代码与证据索引
 

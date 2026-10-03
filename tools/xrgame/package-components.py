@@ -197,7 +197,7 @@ def main():
         finish(fex, 'fexcore-' + version + '.wcp', 'fexcore', version, 'MIT', ['FEX'])
 
         for name, kind, version, license_id in [
-            ('dxvk', 'DXVK', '11.0-a676404-arm64ec-xrg2', 'Zlib'),
+            ('dxvk', 'DXVK', '11.0-a676404-arm64ec-xrg4', 'Zlib'),
             ('vkd3d-proton', 'VKD3D', '11.0-212991f-arm64ec-xrg1', 'LGPL-2.1-or-later'),
         ]:
             tree = work / name
@@ -216,11 +216,19 @@ def main():
                 patch = project / 'tools/xrgame/patches/dxvk-present-deferred-clears.patch'
                 if build['patchSha256'] != digest(patch):
                     raise RuntimeError('DXVK build patch does not match the packaged recipe')
+                latency_patch = project / 'tools/xrgame/patches/dxvk-waitable-frame-latency.patch'
+                if build.get('latencyProbePatchSha256') != digest(latency_patch):
+                    raise RuntimeError('DXVK latency patch does not match the packaged recipe')
+                completion_patch = project / 'tools/xrgame/patches/dxvk-present-gpu-completion.patch'
+                if build.get('gpuCompletionPatchSha256') != digest(completion_patch):
+                    raise RuntimeError('DXVK completion patch does not match the packaged recipe')
                 for entry in files:
                     if build['binaries'].get('arm64ec/' + entry['source']) != digest(tree / entry['source']):
                         raise RuntimeError('DXVK binary does not match its build record')
                 shutil.copy2(record, tree / record.name)
                 shutil.copy2(patch, tree / patch.name)
+                shutil.copy2(latency_patch, tree / latency_patch.name)
+                shutil.copy2(completion_patch, tree / completion_patch.name)
             finish(tree, name + '-' + version + '.wcp', name if name == 'dxvk' else 'vkd3d',
                    version, license_id, [name])
 

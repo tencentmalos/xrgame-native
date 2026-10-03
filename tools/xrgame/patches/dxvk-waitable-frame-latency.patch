@@ -1,0 +1,67 @@
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -5,6 +5,7 @@
+ #include "../dxvk/dxvk_latency_builtin.h"
+ 
+ #include "../util/util_win32_compat.h"
++#include "../util/util_env.h"
+ 
+ namespace dxvk {
+ 
+@@ -66,6 +67,25 @@
+     m_desc(*pDesc),
+     m_device(pDevice->GetDXVKDevice()),
+     m_frameLatencyCap(pDevice->GetOptions()->maxFrameLatency) {
++    // Private validation only: read once, never on the Present hot path.
++    const auto overrideValue = env::getEnvVar("XRGAME_DXGI_FRAME_LATENCY");
++    m_frameLatencyTrace = env::getEnvVar("XRGAME_DXGI_FRAME_LATENCY_TRACE") == "1";
++    if (!overrideValue.empty() && overrideValue != "0") {
++      if (overrideValue == "1" || overrideValue == "2") {
++        m_frameLatencyTrace = true;
++        if (m_desc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
++          m_frameLatencyOverride = overrideValue == "2" ? 2u : 1u;
++      } else {
++        Logger::warn("XRGame DXGI: ignoring frame latency override (expected 0, 1 or 2)");
++      }
++    }
++    if (m_frameLatencyOverride)
++      m_frameLatency = m_frameLatencyOverride;
++    if (m_frameLatencyTrace)
++      Logger::info(str::format("XRGame DXGI latency: create flags=", m_desc.Flags,
++        " buffers=", m_desc.BufferCount, " default=", DefaultFrameLatency,
++        " effective=", m_frameLatency, " override=", m_frameLatencyOverride,
++        " implicitCap=", GetActualFrameLatency()));
+     CreateFrameLatencyEvent();
+     CreatePresenter();
+     CreateBackBuffers();
+@@ -233,6 +253,18 @@
+           UINT                      MaxLatency) {
+     if (MaxLatency == 0 || MaxLatency > DXGI_MAX_SWAP_CHAIN_BUFFERS)
+       return DXGI_ERROR_INVALID_CALL;
++
++    const UINT requestedLatency = MaxLatency;
++    if (m_frameLatencyOverride)
++      MaxLatency = m_frameLatencyOverride;
++    // Bounded logging also covers engines that call this setter every frame.
++    if (m_frameLatencyTrace && m_frameLatencyLogCount < 8) {
++      ++m_frameLatencyLogCount;
++      Logger::info(str::format("XRGame DXGI latency: set requested=", requestedLatency,
++        " effective=", MaxLatency, " previous=", m_frameLatency,
++        " buffers=", m_desc.BufferCount, " implicitCap=", GetActualFrameLatency(),
++        " sample=", m_frameLatencyLogCount));
++    }
+ 
+     if (m_frameLatencyEvent) {
+       // Windows DXGI does not seem to handle the case where the new maximum
+--- a/src/d3d11/d3d11_swapchain.h
++++ b/src/d3d11/d3d11_swapchain.h
+@@ -115,6 +115,9 @@
+     uint64_t                  m_frameId      = DXGI_MAX_SWAP_CHAIN_BUFFERS;
+     uint32_t                  m_frameLatency = DefaultFrameLatency;
+     uint32_t                  m_frameLatencyCap = 0;
++    uint32_t                  m_frameLatencyOverride = 0;
++    uint32_t                  m_frameLatencyLogCount = 0;
++    bool                      m_frameLatencyTrace = false;
+     HANDLE                    m_frameLatencyEvent = nullptr;
+     Rc<sync::CallbackFence>   m_frameLatencySignal;
+ 

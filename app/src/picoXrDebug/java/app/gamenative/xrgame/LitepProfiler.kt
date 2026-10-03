@@ -20,10 +20,11 @@ class LitepProfiler(context: Context) : XrGameProfiler.Backend {
     private external fun end(token: LongArray)
     private external fun bookmark(name: String)
     private external fun frame()
+    override external fun counter(id: Int, value: Long)
     override fun region(name: String): XrGameProfiler.Region {
-        val token = begin(name)
+        val token = begin(name) ?: return XrGameProfiler.noop()
         val closed = AtomicBoolean()
-        return XrGameProfiler.Region { if (token != null && closed.compareAndSet(false, true)) end(token) }
+        return XrGameProfiler.Region { if (closed.compareAndSet(false, true)) end(token) }
     }
     override fun mark(name: String) = bookmark(name)
     override fun present() = frame()

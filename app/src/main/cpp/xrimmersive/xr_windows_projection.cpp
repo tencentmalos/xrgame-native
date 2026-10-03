@@ -1,3 +1,4 @@
+#include "../xrgame_profiler.h"
 #include "xr_windows_projection.h"
 
 #include <EGL/eglext.h>
@@ -171,6 +172,7 @@ EGLImageKHR WindowsProjectionPresenter::createImageFromDmabuf(const EyeFrame &fr
 }
 
 bool WindowsProjectionPresenter::waitForAcquireFence(int fenceFd) {
+    XrProfileScope profile("host.vr.acquire_fence", true);
     if (acquireSync_ != EGL_NO_SYNC_KHR) {
         eglDestroySyncKHR(display_, acquireSync_);
         acquireSync_ = EGL_NO_SYNC_KHR;
@@ -195,6 +197,7 @@ bool WindowsProjectionPresenter::waitForAcquireFence(int fenceFd) {
 }
 
 int WindowsProjectionPresenter::createReleaseFence() {
+    XrProfileScope profile("host.vr.release_fence", true);
     const auto duplicate = reinterpret_cast<PFNEGLDUPNATIVEFENCEFDANDROIDPROC>(
         eglGetProcAddress("eglDupNativeFenceFDANDROID"));
     if (duplicate == nullptr) {
@@ -218,6 +221,7 @@ int WindowsProjectionPresenter::createReleaseFence() {
 bool WindowsProjectionPresenter::uploadLinearDmabufToTexture(
     uint32_t eye, int imageIndex, const EyeFrame &frame, GLuint &texture,
     uint64_t &cachedRegistration) {
+    XrProfileScope profile("host.vr.cpu_texture_upload");
     if (frame.planeCount != 1 || frame.dmabufFds[0] < 0 || frame.modifier != 0 ||
         frame.width <= 0 || frame.height <= 0 ||
         frame.strides[0] < static_cast<uint32_t>(frame.width) * 4u ||
@@ -495,6 +499,7 @@ bool WindowsProjectionPresenter::initializeSbs(EGLDisplay display) {
 
 bool WindowsProjectionPresenter::renderSbs(WindowsFrameTransport &transport,
                                            uint32_t width, uint32_t height) {
+    XrProfileScope profile("host.vr.sbs.render_attempt", true);
     if (width < 2 || height == 0 || width > 8192 || height > 8192) return false;
     // Keep a host-owned stereo image for redraws. Release fences permit the producer to
     // reuse its images immediately after this GPU copy, including while Android pauses.
@@ -514,6 +519,7 @@ bool WindowsProjectionPresenter::renderSbs(WindowsFrameTransport &transport,
     }
     std::array<EyeFrame, 2> frames{};
     if (transport.pollStereo(renderedSerials_, frames)) {
+        XrProfileScope stereoProfile("host.vr.sbs.consume_stereo");
         std::array<bool, 2> fresh{true, true};
         bool imported = true;
         for (uint32_t eye = 0; eye < 2; ++eye) {
