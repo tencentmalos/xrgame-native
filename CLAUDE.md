@@ -19,7 +19,7 @@
   - Measure AYN behavior before adding a shim. Swan's Android 16 matrix and XR capability probe wait for P4; do not treat Android 13 plus targetSdk 36 as Android 16 evidence. Measure before replacing the display path in P3.
 - Before changing anything under `references/`, read that checkout's own instructions (for example FEX's AI-contribution ban).
 
-- 新引入的直接依赖仓库先 fork 到 `tencentmalos` 再维护；迁移 URL 不升级 gitlink。GBE、Proton Wine、JavaSteam 等已补齐 fork。
+- 新引入的直接依赖仓库先 fork 到 `tencentmalos` 再维护；迁移 URL 不升级 gitlink。GBE、Proton Wine、JavaSteam、GFXReconstruct 等已补齐 fork。
 
 - 调试流程：`tools/xrgame/README.md` 的 Device debugging。native app 与 Wine x64 guest 的基础暂停/读取/恢复/清理已验证，见 `docs/validation/wp3-debuggers-20260926.md`；Hades II 已通过 Turnip AHardwareBuffer/X11 路径进入实际场景并响应移动（GPU 拷贝，无 CPU 读回，保留 present-wait）；完整游戏与 WP3 仍未验收。
 

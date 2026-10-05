@@ -57,3 +57,8 @@
 	path = references/opencomposite
 	url = https://github.com/tencentmalos/opencomposite.git
 	branch = feature/malos/xrgame-sbs-openvr26
+[submodule "references/gfxreconstruct"]
+	path = references/gfxreconstruct
+	url = https://github.com/tencentmalos/gfxreconstruct.git
+	branch = feature/malos/xrgame-wine-capture
+	shallow = true

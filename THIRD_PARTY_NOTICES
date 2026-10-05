@@ -518,8 +518,9 @@ agreement. If you redistribute this project, verify your right to redistribute t
 
 GFXReconstruct — internal debug builds only
 -------------------------------------------
-Source: https://github.com/LunarG/gfxreconstruct (dev, 6dc9b65) with the Wine/Android host
-patches in tools/xrgame/patches/gfxreconstruct-wine-capture.patch.
+Source: https://github.com/tencentmalos/gfxreconstruct, branch feature/malos/xrgame-wine-capture
+(commit 3868cd12), forked from https://github.com/LunarG/gfxreconstruct at dev 6dc9b65. It adds the
+Wine/Android host changes, also recorded in tools/xrgame/patches/gfxreconstruct-wine-capture.patch.
 picoXr debug APKs may bundle its D3D12/DXGI capture proxies (Windows x64) and Vulkan capture
 layer (Android arm64) under assets/xrgame-gfxr/ for API capture and replay validation.
 The notices of GFXReconstruct's own third-party components are in LICENSES/LICENSE_ThirdParty.txt

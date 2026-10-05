@@ -274,7 +274,7 @@ def main():
         if name == 'deploy':
             p.add_argument('--layer', required=True, help='Stripped Android arm64 libVkLayer_gfxreconstruct.so')
             p.add_argument('--process', help='Only capture this process name (GFXRECON_CAPTURE_PROCESS_NAME)')
-            p.add_argument('--gfxr-source', default='LunarG/gfxreconstruct dev 6dc9b65 + xrgame-wine-capture patches')
+            p.add_argument('--gfxr-source', default='tencentmalos/gfxreconstruct feature/malos/xrgame-wine-capture 3868cd12')
         if name == 'pull':
             p.add_argument('--out', required=True)
     p = sub.add_parser('replay')

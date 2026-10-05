@@ -16,7 +16,7 @@
 | APK 审计 | `tools/audit-apk --validation-catalog build/xrgame-runtime/bundle/manifest.json`：129 个文件，0 个错误 |
 | 单元测试 | WSL 中运行 `:app:testPicoXrDebugUnitTest --tests app.gamenative.xrgame.XrGameApiCaptureTest`：6 个用例，0 失败，0 错误（默认内存跟踪改动之后重跑） |
 | 运行时 bundle | 从设备上原有 APK（`3379cd8b…`）中提取，catalog SHA-256 `e8f2780a71024d47…`，构建前逐项校验 |
-| GFXR 源码 | `LunarG/gfxreconstruct` `dev` @ `6dc9b65` 加 `tools/xrgame/patches/gfxreconstruct-wine-capture.patch`（SHA-256 `0ab08034…`） |
+| GFXR 源码 | `LunarG/gfxreconstruct` `dev` @ `6dc9b65` 加 `tools/xrgame/patches/gfxreconstruct-wine-capture.patch`（SHA-256 `0ab08034…`）。2026-10-05 起，这份改动以提交 `3868cd12` 的形式维护在 `tencentmalos/gfxreconstruct` 的 `feature/malos/xrgame-wine-capture` 分支，它相对 `6dc9b65` 的 diff 与补丁逐字节相同 |
 | GFXR 截获 DLL（x64，静态 CRT） | `d3d12.dll` `1ed70901…`、`dxgi.dll` `e6ab5d5d…`、`d3d12_capture.dll` `91b40c37…`；只导入 Wine 自带的系统 DLL |
 | GFXR Vulkan 层（arm64，已 strip） | `989b71f8…`，Build ID `5d6a7e218cde8e89547eeac85d5e1a885d94ace7`（本轮未使用） |
 | Windows 回放工具 | `gfxrecon-replay.exe` `d45108dc…`（MSVC，动态 CRT），旁边需要 Agility SDK 的 `D3D12\D3D12Core.dll`（`eddf4cff…`） |

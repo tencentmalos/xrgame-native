@@ -14,6 +14,7 @@ For XRGame's embedded Proton 11 default, FEX maintenance starts from the same `t
 | `shadPS4` | [tencentmalos/Bachata-S4](https://github.com/tencentmalos/Bachata-S4) (shadPS4 Android/FEX port) | `malos/main` | `a562e810` (2026-09-24) | Android host components to port: session lifecycle, Vulkan presenter, Turnip loading, Oboe audio, input, diagnostics, Litep/KGSL tooling and validation methodology. Its own submodules are **not** initialized. | GPL-2.0-or-later per SPDX headers (compatible with this repo's GPL-3.0); its private Foundation dependency is separately authorized for internal debug builds (2026-09-27), pinned at root `foundation/`; see `docs/debugging/debugbus.md` |
 | `mesa-turnip` | [tencentmalos/mesa-mirror](https://github.com/tencentmalos/mesa-mirror) | `feature/malos/xrgame-wine-icd` | `dd74a5cf` (2026-09-28 checkpoint) | Turnip fork used by shadPS4 on Adreno (KGSL zero-timeout poll, gralloc/Mapper metadata, fragment density map 2 for XR). Shallow. | MIT |
 | `WinNative` | [tencentmalos/WinNative](https://github.com/tencentmalos/WinNative) | default | `e9e5d307` (2026-09-23) | Comparison frontend: Vulkan compositor, FEX UnixLibs toggle, and its own Rust Steam client `wnsteam` (`app/src/main/cpp/wn-steam-client/rust`: CM client, auth, depot download; no JVM). Shallow. | GPL-3.0 |
+| `gfxreconstruct` | [tencentmalos/gfxreconstruct](https://github.com/tencentmalos/gfxreconstruct) (fork of LunarG/gfxreconstruct) | `feature/malos/xrgame-wine-capture` | `3868cd12` (LunarG `dev` `6dc9b65` + Wine capture, 2026-10-05) | API capture and replay for picoXr debug APKs: D3D12/DXGI capture proxies, the Android Vulkan capture layer and the Windows replay tools. See [the API replay spec](../docs/specs/xrgame-native-api-replay-v1.md). Shallow. Its own submodules are **not** initialized. | MIT |
 
 ### Steam client implementations (spec WP1 / WP6)
 
@@ -31,7 +32,7 @@ For XRGame's embedded Proton 11 default, FEX maintenance starts from the same `t
 git submodule update --init references/proton references/FEX references/shadPS4 \
     references/JavaSteam references/Pluvia references/DepotDownloader
 git submodule update --init --depth 1 references/proton-wine references/mesa-turnip references/WinNative \
-    references/SteamKit references/gbe_fork
+    references/SteamKit references/gbe_fork references/gfxreconstruct
 ```
 
 On Windows, mesa needs long paths: `git -C references/mesa-turnip config core.longpaths true`.
@@ -102,3 +103,29 @@ validation payload has no public binary release.
 `7a319f0bedad260f952b0fb367b27f255fd952c5` 加主仓
 `tools/xrgame/patches/gbe-offline-local-ipc.patch` 重建，不把较新维护 gitlink 自动当作
 已验证 runtime。Windows 对照探针及 Alyx SBS 主菜单证据见 VR 验证记录。
+
+## GFXReconstruct (2026-10-05)
+
+`references/gfxreconstruct` is `tencentmalos/gfxreconstruct`, forked from
+`LunarG/gfxreconstruct` at `dev` `6dc9b65a03734070b1c1d3809e483e52dd8cefc9`.
+`feature/malos/xrgame-wine-capture` adds one commit,
+`3868cd12ebe01cb06328bd7526519a97997961b4`. Its diff is byte-identical to
+`tools/xrgame/patches/gfxreconstruct-wine-capture.patch`. Upstream pull requests
+require LunarG's CLA (see its `CONTRIBUTING.md`).
+
+Building needs its `external/` submodules (Vulkan-Headers, SPIRV-Headers, SPIRV-Reflect,
+OpenXR-SDK and OpenXR-Docs). Initialize them with
+`git -C references/gfxreconstruct submodule update --init --depth 1`.
+The 2026-10-04 binaries were built on Windows 11, and every configure step passed
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`:
+
+- **Capture DLLs** (`d3d12.dll`, `dxgi.dll`, `d3d12_capture.dll`): Visual Studio 2022 x64
+  with `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`.
+  - Build with `CL=/utf-8`; under the GBK code page, warning C4819 is treated as an error.
+- **Replay tools** (`gfxrecon-replay`, `gfxrecon-info`, `gfxrecon-convert`): a default `/MD` build.
+  - A static CRT conflicts with the OpenXR loader.
+  - Keep the `D3D12\` folder from the build output, which holds the Agility SDK `D3D12Core.dll`, beside `gfxrecon-replay.exe`.
+- **Android layer**: `android/layer` with NDK 27.3 (`ANDROID_ABI=arm64-v8a`,
+  `ANDROID_PLATFORM=26`, `ANDROID_STL=c++_static`, `-DGFXRECON_ENABLE_OPENXR=OFF`), then stripped.
+
+`tools/xrgame/stage-gfxr.py` stages the capture DLLs and the layer for internal picoXr debug APKs only.

@@ -26,7 +26,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--win-dir', type=Path, required=True)
     parser.add_argument('--android-layer', type=Path, required=True)
-    parser.add_argument('--source', default='LunarG/gfxreconstruct dev 6dc9b65')
+    parser.add_argument('--source', default='tencentmalos/gfxreconstruct feature/malos/xrgame-wine-capture 3868cd12')
     args = parser.parse_args()
     out = ROOT/'build/xrgame-gfxr/xrgame-gfxr'
     if out.exists():

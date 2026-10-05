@@ -42,8 +42,9 @@
 ## 4. GFXReconstruct
 
 - 来源：`LunarG/gfxreconstruct` `dev` @ `6dc9b65`，MIT 许可。
-  计划 fork 为 `tencentmalos/gfxreconstruct`（由用户创建），补丁放在
-  `feature/malos/xrgame-wine-capture` 分支，之后作为 `references/gfxreconstruct` 子模块接入。
+  - 2026-10-05 已 fork 为 `tencentmalos/gfxreconstruct`。
+  - 补丁提交在 `feature/malos/xrgame-wine-capture` 分支，提交号 `3868cd12`。
+  - 以 `references/gfxreconstruct` 子模块接入：浅克隆，不初始化它自己的子模块。
 - 补丁（都是 Wine / Android 宿主适配，不改变录制格式）：
   1. `GFXRECON_DX_RUNTIME_DIR`：proxy 从这个目录加载 `<dll>_ms.dll`（`framework/encode/dx12_dll_initializer.h`）。
      原有的两种方式（exe 旁边放改名的 DLL；从 `System32` 复制到 `%APPDATA%`）在 proxy
@@ -53,8 +54,10 @@
   3. Android 版 `GetEnv`：属性没有设置时，回退读取同名的 `GFXRECON_*` 环境变量（`framework/util/platform.h`）。
      这样可以按容器传设置，不改动全局属性。
 - 构建产物：
-  - Windows x64，MSVC，静态 CRT（`/MT`，不依赖 Wine 的 `msvcp140`）：
-    `d3d12.dll`、`dxgi.dll`、`d3d12_capture.dll`、`gfxrecon-replay.exe` 和 info / convert 工具。
+  - Windows x64，MSVC：
+    - 截获 DLL `d3d12.dll`、`dxgi.dll`、`d3d12_capture.dll` 用静态 CRT（`/MT`），不依赖 Wine 的 `msvcp140`。
+    - `gfxrecon-replay.exe` 和 info / convert 工具只在 Windows 主机上运行，用默认的动态 CRT。
+      用静态 CRT 链接时，会与 OpenXR loader 的 `/MD` 冲突。
   - Android arm64：用 NDK 27.3 编 `libVkLayer_gfxreconstruct.so`。
 
 ## 5. 设备侧接入（仅 picoXr debug）
@@ -75,9 +78,9 @@
     避开 `/sdcard` 的 FUSE 写入开销；
   - 同目录写一份 `capture.json`，记录 APK 版本、catalog SHA、默认组件版本、GFXR 产物 SHA、
     游戏 exe 的路径和大小、设备型号 / build / boot_id、录制模式与参数。
-- **DebugBus 命令：** `api_capture [status|start|stop|list]`。
+- **DebugBus 命令：** `api_capture [status|start|stop] [容器]`。
   `start` 创建触发文件，`stop` 删除它；帧数在启动时就固定了（v1）。
-- **主机脚本**（`tools/xrgame/api-replay/`）：
+- **主机脚本**（`tools/xrgame/api_replay.py`）：
   - 拉取录制文件（`run-as` 读出）；
   - 在 Windows 上回放并生成截图、`frames.txt`、`replay_summary.txt`；
   - 用 RenderDoc 抓取回放中的指定帧，交给 renderdoc MCP 分析。
@@ -90,7 +93,7 @@
 | 图形设置下拉项（仅当 APK 带 GFXR 文件时显示） | `GraphicsTab.kt`，文案在 `strings_xrgame.xml` |
 | DebugBus `api_capture` | `app/src/picoXr/cpp/debugbus.cpp`、`app/src/picoXrDebug/.../DebugBusService.kt` |
 | 打包 | `tools/xrgame/stage-gfxr.py` 生成 `build/xrgame-gfxr/`（gitignore），Gradle 只加到 `picoXrDebug` 的 assets；`tools/xrgame/apk-sources.json` 逐字节比对 |
-| GFXR 补丁 | `tools/xrgame/patches/gfxreconstruct-wine-capture.patch`（fork 建立前的版本化记录） |
+| GFXR 补丁 | 子模块 `references/gfxreconstruct`，即 `tencentmalos/gfxreconstruct` 的 `feature/malos/xrgame-wine-capture` @ `3868cd12`；`tools/xrgame/patches/gfxreconstruct-wine-capture.patch` 记录同一份 diff |
 | 主机工具 | `tools/xrgame/api_replay.py`：`deploy`（不改 APK 的 Vulkan 层部署）、`start/stop/status`、`pull`、`restore`、`replay` |
 | 单元测试 | `app/src/test/java/app/gamenative/xrgame/XrGameApiCaptureTest.kt` |
 

@@ -23,7 +23,7 @@
       "pattern": "assets/xrgame-gfxr/*",
       "kind": "repository-build",
       "license": "MIT (GFXReconstruct, LunarG); picoXr debug validation APK only",
-      "source": "LunarG/gfxreconstruct dev @ 6dc9b65 + tools/xrgame/patches/gfxreconstruct-wine-capture.patch; staged by tools/xrgame/stage-gfxr.py",
+      "source": "tencentmalos/gfxreconstruct feature/malos/xrgame-wine-capture @ 3868cd12 (LunarG/gfxreconstruct dev @ 6dc9b65 + tools/xrgame/patches/gfxreconstruct-wine-capture.patch); staged by tools/xrgame/stage-gfxr.py",
       "repositoryPrefix": "build/xrgame-gfxr/xrgame-gfxr/"
     },
     {
