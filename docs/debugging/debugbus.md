@@ -56,6 +56,7 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 | `present trace N` | 当前会话最多记录 N 帧（0–3600），0 停止；仍通过 `XRGamePresentTrace`/原生 present trace 输出 logcat |
 | `present async_copy 0/1` | 当前会话的 AHB GPU copy 对照开关，初始关闭；在已接收任务归还后切换。查看 `asyncCopyRequested/Active`、`outstandingCopies` 和完成/跳过/失败计数 |
 | `present copy_pipeline 0/1` | 实验性两阶段 copy，默认关闭、仅当前会话；需 `asyncCopyActive=true`。同队列的 GPU barrier 保证 copy→draw 顺序，独立线程等待 copy fence 后才通知 Complete/Idle。查看 `copyPipelineRequested/Active`；模式切换等待已接收任务归还 |
+| `api_capture [status\|start\|stop] [container]` | GFXReconstruct 录制（仅带 `assets/xrgame-gfxr` 的 debug 包）：`start` 在 `files/imagefs/xrgame-captures/<容器>/` 创建触发文件，下一帧开始截取 `XRGAME_API_CAPTURE_FRAMES` 帧；`stop` 删除触发文件；`status` 列出各容器的模式与 `.gfxr` 文件。只反映触发文件状态，不代表录制已经完成；容器缺省为当前 Steam 游戏。见 [API 录制规格](../specs/xrgame-native-api-replay-v1.md) |
 | `instrumentation [off\|coarse\|detail]` | host Litep 桩点层级；默认 coarse，仍需显式开始采集；off 不结束已开始的采集会话 |
 | `profiler_ring [status\|start\|stop\|dump N]` | 每线程 1 MiB 的有界 ring；dump 0 允许零帧启动，等待准确 dump_id 完成后收集 |
 | `profiler_capture [status\|stop\|file MiB seconds]` | 有界 Streaming 文件，完成后恢复此前 ring 状态；保留 PROF 与 sidecar |

@@ -3,6 +3,11 @@
 <resources>
     <string name="xrgame_render_ahead">提前渲染（实验性）</string>
     <string name="xrgame_render_ahead_description">允许下一帧更早开始，可能提高帧率并增加输入延迟。仅适用于 Direct3D 9–11，重启游戏生效。</string>
+    <string name="xrgame_api_capture">图形 API 录制（调试）</string>
+    <string name="xrgame_api_capture_description">通过 DebugBus（api_capture start）触发后，用 GFXReconstruct 录制几帧，供在 PC 上回放。录制期间会明显变慢。重启游戏生效。</string>
+    <string name="xrgame_api_capture_off">关闭</string>
+    <string name="xrgame_api_capture_d3d12">Direct3D 12 调用</string>
+    <string name="xrgame_api_capture_vulkan">转换后的 Vulkan</string>
     <string name="xrgame_notice_title">非官方 Steam 客户端</string>
     <string name="xrgame_notice_message">XRGame Native 不是 Valve 的官方客户端。请只用专用测试账号登录，不要使用你的 Steam 主账号。\n\n游戏安装在 %1$s，重装应用后仍会保留。下一步会请求该目录的“所有文件访问权限”。</string>
     <string name="xrgame_notice_accept">继续</string>

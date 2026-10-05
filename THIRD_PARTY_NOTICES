@@ -516,6 +516,38 @@ this project's GPL-3.0 license; it is used under the terms of Samsung's SDK lice
 agreement. If you redistribute this project, verify your right to redistribute the SDK.
 
 
+GFXReconstruct — internal debug builds only
+-------------------------------------------
+Source: https://github.com/LunarG/gfxreconstruct (dev, 6dc9b65) with the Wine/Android host
+patches in tools/xrgame/patches/gfxreconstruct-wine-capture.patch.
+picoXr debug APKs may bundle its D3D12/DXGI capture proxies (Windows x64) and Vulkan capture
+layer (Android arm64) under assets/xrgame-gfxr/ for API capture and replay validation.
+The notices of GFXReconstruct's own third-party components are in LICENSES/LICENSE_ThirdParty.txt
+of the pinned source.
+
+MIT License
+
+Copyright (c) 2018-2020 LunarG, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+
 Spatial Foundation — internal debug builds only
 -----------------------------------------------
 Source: private https://github.com/tencentmalos/foundation

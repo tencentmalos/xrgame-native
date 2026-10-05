@@ -11,10 +11,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
 import app.gamenative.BuildConfig
+import app.gamenative.xrgame.XrGameApiCapture
 import app.gamenative.xrgame.XrGamePresentSettings
 import app.gamenative.ui.component.settings.SettingsListDropdown
 import app.gamenative.ui.component.settings.SettingsListDropdownSearchable
@@ -475,6 +477,25 @@ private fun DxWrapperSection(state: ContainerConfigState, default: Boolean) {
                 )
             },
         )
+        if (XrGameApiCapture.available(LocalContext.current)) {
+            val captureModes = listOf(
+                stringResource(R.string.xrgame_api_capture_off),
+                stringResource(R.string.xrgame_api_capture_d3d12),
+                stringResource(R.string.xrgame_api_capture_vulkan),
+            )
+            SettingsListDropdown(
+                colors = settingsTileColorsAlt(),
+                title = { Text(stringResource(R.string.xrgame_api_capture)) },
+                subtitle = { Text(stringResource(R.string.xrgame_api_capture_description)) },
+                value = XrGameApiCapture.MODES.indexOf(XrGameApiCapture.mode(config.envVars)),
+                items = captureModes,
+                onItemSelected = {
+                    state.config.value = config.copy(
+                        envVars = XrGameApiCapture.withMode(config.envVars, XrGameApiCapture.MODES[it]),
+                    )
+                },
+            )
+        }
     }
     // Show color correction toggle only for ASurfaceRenderer (SurfaceFlinger)
     if (StringUtils.parseIdentifier(state.displayRenderers.getOrNull(state.displayRendererIndex.value).orEmpty()) == "surfaceflinger") {

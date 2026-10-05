@@ -4098,6 +4098,7 @@ private fun setupXEnvironment(
         envVars.putAll(container.envVars)
         immersiveHooks?.windowsVr?.afterContainerEnvironmentMerged(envVars, container)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configurePresentation(envVars)
+        if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameApiCapture.configure(context, container, envVars)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configureSync(
             File(context.filesDir, "xrgame-sync"), envVars, ProcessHelper.listRunningWineProcesses().isNotEmpty(),
         )
@@ -5640,6 +5641,7 @@ private suspend fun extractDXWrapperFiles(
 ) {
     if (BuildConfig.XRGAME) {
         app.gamenative.xrgame.XrGameRuntime.installGraphics(context, container, contentsManager)
+        app.gamenative.xrgame.XrGameApiCapture.install(context, container)
         return
     }
     val dlls = arrayOf(

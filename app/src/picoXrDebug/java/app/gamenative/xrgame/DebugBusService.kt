@@ -62,7 +62,7 @@ class DebugBusService : Service() {
     /** Called synchronously by Foundation handlers on the bounded query worker, never a GPU lock. */
     @Keep
     fun query(command: String, args: Array<String>): String = try {
-        require(command == "present" || args.isEmpty()) { "unexpected_arguments" }
+        require(command == "present" || command == "api_capture" || args.isEmpty()) { "unexpected_arguments" }
         val result = when (command) {
             "status" -> JSONObject()
                 .put("pid", Process.myPid()).put("uid", Process.myUid())
@@ -76,6 +76,7 @@ class DebugBusService : Service() {
             "runtime" -> runtime()
             "processes" -> processes()
             "present" -> present(args)
+            "api_capture" -> apiCapture(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -143,6 +144,37 @@ class DebugBusService : Service() {
         return JSONObject(extension.diagnosticSnapshot()).put("active", true)
             .put("renderer", view.renderer.javaClass.simpleName)
             .put("scope", "host_present_queue_not_guest_or_gpu_execution")
+    }
+
+    /** The trigger file starts a GFXR trimmed capture at the next frame; removing it stops early. */
+    private fun apiCapture(args: Array<String>): JSONObject {
+        val action = args.firstOrNull() ?: "status"
+        require(action in listOf("status", "start", "stop") && args.size <= 2 &&
+            args.getOrNull(1)?.matches(Regex("[A-Za-z0-9_]{1,64}")) != false) {
+            "usage: api_capture [status|start|stop] [container]"
+        }
+        val root = File(com.winlator.xenvironment.ImageFs.find(this).rootDir, "xrgame-captures")
+        if (action != "status") {
+            val id = args.getOrNull(1) ?: ActiveGameRegistry.get()?.appId?.let { "STEAM_$it" }
+                ?: error("no_active_game")
+            val dir = File(root, id)
+            require(File(dir, "capture.json").isFile) { "capture_not_configured" }
+            val trigger = File(dir, "trigger")
+            if (action == "start") check(trigger.exists() || trigger.createNewFile()) else trigger.delete()
+        }
+        val containers = JSONArray()
+        for (dir in root.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }.take(16)) {
+            val sidecar = readBounded(File(dir, "capture.json"), 16384)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val traces = JSONArray()
+            for (file in dir.listFiles().orEmpty().filter { it.name.endsWith(".gfxr") }.sortedBy { it.name }.takeLast(32)) {
+                traces.put(JSONObject().put("name", file.name).put("bytes", file.length()).put("modifiedMs", file.lastModified()))
+            }
+            containers.put(JSONObject().put("container", dir.name).put("trigger", File(dir, "trigger").exists())
+                .put("mode", sidecar?.optString("mode") ?: JSONObject.NULL)
+                .put("frames", sidecar?.optInt("frames") ?: JSONObject.NULL).put("traces", traces))
+        }
+        return JSONObject().put("action", action).put("containers", containers)
+            .put("scope", "trigger_files_not_capture_completion")
     }
 
     private fun readBounded(file: File, limit: Int): String? = runCatching {

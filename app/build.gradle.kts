@@ -331,6 +331,9 @@ android {
         getByName("debug") {
             assets.srcDir(copyDebugManifest)
         }
+        // GFXReconstruct capture files for private validation, staged by tools/xrgame/stage-gfxr.py.
+        // Without the staged directory the capture setting stays hidden (XrGameApiCapture.available).
+        maybeCreate("picoXrDebug").assets.srcDir(rootProject.file("build/xrgame-gfxr"))
     }
 
     kotlinter {

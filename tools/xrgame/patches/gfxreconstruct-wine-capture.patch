@@ -1,0 +1,107 @@
+diff --git a/framework/encode/capture_settings.cpp b/framework/encode/capture_settings.cpp
+index 98f5951..f5af05b 100644
+--- a/framework/encode/capture_settings.cpp
++++ b/framework/encode/capture_settings.cpp
+@@ -116,6 +116,7 @@ const char kIgnoreFrameBoundaryAndroidEnvVar[]               = GFXRECON_OPTION_S
+ const char kSkipThreadsWithInvalidDataEnvVar[]               = GFXRECON_OPTION_STR(SKIP_THREADS_WITH_INVALID_DATA);
+ const char kCaptureEnvironmentEnvVar[]                       = GFXRECON_OPTION_STR(CAPTURE_ENVIRONMENT);
+ const char kCaptureProcessNameEnvVar[]                       = GFXRECON_OPTION_STR(CAPTURE_PROCESS_NAME);
++const char kCaptureTriggerFileEnvVar[]                       = GFXRECON_OPTION_STR(CAPTURE_TRIGGER_FILE);
+ 
+ #if defined(__ANDROID__)
+ // Android-specific capture options
+@@ -251,6 +252,22 @@ void CaptureSettings::LoadRunTimeEnvVarSettings(CaptureSettings* settings)
+         }
+     }
+ #endif
++
++    // A trigger file works where the controller cannot change the process environment or Android properties, for
++    // example a Windows application running under Wine on Android: capture is active while the file exists.
++    if (settings != nullptr)
++    {
++        const std::string trigger_file = util::platform::GetEnv(kCaptureTriggerFileEnvVar);
++        if (!trigger_file.empty())
++        {
++            settings->trace_settings_.runtime_capture_trigger =
++                util::filepath::Exists(trigger_file) ? RuntimeTriggerState::kEnabled : RuntimeTriggerState::kDisabled;
++            if (settings->trace_settings_.trim_boundary == TrimBoundary::kUnknown)
++            {
++                settings->trace_settings_.trim_boundary = TrimBoundary::kFrames;
++            }
++        }
++    }
+ }
+ 
+ void CaptureSettings::LoadLogSettings(CaptureSettings* settings)
+diff --git a/framework/encode/capture_settings.h b/framework/encode/capture_settings.h
+index 9746340..b3acfcb 100644
+--- a/framework/encode/capture_settings.h
++++ b/framework/encode/capture_settings.h
+@@ -96,6 +96,8 @@ GFXRECON_BEGIN_NAMESPACE(encode)
+ #define CAPTURE_TRIGGER_FRAMES_UPPER                         "CAPTURE_TRIGGER_FRAMES"
+ #define CAPTURE_ANDROID_TRIGGER_LOWER                        "capture_android_trigger"
+ #define CAPTURE_ANDROID_TRIGGER_UPPER                        "CAPTURE_ANDROID_TRIGGER"
++#define CAPTURE_TRIGGER_FILE_LOWER                           "capture_trigger_file"
++#define CAPTURE_TRIGGER_FILE_UPPER                           "CAPTURE_TRIGGER_FILE"
+ #define CAPTURE_ANDROID_DUMP_ASSETS_LOWER                    "capture_android_dump_assets"
+ #define CAPTURE_ANDROID_DUMP_ASSETS_UPPER                    "CAPTURE_ANDROID_DUMP_ASSETS"
+ #define CAPTURE_IUNKNOWN_WRAPPING_LOWER                      "capture_iunknown_wrapping"
+diff --git a/framework/encode/dx12_dll_initializer.h b/framework/encode/dx12_dll_initializer.h
+index d689b41..b171b3d 100644
+--- a/framework/encode/dx12_dll_initializer.h
++++ b/framework/encode/dx12_dll_initializer.h
+@@ -175,6 +175,15 @@ std::string PrepGfxrRuntimesFolder(const std::string& windows_module_root)
+ 
+ std::string SetupCaptureModule(const std::string& dll_name, const std::string& dll_name_renamed)
+ {
++    // A Wine prefix can install the capture proxies in place of system32's runtime DLLs. The real runtimes then
++    // cannot be copied from there, so GFXRECON_DX_RUNTIME_DIR names a directory holding them as <dll>_ms.dll.
++    char  runtime_dir[MAX_PATH] = {};
++    DWORD runtime_dir_length    = GetEnvironmentVariableA("GFXRECON_DX_RUNTIME_DIR", runtime_dir, MAX_PATH);
++    if ((runtime_dir_length > 0) && (runtime_dir_length < MAX_PATH))
++    {
++        return std::string(runtime_dir) + util::filepath::kPathSep + dll_name_renamed;
++    }
++
+     // First assume we are starting with the "legacy" method with renamed capture binaries
+     std::string module_path = dll_name_renamed;
+ 
+diff --git a/framework/util/platform.h b/framework/util/platform.h
+index 9154f40..a9b87cd 100644
+--- a/framework/util/platform.h
++++ b/framework/util/platform.h
+@@ -27,6 +27,7 @@
+ #include "util/alignment_utils.h"
+ #include "util/defines.h"
+ 
++#include <cctype>
+ #include <cstdint>
+ #include <cstdio>
+ #include <cstdlib>
+@@ -443,6 +444,26 @@ inline std::string GetEnv(const char* name)
+             },
+             &env_value);
+     }
++    else
++    {
++        // Native processes started outside the Android app model (for example Wine on Android) cannot be given
++        // per-process properties, so accept the desktop spelling of an unset option from the environment.
++        const char   prefix[]      = "debug.gfxrecon.";
++        const size_t prefix_length = sizeof(prefix) - 1;
++        if (strncmp(name, prefix, prefix_length) == 0)
++        {
++            std::string env_name = "GFXRECON_";
++            for (const char* c = name + prefix_length; *c != '\0'; ++c)
++            {
++                env_name += static_cast<char>(toupper(static_cast<unsigned char>(*c)));
++            }
++            const char* ret_value = getenv(env_name.c_str());
++            if (nullptr != ret_value)
++            {
++                env_value = ret_value;
++            }
++        }
++    }
+ #else
+     const char* ret_value = getenv(name);
+     if (nullptr != ret_value)

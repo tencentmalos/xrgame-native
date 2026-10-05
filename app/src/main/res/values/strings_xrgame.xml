@@ -3,6 +3,11 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="xrgame_render_ahead">Render ahead (experimental)</string>
     <string name="xrgame_render_ahead_description">Let the next frame start earlier. May improve frame rate and increase input latency. Direct3D 9–11 only; restart the game to apply.</string>
+    <string name="xrgame_api_capture">Graphics API capture (debug)</string>
+    <string name="xrgame_api_capture_description">Records a few frames with GFXReconstruct for replay on a PC when triggered through DebugBus (api_capture start). Capturing is slow. Restart the game to apply.</string>
+    <string name="xrgame_api_capture_off">Off</string>
+    <string name="xrgame_api_capture_d3d12">Direct3D 12 calls</string>
+    <string name="xrgame_api_capture_vulkan">Vulkan after translation</string>
     <string name="xrgame_notice_title">Unofficial Steam client</string>
     <string name="xrgame_notice_message">XRGame Native is not an official Valve client. Sign in only with a dedicated test account, never your main Steam account.\n\nGames are installed to %1$s so they survive reinstalling the app. The next screen asks for All files access for that folder.</string>
     <string name="xrgame_notice_accept">Continue</string>
