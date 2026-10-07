@@ -2,8 +2,10 @@
 
 - 规格：[xrgame-native-api-replay-v1](../specs/xrgame-native-api-replay-v1.md)
 - 状态：**D3D12 路径打通**：AYN 上录制，Windows 原生 D3D12 回放出正确画面。
-  选角界面、Vulkan 层模式和 MHW 尚未完成（见 §6）；RenderDoc D3D12 图像导出及 draw 检查已补充验证（见 §5）。
-- 原始日志、截图、录制文件、回放帧都保存在仓库外的 `xrgame-native-evidence/api-replay/run-20261004/`，附 `SHA256SUMS`。
+  RenderDoc D3D12 图像导出及 draw 检查已补充验证（见 §5）。
+  2026-10-05 补录了选角界面（"选择游戏数据"），见 §7。Vulkan 层模式和 MHW 尚未完成（见 §6）。
+- 原始日志、截图、录制文件、回放帧都保存在仓库外的 `xrgame-native-evidence/api-replay/run-20261004/`
+  和 `run-20261005/`，每个目录都附 `SHA256SUMS`。
   录制文件包含游戏资产，截图里有其他 app 的界面，所以都不提交。
 
 ## 1. 身份
@@ -119,11 +121,45 @@ MCP image（原始 RGB 预览和诊断曝光图）；最后 `capture_close` 后 
 
 ## 6. 未完成与限制
 
-- 选角界面没有录到：游戏直接载入了最近的存档。MHW 和 Vulkan 层模式都还没测。
-- AYN 在拉取第 3 份录制之后从 adb 断开，后续设备测试暂停。
-- MHR 容器目前仍保留测试设置：`XRGAME_API_CAPTURE=d3d12`、unassisted、`WINEDEBUG=warn+seh`、DXVK 和 VKD3D 的诊断日志。
+- 10-04 这一轮没录到选角界面，因为游戏直接载入了最近的存档。10-05 已补录，见 §7。MHW 和 Vulkan 层模式都还没测。
+- AYN 在拉取第 3 份录制之后从 adb 断开，后续设备测试暂停，10-05 重新连接。
+- MHR 容器目前（10-05）仍保留测试设置：`XRGAME_API_CAPTURE=d3d12`、unassisted、`WINEDEBUG=warn+seh`、DXVK 和 VKD3D 的诊断日志。
   原始配置备份在 `files/imagefs/xrgame-captures/STEAM_1446780/container.before-api-replay`，
   可以用 `api_replay.py mode --mode off` 或 `restore` 恢复。
 - 设备同时被 citron / shadPS4 的测试占用：内存压力和前台切换会影响结果，22:31 那次已经影响到了 citron 的会话。
 - 这一轮只看了出画面和回放是否成功：只录 3 帧，没有做逐帧对比、长时间运行或性能测量。
   据点场景开着跟踪时，HUD 显示 20.3 FPS，这个数字只作为当时的观察，不代表性能结论。
+
+## 7. 2026-10-05 补录：选角界面（"选择游戏数据"）
+
+证据目录 `xrgame-native-evidence/api-replay/run-20261005/`，`SHA256SUMS` 覆盖 18 个文件。
+
+**环境**
+- APK、设备和 boot_id 都与 §1 相同：APK `7a9942c1…`，安装时间 2026-10-04 22:07:22；boot_id `03c6cbd9-…`，说明设备没有重启过。
+- 用户自己启动 MHR、进入选角界面后停住。进程是 PID 10540（`A:\MonsterHunterRise.exe`），录制结束时已运行 3 分 54 秒，仍在运行。
+- 这次启动的 `gfxrecon.log` 和 `capture.json` 确认了录制设置：d3d12、unassisted、触发后录 3 帧、ZSTD 压缩，GFXR 版本 `1.0.5-dev (xrgame-wine-capture:6dc9b65*+dx12)`。
+
+**触发与拉取**
+- `debugbus.py api_capture status` 返回 `No services match: …DebugBusService`，原因没有查。
+  因此改用 `api_replay.py start`，它通过 run-as 直接创建触发文件，主机时间 17:44:18。
+- 17:44:19 开始写录制文件。17:44:35 第一次轮询时，日志里已有 `Finished recording graphics API capture`。随后用 `stop` 删除了触发文件。
+- 日志里有两条警告：
+  - `Skipping resource data capture for multi-sampled resource(s)`；
+  - `CopyDescriptors was called with a source descriptor that may not have been initialized`。
+- `api_replay.py pull` 会拉取目录里所有的录制文件。为了不重复拉 10-04 的三份，这次逐个文件用 `exec-out run-as cat` 拉取，每个文件的大小都与设备上一致。
+
+**录制与 Windows 回放**
+
+| 项 | 值 |
+|---|---|
+| 录制 | `capture_trim_trigger_20261005T174419.gfxr`，761,704,485 B，SHA-256 `bbb36ad44f19990b72b66fa4f9a18c3532b7e91b7e79402b1fc99af697645114` |
+| `gfxrecon-info` | 共 3 帧，游戏帧号 10393–10395，D3D12 适配器 vendor 0x5143 |
+| 回放 | `gfxrecon-replay` `d45108dc…`：exit 0，用时 7.6 秒；3 帧都是 1280×720，三帧像素哈希各不相同 |
+| 画面对比 | 第 3 帧与触发时的设备截图一致：存档卡片、猎人、随从、篝火和光照都完整。设备截图左上角的性能浮层由 app 在 Android 侧绘制，不在录制里 |
+| RenderDoc | 用 `renderdoc_mcp-0.1.0-local.20261005.d3d12fix1.70d50ee` 自带的 qrenderdoc，通过 `ExecuteAndInject` 注入回放进程，再用 `QueueCapture` 抓第 2 帧 |
+| RenderDoc 抓帧结果 | `mhr_save_select_frame2.rdc`，D3D12，510,371,230 B，SHA-256 `fd1e3664ccf9b9b9cbc48447953d2a40d0c44b6fecf973234c7d73e9aa549342` |
+
+**未做的**
+- 这份 `.rdc` 还没有在 renderdoc MCP 里打开分析。
+- 没有做逐帧像素对比或性能测量。
+- MHR 容器仍保留 §6 所列的测试设置。
