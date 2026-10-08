@@ -71,6 +71,14 @@ target_link_libraries(evshim log dl)
 add_library(gamenative_dns_v4mapped SHARED "${GN}/gamenative_dns_v4mapped.c")
 target_link_libraries(gamenative_dns_v4mapped dl)
 
+add_library(xrgame_wine_exec SHARED wine_exec.c)
+target_compile_options(xrgame_wine_exec PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(xrgame_wine_exec PRIVATE dl)
+
+add_library(xrgame_wine_mapper SHARED wine_mapper.c)
+target_compile_options(xrgame_wine_mapper PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(xrgame_wine_mapper PRIVATE dl)
+
 set(SEVENZX_SOURCES 7zAlloc.c 7zArcIn.c 7zBuf.c 7zBuf2.c 7zCrc.c 7zCrcOpt.c 7zDec.c
     7zStream.c Bcj2.c Bra.c Bra86.c BraIA64.c CpuArch.c Delta.c Lzma2Dec.c LzmaDec.c Ppmd7.c Ppmd7Dec.c)
 list(TRANSFORM SEVENZX_SOURCES PREPEND "${GN}/sevenzx/lzma/")
@@ -106,7 +114,7 @@ else()
     message(FATAL_ERROR "OpenXR_DIR is required for the complete picoXr native build")
 endif()
 
-set(XRGAME_LIBRARIES winlator winlator_11 extras evshim gamenative_dns_v4mapped
+set(XRGAME_LIBRARIES winlator winlator_11 extras evshim gamenative_dns_v4mapped xrgame_wine_exec xrgame_wine_mapper
     vulkan_renderer asurface_renderer ahbimage drawable xconnectorpatch)
 if(XRGAME_BUILD_PROBES)
     foreach(profiled_target vulkan_renderer xrimmersive)

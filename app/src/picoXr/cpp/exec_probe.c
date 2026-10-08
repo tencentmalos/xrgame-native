@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +18,8 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+extern char **environ;
 
 static void quote(const char *value) {
     putchar('"');
@@ -135,6 +138,42 @@ static void exec_case(const char *name, const char *path, bool linker) {
     collect(name, child, start);
 }
 
+static void wine_exec_case(const char *name, const char *path, int api, int expected_error) {
+    uint64_t start = now_ns();
+    pid_t child = bounded_fork();
+    if (child == 0) {
+        char *args[] = {(char *)path, "--child", "", "a b", "中文", NULL};
+        setenv("XRPROBE_ENV", "space 空值", 1);
+        setenv("XRPROBE_ARGV0", path, 1);
+        int error;
+        if (api == 2) {
+            pid_t spawned;
+            error = posix_spawn(&spawned, path, NULL, NULL, args, environ);
+            if (!error) {
+                int status;
+                while (waitpid(spawned, &status, 0) < 0) if (errno != EINTR) _exit(124);
+                // Bionic may report exec failure through the child's status,
+                // which POSIX explicitly permits, instead of spawn's return.
+                if (expected_error && WIFEXITED(status) && WEXITSTATUS(status) == 127) {
+                    printf("{\"event\":\"spawnExecFailure\",\"case\":"); quote(name);
+                    printf(",\"exitCode\":127}\n");
+                    _exit(0);
+                }
+                _exit(WIFEXITED(status) ? WEXITSTATUS(status) : 123);
+            }
+        } else {
+            if (api == 1) execv(path, args);
+            else execve(path, args, environ);
+            error = errno;
+        }
+        printf("{\"event\":\"execFailure\",\"case\":"); quote(name);
+        printf(",\"errno\":%d,\"expectedErrno\":%d}\n", error, expected_error);
+        _exit(expected_error && (error == expected_error ||
+              (expected_error == ENOEXEC && error == EACCES)) ? 0 : 126);
+    }
+    collect(name, child, start);
+}
+
 static void memory_case(const char *name, const char *path, bool file, bool rwx) {
     uint64_t start = now_ns();
     pid_t child = bounded_fork();
@@ -195,6 +234,8 @@ int main(int argc, char **argv) {
         const char *env = getenv("XRPROBE_ENV");
         bool ok = argc == 5 && !strcmp(argv[2], "") && !strcmp(argv[3], "a b") &&
             !strcmp(argv[4], "中文") && env && !strcmp(env, "space 空值");
+        const char *expected_argv0 = getenv("XRPROBE_ARGV0");
+        if (expected_argv0 && strcmp(argv[0], expected_argv0)) ok = false;
         printf("{\"event\":\"child\",\"argv0\":"); quote(argv[0]);
         printf(",\"argumentsAndEnvironmentMatch\":%s}\n", ok ? "true" : "false");
         return ok ? 37 : 38;
@@ -206,6 +247,24 @@ int main(int argc, char **argv) {
     exec_case("packaged_direct", argv[0], false);
     exec_case("private_direct", private_exe, false);
     exec_case("private_linker", private_exe, true);
+    wine_exec_case("wine_execve", private_exe, 0, 0);
+    wine_exec_case("wine_execv", private_exe, 1, 0);
+    wine_exec_case("wine_spawn", private_exe, 2, 0);
+    char missing[PATH_MAX], text_file[PATH_MAX];
+    if (snprintf(missing, sizeof(missing), "%s/missing", argv[1]) >= (int)sizeof(missing) ||
+        snprintf(text_file, sizeof(text_file), "%s/not-elf", argv[1]) >= (int)sizeof(text_file)) return 2;
+    int text_fd = open(text_file, O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0700);
+    if (text_fd < 0) return 3;
+    const char text[] = "not an ELF file\n";
+    if (write(text_fd, text, sizeof(text)) != sizeof(text)) { close(text_fd); return 3; }
+    close(text_fd);
+    wine_exec_case("missing_exec", missing, 0, ENOENT);
+    wine_exec_case("missing_spawn", missing, 2, ENOENT);
+    wine_exec_case("non_elf_exec", text_file, 0, ENOEXEC);
+    wine_exec_case("non_elf_spawn", text_file, 2, ENOEXEC);
+    chmod(private_exe, 0600);
+    wine_exec_case("non_executable", private_exe, 0, EACCES);
+    chmod(private_exe, 0700);
     memory_case("private_file_rx", private_exe, true, false);
     memory_case("private_file_rwx", private_exe, true, true);
     memory_case("anonymous_rw_to_rx", private_exe, false, false);

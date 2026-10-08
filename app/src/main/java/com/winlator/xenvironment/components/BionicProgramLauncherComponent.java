@@ -89,8 +89,13 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     // (PRELOAD_BIONIC_SO). When the container disables libredirect, modern falls
     // back to the W^X-only minimal shim (still required to run Wine on a strict
     // W^X kernel) and legacy preloads nothing. Returns null to preload nothing.
+    // picoXr instead uses its source-built Wine exec adapter, independent of the
+    // upstream redirect preference. It does not change mapping/W^X behavior.
     private String resolveLibredirectPreload(ImageFs imageFs) {
-        if (BuildConfig.XRGAME) return null;
+        if (BuildConfig.XRGAME) {
+            String nativeDir = environment.getContext().getApplicationInfo().nativeLibraryDir;
+            return nativeDir + "/libxrgame_wine_exec.so:" + nativeDir + "/libxrgame_wine_mapper.so";
+        }
         if (container != null && container.isDisableLibredirect()) {
             if (BuildConfig.MODERN_ANDROID) {
                 return imageFs.getLibDir() + "/libredirect-bionic-wx-minimal.so";
@@ -360,6 +365,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (replacePath != null) ld_preload += ":" + replacePath;
 
         envVars.put("LD_PRELOAD", ld_preload);
+        if (BuildConfig.XRGAME) envVars.put("XRGAME_EXEC_ROOT", context.getFilesDir().getPath());
         envVars.put("EVSHIM_WINE", 1);
         envVars.put("EVSHIM_SHM_NAME", "controller-shm0");
 
@@ -777,6 +783,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (replacePath != null) ld_preload += ":" + replacePath;
 
         envVars.put("LD_PRELOAD", ld_preload);
+        if (BuildConfig.XRGAME) envVars.put("XRGAME_EXEC_ROOT", context.getFilesDir().getPath());
 
         String emulator = container.getEmulator();
         if (this.envVars != null) envVars.putAll(this.envVars);

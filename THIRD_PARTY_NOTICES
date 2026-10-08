@@ -13,6 +13,8 @@ native library and asset, including exact hashes for official dependencies.
 | Component | Source/version | License |
 |---|---|---|
 | Android runtime/JNI and XR bridge | Sources in this repository; `tools/build-picoxr-*.sh` | GPL-3.0-or-later; included adrenotools retains MIT |
+| Wine process execution adapter | Clean-room `app/src/picoXr/cpp/wine_exec.c`; no proprietary redirect code | GPL-3.0-or-later |
+| Wine Mapper 5 namespace adapter | `app/src/picoXr/cpp/wine_mapper.c`; loads the device's system SP-HAL helper and Mapper HAL | GPL-3.0-or-later |
 | sevenzx / LZMA SDK | `app/src/main/cpp/sevenzx`, SDK 18.05 | Repository wrapper GPL-3.0-or-later; SDK public domain |
 | PulseAudio Android | [Build source 178f0a3](https://github.com/GameNative/pulseaudio-android/tree/178f0a379af39ae3da8fefdded8b0b1e5a3fda39), PulseAudio 4166ad3 | LGPL-2.1-or-later; includes libsndfile, libltdl and AAudio sink |
 | SBS inertial tracking | shadPS4 `85a39824d9c7062233032a1edc370ad38eb42d20`, guest_vr_sensor / VrGyroAxes | GPL-2.0-or-later |

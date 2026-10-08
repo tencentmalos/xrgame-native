@@ -31,8 +31,11 @@ class ExecProbeActivity : Activity() {
             var child: Process? = null
             try {
                 val executable = File(applicationInfo.nativeLibraryDir, "libxrgame_exec_probe.so")
-                child = ProcessBuilder("/system/bin/linker64", executable.absolutePath, directory.absolutePath)
-                    .redirectErrorStream(true).redirectOutput(File(directory, "probe.jsonl")).start()
+                val builder = ProcessBuilder("/system/bin/linker64", executable.absolutePath, directory.absolutePath)
+                    .redirectErrorStream(true).redirectOutput(File(directory, "probe.jsonl"))
+                builder.environment()["LD_PRELOAD"] = File(applicationInfo.nativeLibraryDir, "libxrgame_wine_exec.so").absolutePath
+                builder.environment()["XRGAME_EXEC_ROOT"] = filesDir.absolutePath
+                child = builder.start()
                 if (child.waitFor(45, TimeUnit.SECONDS)) {
                     metadata.put("exitCode", child.exitValue())
                 } else {

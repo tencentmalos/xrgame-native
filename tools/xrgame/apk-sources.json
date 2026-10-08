@@ -16,7 +16,9 @@
     "lib/arm64-v8a/libmain_hook.so",
     "lib/arm64-v8a/libhook_impl.so",
     "lib/arm64-v8a/libgndownload.so",
-    "assets/opencomposite_x64.dll"
+    "assets/opencomposite_x64.dll",
+    "lib/arm64-v8a/libxrgame_wine_exec.so",
+    "lib/arm64-v8a/libxrgame_wine_mapper.so"
   ],
   "rules": [
     {
@@ -39,6 +41,20 @@
       "license": "Host adapter GPL-3.0-or-later; private Foundation, internal validation only (no public license declared)",
       "source": "app/src/picoXr/cpp/debugbus.cpp; foundation/modules/debugbus @ d487242023e6899f680717d263cf35c7c1f9e6c2",
       "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxrgame_debugbus.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libxrgame_wine_mapper.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/picoXr/cpp/wine_mapper.c",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxrgame_wine_mapper.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libxrgame_wine_exec.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "app/src/picoXr/cpp/wine_exec.c",
+      "artifact": "app/build/generated/jniLibs/buildXrGameNativePicoXrDebug/arm64-v8a/libxrgame_wine_exec.so"
     },
     {
       "pattern": "lib/arm64-v8a/libxrgame_exec_probe.so",
