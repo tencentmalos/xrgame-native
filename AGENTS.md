@@ -2,6 +2,8 @@
 
 ## Project objective and current state
 
+- **Product name (2026-10-07): SteamPSP**, with PSP expanded as **PICO Space Pro**. See [branding](docs/branding/README.md). Keep `com.tencentmalos.xrgamenative`, repository/code identifiers, signing and `/sdcard/XRGameNative` stable so updates retain installed games and app data. Historical validation records retain their original name.
+
 - `xrgame-native` is a fork of [GameNative](https://github.com/utkarshdalal/GameNative) (GPL-3.0). It targets **Windows / Steam games on a Pico XR headset** (internal device "Swan": Android 16, ARM64, 4 KiB pages, Adreno 840v2 / KGSL): a 2D theater mode plus PCVR through an OpenXR bridge.
 - The current execution plan is [docs/specs/xrgame-native-personal-v2.md](docs/specs/xrgame-native-personal-v2.md): personal learning, AYN first, Swan deferred. The old [v1 spec](docs/specs/xrgame-native-v1.md) retains the full historical requirements; the new plan takes precedence for sequencing and current acceptance gates. The route analysis is in [docs/background/](docs/background/).
 - The user requested a macOS build assessment/spec on 2026-09-28: [macOS build v1](docs/specs/xrgame-native-macos-build-v1.md). The user subsequently deferred Mac build work (low ROI) on the same day: keep this assessment for later and prioritize removing Present fence waits from the X request thread/global locks, with MHW A/B validation. Use NDK plus a compatible macOS LLVM-MinGW, not an NDK-only toolchain rewrite. The spec and small compiler probes do not establish full component rebuilds or device acceptance. Present async copy implementation and bounded MHW A/B/A evidence are recorded in [the async Present validation](docs/validation/mhw-present-async-20260928.md); keep it opt-in per container until broader lifecycle/game coverage. The per-game Graphics UI now exposes "Asynchronous presentation (experimental)"; MHR A/B/A and UI/lifecycle evidence are tracked in [the MHR validation](docs/validation/mhr-present-async-20260929.md).
@@ -39,7 +41,7 @@
 
 ## Hard constraints (spec §3)
 
-1. **Own identity.** applicationId `com.tencentmalos.xrgamenative`, app name "XRGame Native", with its own icon and signing; never ship as "GameNative". Never use the PKCS#12 `keystore` committed at the repo root.
+1. **Own identity.** applicationId `com.tencentmalos.xrgamenative`, app name "SteamPSP" (PSP = PICO Space Pro; renamed 2026-10-07), with its own icon and signing; never ship as "GameNative". Never use the PKCS#12 `keystore` committed at the repo root.
    - APKs are distributed to internal devices only. This repo is public, so CI must not upload APKs as Actions artifacts or Release assets. Only runtime components go to this repo's GitHub Releases, each with its license and source pointer (spec C4, §9).
 2. **No package-locked or source-less binaries on the v1 path.** This covers `libredirect*`, `libkgslshim`, the steamhost/eahost/rgschost stubs, `libsteambootstrap`, `libvulkan_wrapper` and `libvortekrenderer`. Replace them or keep them off the path.
    - The exec/W^X shim that replaces `libredirect` must be a **clean-room** implementation. Do not disassemble and port the proprietary binary.

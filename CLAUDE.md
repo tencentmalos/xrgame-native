@@ -4,6 +4,7 @@
 
 - 2026-10-02 普通 Android SBS 已在 AYN 显示 Alyx 双眼主菜单与虚拟手；OpenComposite 新 ABI 与 GBE 离线本地通信已修复。双手固定 pose，按键/摇杆从 Android 注入到 Windows OpenXR action 的验证通过。完整游玩、物理手柄与 Swan 尚未验收。见 [SBS 规划](docs/specs/xrgame-native-vr-sbs-v1.md)及[证据](docs/validation/vr-sbs-20261002.md)。
 - 2026-10-04 图形 API 录制回放：picoXr debug 包用 GFXReconstruct 录制，D3D12 在 API 层录，其他 API 录 DXVK 转换后的 Vulkan；通过 DebugBus `api_capture` 触发，在 Windows 上脱离游戏回放。AYN 上录的 MHR D3D12 帧在 Windows 原生 D3D12 上回放正确。Wine/FEX 下 D3D12 必须用 unassisted 内存跟踪，用 page_guard 会黑屏。回放过程的 RenderDoc capture 能在 renderdoc MCP 中打开；先选定事件、ID 用十进制字符串传入后，图像导出和 draw 检查可用。见 [规格](docs/specs/xrgame-native-api-replay-v1.md)及[证据](docs/validation/api-replay-20261004.md)；Vulkan 层模式、MHW 和其余 MCP D3D12 工具尚未验证。
+- 产品显示名已于 2026-10-07 更名为 **SteamPSP**（PICO Space Pro）；图标与维护说明见 [品牌资源](docs/branding/README.md)。包名、签名、存储目录和代码标识保持稳定，历史记录不改名。
 - Default to Chinese when talking with the user.
 - 修改 Foundation 前必须从当前固定提交切出独立功能分支，不能直接在共享 `main` 上修改（用户补充，2026-09-27）。
 - 用户于 2026-09-27 授权将私有 `tencentmalos/foundation` 作为 `foundation/` 子仓接入 DebugBus，替代原先的禁止引入规则。只选取 DebugBus 模块供内部调试包使用；操作与边界见 `docs/debugging/debugbus.md`，不公开发布 Foundation 源码。

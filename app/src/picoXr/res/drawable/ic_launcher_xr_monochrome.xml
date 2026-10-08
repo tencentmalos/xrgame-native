@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SteamPSP themed icon: real transparent cutouts, not tinted color layers. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Only the exposed orbit arcs are retained; no ring through visor holes. -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M37,38C47,27 63,21 72,28C75,30 77,34 76,38 M71,72C60,82 45,86 36,79C33,77 31,74 32,71" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+        android:pathData="M38,40H70C77,40 81,44 81,51V59C81,66 77,70 70,70H63L58,64H50L45,70H38C31,70 27,66 27,59V51C27,44 31,40 38,40Z M38,45H70C74,45 76,47 76,51V57C76,61 74,63 70,63H63L59,59H49L45,63H38C34,63 32,61 32,57V51C32,47 34,45 38,45Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M40,49H44V53H48V57H44V61H40V57H36V53H40Z M64,50a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0 M69,55a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0 M59,55a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0 M64,60a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0" />
+</vector>

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- XRGame Native identity (spec C1). Every locale that defines app_name in src/main is overridden here. -->
+<!-- SteamPSP identity (spec C1). Every locale that defines app_name in src/main is overridden here. -->
 <resources>
-    <string name="app_name">XRGame Native</string>
-    <string name="login_app_name">XRGame Native</string>
+    <string name="app_name">SteamPSP</string>
+    <string name="login_app_name">SteamPSP</string>
     <string name="steam_verify_files_message">Check installed game files and download missing or changed files. Cloud saves are not restored.</string>
+    <string name="xrgame_notice_message">SteamPSP is not an official Valve client. Sign in only with a dedicated test account, never your main Steam account.\n\nGames are installed to %1$s so they survive reinstalling the app. The next screen asks for All files access for that folder.</string>
 </resources>

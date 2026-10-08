@@ -1,3 +1,17 @@
+# SteamPSP
+
+**Steam games for PICO Space Pro.** A personal GameNative fork for running Windows games on Android, with a 2D theater and an experimental VR bridge.
+
+<img src="docs/branding/steampsp-icon.svg" alt="SteamPSP orbital headset and game controls" width="144" />
+
+PSP means **PICO Space Pro** in this project. Ordinary Android devices are used for current validation; full headset support remains in progress. Formerly **XRGame Native**; updates keep the existing package identity and game directory.
+
+[Current plan](docs/specs/xrgame-native-personal-v2.md) · [System design](docs/architecture/xrgame-native-system-design.md) · [Brand assets](docs/branding/README.md)
+
+The upstream project information is preserved below.
+
+---
+
 <div align="center">
 
 # GameNative

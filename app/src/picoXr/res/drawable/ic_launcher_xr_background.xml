@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- XRGame Native launcher background (spec C1: icon distinct from upstream GameNative). -->
+<!-- SteamPSP: deep blue gaming / space background. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#D9480F"
-        android:pathData="M0,0h108v108h-108z" />
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="20" android:startY="0"
+                android:endX="88" android:endY="108"
+                android:startColor="#153D59" android:endColor="#071523" />
+        </aapt:attr>
+    </path>
 </vector>

@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- XRGame Native launcher foreground: headset silhouette with two lenses, inside the 66dp safe zone. -->
+<!-- SteamPSP: orbital headset + game controls, within the adaptive icon safe zone.
+     Original geometry; editable preview at docs/branding/steampsp-icon.svg. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Side straps -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M22,50H26V58H22Z M82,50H86V58H82Z" />
-    <!-- Visor with nose notch; the lenses are cut out by the even-odd fill -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M36,40H72A10,10 0,0 1,82 50V58A10,10 0,0 1,72 68H62L58,63H50L46,68H36A10,10 0,0 1,26 58V50A10,10 0,0 1,36 40Z M34,53A7,7 0,1 0,48 53A7,7 0,1 0,34 53Z M60,53A7,7 0,1 0,74 53A7,7 0,1 0,60 53Z" />
+    <group android:pivotX="54" android:pivotY="54" android:rotation="-35">
+        <path android:fillColor="#00000000" android:strokeColor="#36D6ED"
+            android:strokeWidth="3.5"
+            android:pathData="M23.5,54a30.5,19 0,1 0,61 0a30.5,19 0,1 0,-61 0" />
+    </group>
+    <!-- The front shell also masks the orbit behind it. -->
+    <path android:fillColor="#F3FAFF"
+        android:pathData="M38,40H70C77,40 81,44 81,51V59C81,66 77,70 70,70H63L58,64H50L45,70H38C31,70 27,66 27,59V51C27,44 31,40 38,40Z" />
+    <path android:fillColor="#102C42"
+        android:pathData="M38,45H70C74,45 76,47 76,51V57C76,61 74,63 70,63H63L59,59H49L45,63H38C34,63 32,61 32,57V51C32,47 34,45 38,45Z" />
+    <path android:fillColor="#36D6ED"
+        android:pathData="M40,49H44V53H48V57H44V61H40V57H36V53H40Z" />
+    <path android:fillColor="#F3FAFF"
+        android:pathData="M64,50a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0 M69,55a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0 M59,55a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0 M64,60a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0" />
 </vector>
