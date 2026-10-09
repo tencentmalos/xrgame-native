@@ -51,7 +51,8 @@
    - Do not enable Steamless.
    - Keep `THIRD_PARTY_NOTICES` complete.
    - Code ported from `references/shadPS4` keeps its `GPL-2.0-or-later` SPDX header.
-   - User authorization (2026-09-27) permits private `tencentmalos/foundation` as the pinned `foundation/` build submodule for diagnostics, including the later-requested Litep startup capture. This supersedes the previous Foundation exclusion. Only DebugBus and the profiler ring dependencies enter internal picoXr debug APKs; audio/input integration remains deferred. Do not copy or publish Foundation source or treat it as GPL-licensed. Public redistribution remains outside this authorization.
+   - User authorization (2026-09-27) permits private `tencentmalos/foundation` as the pinned `foundation/` build submodule for diagnostics, including the later-requested Litep startup capture. This supersedes the previous Foundation exclusion. Do not copy or publish Foundation source or treat it as GPL-licensed. Public redistribution remains outside this authorization.
+   - **Extended 2026-10-09:** the user stated that this project is also study/research, so any Foundation module (for example `upscale`, `foveation`, `fsr1`, `xr` eye gaze, lite-engine) may be built into internal picoXr APKs, not only DebugBus and the profiler ring. The other limits above still apply: link the pinned submodule, do not copy its source into this public repository, and keep APKs internal.
 5. **Evidence.**
    - Every acceptance record includes: APK SHA-256, `.so` Build IDs, component manifest SHA, and device identity (model, build, boot id), PID and duration.
    - Keep failed and aborted captures.

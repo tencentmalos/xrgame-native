@@ -1,5 +1,6 @@
 package app.gamenative.ui.screen.xr.windows
 
+import app.gamenative.xrgame.XrGameProfiler
 import java.io.BufferedWriter
 import java.io.Closeable
 import java.io.InputStream
@@ -7,6 +8,7 @@ import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,6 +25,10 @@ class WindowsVrControlServer(
     private var lastFrameSerial = 0L
     private var firstFrameRecorded = false
     private var trackingSpaceRecorded = false
+    private val interstitials = WindowsVrInterstitials { state ->
+        snapshots.setInterstitial(state?.let(WindowsVrInterstitialRenderer::render))
+        diagnostics.record("interstitial", if (state == null) "hidden" else "shown message=${state.message.isNotEmpty()}")
+    }
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
@@ -48,9 +54,10 @@ class WindowsVrControlServer(
             socket.soTimeout = 120000
             val input = socket.getInputStream()
             val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.US_ASCII), 1024)
+            val lineBuffer = ByteArray(MAX_LINE)
             var greeted = false
             while (running.get()) {
-                val line = readBoundedLine(input) ?: break
+                val line = readBoundedLine(input, lineBuffer) ?: break
                 if (!greeted && line != "HELLO") break
                 val response = respond(line)
                 if (!greeted) greeted = response == "OK GameNativeVR ${config.protocolVersion}"
@@ -67,8 +74,7 @@ class WindowsVrControlServer(
         }
     }
 
-    private fun readBoundedLine(input: InputStream): String? {
-        val bytes = ByteArray(1024)
+    private fun readBoundedLine(input: InputStream, bytes: ByteArray): String? {
         var length = 0
         while (true) {
             val value = input.read()
@@ -88,9 +94,10 @@ class WindowsVrControlServer(
             "GET_VIEWS" -> if (tokens.size == 1) getViews() else "ERROR malformed"
             "GET_BOUNDS" -> if (tokens.size == 1) getBounds() else "ERROR malformed"
             "WAIT_FRAME" -> if (tokens.size == 1) waitFrame() else "ERROR malformed"
-            "FRAME_SYNC" -> if (tokens.size == 1) frameSync() else "ERROR malformed"
+            "FRAME_SYNC" -> frameSyncDelayUs(tokens)?.let(::frameSync) ?: "ERROR malformed"
             "LOCATE_VIEWS" -> if (tokens.size == 1) locateViews() else "ERROR malformed"
             "GET_INPUT" -> getInput(tokens)
+            "MAILBOX" -> mailbox(tokens)
             "HAPTIC" -> haptic(tokens)
             "BEGIN_SESSION" -> if (tokens.size == 1) {
                 diagnostics.record("session", "began")
@@ -116,6 +123,18 @@ class WindowsVrControlServer(
             } else "ERROR unsupported"
             else -> "ERROR unsupported"
         }
+    }
+
+    /** `MAILBOX target=<name> data=<base64 UTF-8 JSON>` from the runtime's xrSendMailboxMessageGNX. */
+    private fun mailbox(tokens: List<String>): String {
+        if (tokens.size != 3) return "ERROR malformed"
+        val target = tokens[1].removePrefix("target=").takeIf { tokens[1].startsWith("target=") }
+            ?: return "ERROR malformed"
+        val data = tokens[2].removePrefix("data=").takeIf { tokens[2].startsWith("data=") }
+            ?: return "ERROR malformed"
+        val json = runCatching { String(Base64.getDecoder().decode(data), Charsets.UTF_8) }.getOrNull()
+            ?: return "ERROR malformed"
+        return if (interstitials.onMailboxMessage(target, json)) "OK" else "OK ignored"
     }
 
     private fun validateSwapchainCreate(tokens: List<String>): String {
@@ -148,10 +167,31 @@ class WindowsVrControlServer(
     private var frameCountStartMs = 0L
 
     private var handlerMs = 0L
+    private val pacing = WindowsVrPacing()
+    private var lastPeriodNs = 0L
 
-    private fun frameSync(): String {
+    /** `FRAME_SYNC`, or `FRAME_SYNC delay_us=<n>` from the bridge's fast path (its own frame-start delay). */
+    private fun frameSyncDelayUs(tokens: List<String>): Long? = when {
+        tokens.size == 1 -> 0L
+        tokens.size == 2 && tokens[1].startsWith("delay_us=") ->
+            tokens[1].substring("delay_us=".length).toLongOrNull()?.takeIf { it >= 0 }
+        else -> null
+    }
+
+    private fun frameSync(delayUs: Long): String {
+        val region = XrGameProfiler.region("vr.control.frame_sync")
+        try {
+            return frameSyncResponse(delayUs)
+        } finally {
+            pacing.onReply(System.nanoTime())
+            region.close()
+        }
+    }
+
+    private fun frameSyncResponse(delayUs: Long): String {
         val handlerStart = System.nanoTime()
-        val frame = waitFrame()
+        pacing.onRequest(handlerStart, delayUs * 1_000)
+        val frame = waitFrame(pacing.step(WindowsVrTuning.pacing, lastPeriodNs))
         if (!frame.startsWith("OK")) return frame
         handlerMs += (System.nanoTime() - handlerStart) / 1_000_000
         val now = System.currentTimeMillis()
@@ -168,14 +208,16 @@ class WindowsVrControlServer(
             handlerMs = 0
             frameCountStartMs = now
         }
-        return frame + "\n" + locateViews() + "\n" +
+        return frame + " jit=${WindowsVrTuning.frameStartTargetUs}\n" + locateViews() + "\n" +
             getInput(listOf("GET_INPUT", "hand=0")) + "\n" +
             getInput(listOf("GET_INPUT", "hand=1"))
     }
 
-    private fun waitFrame(): String {
-        val snapshot = snapshots.waitFrame(lastFrameSerial, 1000) ?: return "ERROR timeout"
+    /** Waits for the [step]-th XR frame after the last one handed out (step 2 = every second frame). */
+    private fun waitFrame(step: Int = 1): String {
+        val snapshot = snapshots.waitFrame(lastFrameSerial + step - 1, 1000) ?: return "ERROR timeout"
         lastFrameSerial = snapshot.timing[0]
+        lastPeriodNs = snapshot.timing[2]
         if (!trackingSpaceRecorded) {
             trackingSpaceRecorded = true
             diagnostics.record(
@@ -193,9 +235,9 @@ class WindowsVrControlServer(
 
     private fun getViews(): String {
         val snapshot = currentSnapshot() ?: return "ERROR unavailable"
-        val scale = config.renderScalePercent.toLong()
-        val scaledWidth = (snapshot.timing[5] * scale / 100) and 1L.inv()
-        val scaledHeight = (snapshot.timing[6] * scale / 100) and 1L.inv()
+        val (scaledWidth, scaledHeight) = XrResolutionRecommendation.eyeSize(
+            snapshot.timing[5], snapshot.timing[6], config.renderScalePercent, config.renderScaleRecommended,
+        )
         return "OK count=2 width=$scaledWidth height=$scaledHeight"
     }
 
@@ -280,10 +322,13 @@ class WindowsVrControlServer(
         if (!running.compareAndSet(true, false)) return
         runCatching { serverSocket?.close() }
         executor.shutdownNow()
+        interstitials.clear()
         diagnostics.record("control", "stopped")
     }
 
     private companion object {
+        // MAILBOX lines carry base64 JSON (the runtime caps messages at 6000 bytes).
+        const val MAX_LINE = 8192
         val viewFields = arrayOf("qx", "qy", "qz", "qw", "px", "py", "pz", "fl", "fr", "fu", "fd")
         val inputFields = arrayOf(
             "tr", "sq", "sx", "sy", "gqx", "gqy", "gqz", "gqw", "gpx", "gpy", "gpz",

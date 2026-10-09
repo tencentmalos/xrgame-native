@@ -3,6 +3,7 @@
 
 #include <EGL/eglext.h>
 #include <GLES2/gl2ext.h>
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <poll.h>
@@ -54,28 +55,57 @@ GLuint compileShader(GLenum type, const char *source) {
 bool WindowsProjectionPresenter::initialize(XrSession session, int64_t format, uint32_t width,
                                             uint32_t height, EGLDisplay display) {
     session_ = session;
-    width_ = width;
-    height_ = height;
+    format_ = format;
+    maxWidth_ = width;
+    maxHeight_ = height;
     display_ = display;
     for (auto &eye : eglImages_) eye.fill(EGL_NO_IMAGE_KHR);
+    if (!createSwapchain(width, height)) return false;
+    glGenFramebuffers(1, &framebuffer_);
+    return ensureProgram();
+}
+
+bool WindowsProjectionPresenter::createSwapchain(uint32_t width, uint32_t height) {
+    if (swapchain_ != XR_NULL_HANDLE) {
+        xrDestroySwapchain(swapchain_);
+        swapchain_ = XR_NULL_HANDLE;
+        images_.clear();
+    }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-    info.format = format;
+    info.format = format_;
     info.sampleCount = 1;
     info.width = width;
     info.height = height;
     info.faceCount = 1;
     info.arraySize = 2;
     info.mipCount = 1;
-    if (XR_FAILED(xrCreateSwapchain(session, &info, &swapchain_))) return false;
+    releasedImageValid_ = false;
+    if (XR_FAILED(xrCreateSwapchain(session_, &info, &swapchain_))) return false;
     uint32_t count = 0;
     if (XR_FAILED(xrEnumerateSwapchainImages(swapchain_, 0, &count, nullptr)) || count == 0) return false;
     images_.assign(count, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
     if (XR_FAILED(xrEnumerateSwapchainImages(
             swapchain_, count, &count,
             reinterpret_cast<XrSwapchainImageBaseHeader *>(images_.data())))) return false;
-    glGenFramebuffers(1, &framebuffer_);
-    return ensureProgram();
+    width_ = width;
+    height_ = height;
+    return true;
+}
+
+// The game renders at the scaled size it received from GET_VIEWS. Size the projection
+// swapchain to that eye rect so the compositor samples the source 1:1 instead of this
+// presenter upscaling every frame to the runtime's full recommendation.
+bool WindowsProjectionPresenter::matchSourceSize(const EyeFrame &source) {
+    const int sourceWidth = source.sourceWidth > 0 ? source.sourceWidth : source.width;
+    const int sourceHeight = source.sourceHeight > 0 ? source.sourceHeight : source.height;
+    if (sourceWidth <= 0 || sourceHeight <= 0) return swapchain_ != XR_NULL_HANDLE;
+    const uint32_t width = std::min(static_cast<uint32_t>(sourceWidth), maxWidth_);
+    const uint32_t height = std::min(static_cast<uint32_t>(sourceHeight), maxHeight_);
+    if (width == width_ && height == height_ && swapchain_ != XR_NULL_HANDLE) return true;
+    LOGI("windows vr projection swapchain %ux%u -> %ux%u (runtime recommendation %ux%u)",
+         width_, height_, width, height, maxWidth_, maxHeight_);
+    return createSwapchain(width, height);
 }
 
 bool WindowsProjectionPresenter::ensureProgram() {
@@ -400,6 +430,7 @@ void WindowsProjectionPresenter::discardFresh(WindowsFrameTransport &transport,
 
 bool WindowsProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space,
                                         XrCompositionLayerProjection *layer) {
+    lastFreshSnap_ = -1;
     if (layer == nullptr || !transport.hasStereoContent()) return false;
     std::array<EyeFrame, 2> frames{};
     std::array<bool, 2> fresh{false, false};
@@ -408,6 +439,30 @@ bool WindowsProjectionPresenter::render(WindowsFrameTransport &transport, XrSpac
             discardFresh(transport, frames, fresh);
             return false;
         }
+    }
+    if (!matchSourceSize(frames[0])) {
+        discardFresh(transport, frames, fresh);
+        return false;
+    }
+    lastRenderReused_ = false;
+    if (!fresh[0] && !fresh[1] && releasedImageValid_ && reuseReleased_) {
+        // No new game frame: the runtime keeps compositing the most recently released image.
+        // Redrawing the same content cost a full-resolution pass per XR frame on a GPU that the
+        // game already saturates.
+        static bool announced = false;
+        if (!announced) {
+            announced = true;
+            LOGI("windows vr projection: resubmitting the released image when no eye is fresh");
+        }
+        lastRenderReused_ = true;
+        xrgame_profile_counter(kXrCounterPresentFresh, 0);
+        xrgame_profile_counter(kXrCounterPresentFidLeft, static_cast<int64_t>(frames[0].frameId));
+        xrgame_profile_counter(kXrCounterPresentFidRight, static_cast<int64_t>(frames[1].frameId));
+        *layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+        layer->space = space;
+        layer->viewCount = 2;
+        layer->views = views_.data();
+        return true;
     }
     XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     uint32_t imageIndex = 0;
@@ -452,8 +507,17 @@ bool WindowsProjectionPresenter::render(WindowsFrameTransport &transport, XrSpac
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     releaseFresh(transport, frames, fresh);
+    for (uint32_t eye = 0; eye < 2; ++eye) {
+        if (fresh[eye] && frames[eye].snapSerial > lastFreshSnap_) lastFreshSnap_ = frames[eye].snapSerial;
+    }
+    // Which game frame each eye shows this XR frame: redraws repeat the fid, and unequal fids
+    // mean the eyes come from different game frames.
+    xrgame_profile_counter(kXrCounterPresentFresh, static_cast<int64_t>(fresh[0]) + fresh[1]);
+    xrgame_profile_counter(kXrCounterPresentFidLeft, static_cast<int64_t>(frames[0].frameId));
+    xrgame_profile_counter(kXrCounterPresentFidRight, static_cast<int64_t>(frames[1].frameId));
     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     if (XR_FAILED(xrReleaseSwapchainImage(swapchain_, &release))) return false;
+    releasedImageValid_ = true;
     *layer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     layer->space = space;
     layer->viewCount = 2;

@@ -10,6 +10,7 @@ import app.gamenative.service.SteamService
 import app.gamenative.service.amazon.AmazonService
 import app.gamenative.service.epic.EpicService
 import app.gamenative.service.gog.GOGService
+import app.gamenative.ui.screen.xr.windows.XrResolutionRecommendation
 import com.winlator.container.Container
 import com.winlator.container.ContainerData
 import com.winlator.container.ContainerManager
@@ -389,6 +390,9 @@ object ContainerUtils {
             sbsTheaterEnabled = container.getExtra("sbsTheaterEnabled", "false").toBoolean(),
             xrPresentationMode = container.getExtra("xrPresentationMode", "sbs"),
             openCompositeEnabled = container.getExtra("windowsVrOpenCompositeEnabled", "false").toBoolean(),
+            xrRenderScaleRecommended = container.getExtra(
+                XrResolutionRecommendation.EXTRA_MODE, XrResolutionRecommendation.MODE_RECOMMENDED,
+            ) == XrResolutionRecommendation.MODE_RECOMMENDED,
         )
     }
 
@@ -582,6 +586,11 @@ object ContainerUtils {
         container.putExtra("sbsTheaterEnabled", containerData.sbsTheaterEnabled.toString())
         container.putExtra("xrPresentationMode", containerData.xrPresentationMode)
         container.putExtra("windowsVrOpenCompositeEnabled", containerData.openCompositeEnabled.toString())
+        container.putExtra(
+            XrResolutionRecommendation.EXTRA_MODE,
+            if (containerData.xrRenderScaleRecommended) XrResolutionRecommendation.MODE_RECOMMENDED
+            else XrResolutionRecommendation.MODE_CUSTOM,
+        )
         try {
             container.language = containerData.language
         } catch (e: Exception) {

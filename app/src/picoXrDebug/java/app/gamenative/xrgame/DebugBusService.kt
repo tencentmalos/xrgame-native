@@ -11,6 +11,7 @@ import androidx.annotation.Keep
 import app.gamenative.BuildConfig
 import app.gamenative.PluviaApp
 import app.gamenative.service.ActiveGameRegistry
+import app.gamenative.ui.screen.xr.windows.WindowsVrTuning
 import com.winlator.xserver.extensions.PresentExtension
 import org.json.JSONArray
 import org.json.JSONObject
@@ -62,7 +63,7 @@ class DebugBusService : Service() {
     /** Called synchronously by Foundation handlers on the bounded query worker, never a GPU lock. */
     @Keep
     fun query(command: String, args: Array<String>): String = try {
-        require(command == "present" || command == "api_capture" || args.isEmpty()) { "unexpected_arguments" }
+        require(command in setOf("present", "api_capture", "vr_tuning") || args.isEmpty()) { "unexpected_arguments" }
         val result = when (command) {
             "status" -> JSONObject()
                 .put("pid", Process.myPid()).put("uid", Process.myUid())
@@ -77,6 +78,7 @@ class DebugBusService : Service() {
             "processes" -> processes()
             "present" -> present(args)
             "api_capture" -> apiCapture(args)
+            "vr_tuning" -> vrTuning(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -85,6 +87,15 @@ class DebugBusService : Service() {
     } catch (e: Exception) {
         // Never return exception messages containing paths, launch arguments or account data.
         JSONObject().put("error", "provider_failed").put("type", e.javaClass.simpleName).toString()
+    }
+
+    /** Windows VR pacing/latency experiments; no arguments reports the current values. */
+    private fun vrTuning(args: Array<String>): JSONObject {
+        WindowsVrTuning.apply(args.toList())?.let { throw IllegalArgumentException(it) }
+        return JSONObject()
+            .put("pacing", WindowsVrTuning.pacing.name.lowercase())
+            .put("startTargetUs", WindowsVrTuning.frameStartTargetUs)
+            .put("predict", WindowsVrTuning.extendedPrediction)
     }
 
     private fun runtime(): JSONObject {

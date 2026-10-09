@@ -1,0 +1,60 @@
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -788,6 +788,44 @@
+     if (next > str) add_device_extension( str, next - str, extensions );
+ }
+ 
++/* xrgame: the in-process OpenXR bridge shares the game's host device and renders
++ * eyes straight into AHardwareBuffers.  Win32 applications cannot see Android
++ * extensions, so enable them on the host device only, when requested through
++ * WINE_VK_HOST_AHB=1 and supported by the driver. */
++static uint32_t append_host_ahb_extensions( struct vulkan_physical_device *physical_device,
++                                            const char **extensions )
++{
++    static const char *const names[] =
++    {
++        "VK_ANDROID_external_memory_android_hardware_buffer",
++        "VK_EXT_queue_family_foreign",
++    };
++    struct vulkan_instance *instance = physical_device->instance;
++    VkExtensionProperties *properties;
++    uint32_t count = 0, found = 0, i, j;
++    const char *env = getenv( "WINE_VK_HOST_AHB" );
++
++    if (!env || *env != '1') return 0;
++    if (instance->p_vkEnumerateDeviceExtensionProperties( physical_device->host.physical_device, NULL, &count, NULL ) || !count)
++        return 0;
++    if (!(properties = calloc( count, sizeof(*properties) ))) return 0;
++    if (!instance->p_vkEnumerateDeviceExtensionProperties( physical_device->host.physical_device, NULL, &count, properties ))
++    {
++        for (i = 0; i < ARRAY_SIZE(names); i++)
++            for (j = 0; j < count; j++)
++                if (!strcmp( properties[j].extensionName, names[i] )) { found |= 1u << i; break; }
++    }
++    free( properties );
++    if (found != (1u << ARRAY_SIZE(names)) - 1)
++    {
++        WARN( "Host device lacks AHardwareBuffer interop extensions (mask %#x).\n", found );
++        return 0;
++    }
++    for (i = 0; i < ARRAY_SIZE(names); i++) extensions[i] = names[i];
++    TRACE( "Enabling host AHardwareBuffer interop extensions\n" );
++    return ARRAY_SIZE(names);
++}
++
+ static VkResult convert_device_create_info( struct vulkan_physical_device *physical_device, VkDeviceCreateInfo *info,
+                                             struct mempool *pool, struct vulkan_device *device )
+ {
+@@ -843,10 +881,11 @@
+         physical_device->extensions.has_VK_EXT_swapchain_maintenance1)
+         device->extensions.has_VK_EXT_swapchain_maintenance1 = 1;
+ 
+-    if (!(extensions = mem_alloc( pool, sizeof(device->extensions) * 8 * sizeof(*extensions) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
++    if (!(extensions = mem_alloc( pool, (sizeof(device->extensions) * 8 + 2) * sizeof(*extensions) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+ #define USE_VK_EXT(x) if (device->extensions.has_ ## x) extensions[count++] = #x;
+     ALL_VK_DEVICE_EXTS
+ #undef USE_VK_EXT
++    count += append_host_ahb_extensions( physical_device, extensions + count );
+ 
+     TRACE( "Enabling %u host device extensions\n", count );
+     for (const char **extension = extensions, **end = extension + count; extension < end; extension++)

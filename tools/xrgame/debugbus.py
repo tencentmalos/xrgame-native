@@ -33,12 +33,12 @@ def main():
                 sys.stderr.write(result.stdout + result.stderr)
                 return 1
         request = args.request or ['help']
-        # adb shell joins remote arguments. The protocol only accepts identifiers and integers;
-        # reject shell metacharacters rather than passing arbitrary code through adb.
-        if len(request) > 5 or any(len(s) > 64 or not s or
-                                 any(not (c.isascii() and (c.isalnum() or c in '._-')) for c in s)
+        # adb shell joins remote arguments. The protocol only accepts identifiers, integers and
+        # key=value pairs; reject shell metacharacters rather than passing arbitrary code through adb.
+        if len(request) > 5 or any(len(s) > 64 or not s or s[0] == '=' or
+                                 any(not (c.isascii() and (c.isalnum() or c in '._-=')) for c in s)
                                  for s in request):
-            parser.error('Use command identifiers or integer arguments (up to 5 tokens, 64 characters each)')
+            parser.error('Use command identifiers, integers or key=value arguments (up to 5 tokens, 64 characters each)')
         result = subprocess.run(adb + ['dumpsys', 'activity', 'service', COMPONENT, *request],
                                 capture_output=True, text=True, check=True, timeout=10)
         lines = result.stdout.splitlines()

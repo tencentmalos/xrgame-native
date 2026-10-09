@@ -19,6 +19,7 @@ import app.gamenative.BuildConfig
 import app.gamenative.xrgame.XrGameApiCapture
 import app.gamenative.xrgame.XrGamePresentSettings
 import app.gamenative.ui.component.settings.SettingsListDropdown
+import app.gamenative.ui.screen.xr.windows.XrResolutionRecommendation
 import app.gamenative.ui.component.settings.SettingsListDropdownSearchable
 import app.gamenative.ui.component.settings.SettingsMultiListDropdown
 import app.gamenative.ui.theme.settingsTileColors
@@ -208,17 +209,38 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                         },
                     )
                 }
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(text = stringResource(R.string.xr_render_scale))
-                    Slider(
-                        value = config.xrRenderScale.toFloat(),
-                        onValueChange = { newValue ->
-                            val stepped = ((newValue.roundToInt() + 2) / 5 * 5).coerceIn(25, 100)
-                            state.config.value = config.copy(xrRenderScale = stepped)
+                val recommendedScale = BuildConfig.XRGAME && config.xrRenderScaleRecommended
+                if (BuildConfig.XRGAME) {
+                    SettingsSwitch(
+                        colors = settingsTileColorsAlt(),
+                        title = { Text(text = stringResource(R.string.xrgame_vr_resolution_recommended)) },
+                        subtitle = {
+                            Text(
+                                text = stringResource(
+                                    R.string.xrgame_vr_resolution_recommended_desc,
+                                    XrResolutionRecommendation.RECOMMENDED_PERCENT,
+                                ),
+                            )
                         },
-                        valueRange = 25f..100f,
+                        state = config.xrRenderScaleRecommended,
+                        onCheckedChange = { checked ->
+                            state.config.value = config.copy(xrRenderScaleRecommended = checked)
+                        },
                     )
-                    Text(text = "${config.xrRenderScale}%")
+                }
+                if (!recommendedScale) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(text = stringResource(R.string.xr_render_scale))
+                        Slider(
+                            value = config.xrRenderScale.toFloat(),
+                            onValueChange = { newValue ->
+                                val stepped = ((newValue.roundToInt() + 2) / 5 * 5).coerceIn(25, 100)
+                                state.config.value = config.copy(xrRenderScale = stepped)
+                            },
+                            valueRange = 25f..100f,
+                        )
+                        Text(text = "${config.xrRenderScale}%")
+                    }
                 }
                 if (config.windowsVrEnabled) {
                     SettingsSwitch(

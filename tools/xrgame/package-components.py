@@ -55,7 +55,7 @@ PINS = {
     'FEX': '3f1f30a060b633980ed8e7674eb8d8997457edad',
     'dxvk': 'a6764047e587178283fcde4073ae6e1410af594f',
     'vkd3d-proton': '212991fc2c266bc0d59f4c4ce8f80f7126508d71',
-    'mesa-turnip': 'd15b7c019c8daa17e80051258077d9b2d5146a2b',
+    'mesa-turnip': '25ef1647a28d6983bd95f8ef0cc84ea74dd9cc32',
 }
 
 
@@ -165,7 +165,7 @@ def main():
             license_file(wine, 'proton-wine', name)
         license_file(wine, 'ntsync-android', 'LICENSE')
         shutil.copy2(project / 'LICENSE', wine / 'LICENSE-XR-bridge-GPL-3.0')
-        finish(wine, version + '-xrg3.wcp', 'proton', version,
+        finish(wine, version + '-xrg5.wcp', 'proton', version,
                'LGPL-2.1-or-later AND LGPL-3.0-only AND GPL-3.0-or-later', ['proton-wine', 'ntsync-android'])
 
         fex = work / 'fex'
@@ -240,7 +240,7 @@ def main():
         shutil.copy2(root / 'output/xcb/LICENSE', turnip / 'LICENSE-libxcb-MIT')
         xcb_sources = {name: digest(root / 'downloads' / name) for name in
                        ['libxcb-1.17.0.tar.xz', 'xcb-proto-1.17.0.tar.xz']}
-        version = 'turnip-d15b7c0-xrg5'
+        version = 'turnip-25ef164-xrg10'
         write_json(turnip / 'meta.json', {'schemaVersion': 1, 'name': version, 'author': 'Mesa contributors',
                    'description': 'XRGame KGSL, Android and X11 WSI source build', 'vendor': 'Mesa',
                    'driverVersion': version, 'minApi': 33, 'libraryName': 'libvulkan_freedreno.so'})

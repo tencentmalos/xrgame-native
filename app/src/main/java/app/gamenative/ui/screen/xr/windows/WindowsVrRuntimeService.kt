@@ -82,6 +82,11 @@ class WindowsVrRuntimeService(
             // Our runtime owns image sharing. DXVK's SteamVR extension discovery can
             // re-enter OpenComposite while its temporary DXGI device is being created.
             env.put("DXVK_NO_VR", "1")
+            // The unix bridge renders eyes straight into AHardwareBuffers on the game's
+            // Turnip device. Wine enables the AHB extension on the host device; our
+            // Turnip also exposes its commands when an older Wine did not.
+            env.put("WINE_VK_HOST_AHB", "1")
+            env.put("TU_EXPOSE_AHB_ENTRYPOINTS", "1")
         }
         env.put("GAMENATIVE_XR", "1")
         env.put("GAMENATIVE_XR_LOG", "1")

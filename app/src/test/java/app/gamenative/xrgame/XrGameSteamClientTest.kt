@@ -31,6 +31,18 @@ class XrGameSteamClientTest {
         }
     }
 
+    @Test fun clientLanguageFollowsTheContainerAndRejectsMalformedNames() {
+        val id = 0x0110000100000000L or 12345L
+        assertTrue(XrGameSteamClient.userConfiguration(id).contains("\nlanguage=english\n"))
+        assertTrue(XrGameSteamClient.userConfiguration(id, "schinese").contains("\nlanguage=schinese\n"))
+        assertTrue(XrGameSteamClient.userConfiguration(id, "TChinese").contains("\nlanguage=tchinese\n"))
+        for (bad in listOf("", "x", "schinese\n[user::saves]", "s-chinese", null)) {
+            val config = XrGameSteamClient.userConfiguration(id, bad)
+            assertTrue(config.contains("\nlanguage=english\n"))
+            assertEquals(1, Regex("\\[user::saves]").findAll(config).count())
+        }
+    }
+
     @Test fun absentOrInvalidIdentityCannotSilentlyCreateAnUnrelatedSaveProfile() {
         for (id in listOf(null, 0L, -1L, 12345L, 0x0110000100000000L)) {
             assertThrows(IllegalStateException::class.java) { XrGameSteamClient.userConfiguration(id) }

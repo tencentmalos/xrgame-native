@@ -67,9 +67,13 @@ collection remain open. The source indexes and build record retain
 
 ## Android X11 presentation
 
-`build-turnip.sh` applies `patches/turnip-x11-ahb.patch` to the pinned shadPS4
-Mesa baseline in a build directory keyed by the patch hash. The private xrg5
-package includes source-built XCB DRI3/Present dependencies as well as the ICD.
+`build-turnip.sh` applies `patches/turnip-x11-ahb.patch` and
+`patches/turnip-ahb-entrypoints.patch` to the pinned `malos/main` of
+`tencentmalos/mesa-mirror` (the shadPS4 and Azahar Swan XR lines merged onto the
+earlier FDM2 baseline), in a build directory keyed by the pin and patch hashes.
+The second patch lets `TU_EXPOSE_AHB_ENTRYPOINTS=1` return the AHB commands on a
+device Wine created, so the OpenXR bridge can render into AHardwareBuffers. The
+private packages include source-built XCB DRI3/Present dependencies as well as the ICD.
 The app verifies these files before deploying them into imagefs. Do not test a
 new ICD alone against an older base image without checking its dynamic dependencies.
 
@@ -247,6 +251,14 @@ path changes the production catalog or closes corresponding-source publication.
 `fixtures/restart-probe.c` exercises bootstrap/TLS order, explicit self-restart,
 client lifetime, unrelated-child exclusion, normal exit and an error exit.
 See [`mhw-restart-20260927.md`](../../docs/validation/mhw-restart-20260927.md).
+
+`wine-merge-small-views.patch` also maps the unused rest of the last 64 KiB granule of a
+small private allocation that Wine placed, with the allocation's protection, so adjacent
+views merge into one kernel VMA. Without it each small `VirtualAlloc` is its own VMA, and
+Half-Life: Alyx exceeded Swan's `vm.max_map_count` of 65530 while loading its first level.
+The tail is released with its view; `WINE_MERGE_SMALL_VIEWS=0` in a container disables it.
+The private validation archive `proton-11.0-2-arm64ec-xrg5` derives from xrg4 with only
+`ntdll.so` rebuilt; device validation is pending.
 
 ## Publication check
 

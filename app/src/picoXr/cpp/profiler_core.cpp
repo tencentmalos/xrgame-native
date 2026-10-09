@@ -34,9 +34,22 @@ void xrgameProfileCounter(int id, int64_t value) noexcept {
     // Static names only: no paths, Steam tokens, per-file names or string interning per sample.
     static constexpr const char* names[] = {"steam.download.depot_bytes_done", "steam.download.depot_bytes_total",
         "steam.download.depots_done", "steam.download.depots_total", "steam.download.verifying",
-        "steam.download.depot_id", "steam.download.run_sequence"};
-    if (xrgameProfileEnabled() && id >= 0 && id < 7) LiteTrace::counter(names[id], value);
+        "steam.download.depot_id", "steam.download.run_sequence",
+        // XrProfileCounter, in enum order. Times are CLOCK_MONOTONIC ns from the Wine game process.
+        "vr.g.fid", "vr.g.snap", "vr.g.frame_sync.begin_ns", "vr.g.frame_sync.end_ns",
+        "vr.g.swapchain_wait.l.begin_ns", "vr.g.swapchain_wait.l.end_ns",
+        "vr.g.swapchain_wait.r.begin_ns", "vr.g.swapchain_wait.r.end_ns",
+        "vr.g.endframe.drain.begin_ns", "vr.g.endframe.drain.lock_ns", "vr.g.endframe.drain.end_ns",
+        "vr.g.endframe.submit.begin_ns", "vr.g.endframe.submit.end_ns",
+        "vr.s.fence_wait.begin_ns", "vr.s.fence_wait.end_ns", "vr.s.send.begin_ns", "vr.s.send.end_ns",
+        "vr.android.serial", "vr.present.fresh", "vr.present.fid.l", "vr.present.fid.r",
+        // Contract v1.1: start of the frame-start delay; prediction lead in thousandths of an XR period.
+        "vr.g.frame_sync.delay_begin_ns", "vr.predict.lead_milli"};
+    static_assert(sizeof(names) / sizeof(names[0]) == kXrCounterEnd, "counter names follow XrProfileCounter");
+    if (xrgameProfileEnabled() && id >= 0 && id < kXrCounterEnd) LiteTrace::counter(names[id], value);
 }
+
+void xrgame_profile_counter(int id, int64_t value) noexcept { xrgameProfileCounter(id, value); }
 
 std::string xrgameProfileCommand(const std::vector<std::string>& args) {
     if (args.size() > 1 || (!args.empty() && args[0] != "off" && args[0] != "coarse" && args[0] != "detail"))

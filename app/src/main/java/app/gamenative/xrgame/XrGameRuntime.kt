@@ -23,6 +23,9 @@ import java.util.UUID
 object XrGameRuntime {
     private val installMutex = Mutex()
 
+    /** Turnip builds carrying patches/turnip-x11-ahb.patch (Android X11 AHB presentation). */
+    private val X11_AHB_TURNIP = setOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10")
+
     fun configure(container: Container) {
         container.containerVariant = Container.BIONIC
         container.wineVersion = XrGameRuntimeVersions.WINE
@@ -181,7 +184,7 @@ object XrGameRuntime {
 
     /** Apply after user environment merging: this driver has no X11 DRM presentation path. */
     fun configurePresentation(env: EnvVars, turnipVersion: String = XrGameRuntimeVersions.TURNIP) {
-        if (turnipVersion == "turnip-d15b7c0-xrg5") {
+        if (turnipVersion in X11_AHB_TURNIP) {
             env.put("XRGAME_X11_AHB", "1")
             env.remove("MESA_VK_WSI_DEBUG")
             return

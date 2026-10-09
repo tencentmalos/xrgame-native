@@ -245,6 +245,8 @@ GN_IMPORT void GN_STDCALL OutputDebugStringA(const char* text);
 GN_IMPORT void* GN_STDCALL LoadLibraryA(const char* name);
 GN_IMPORT void* GN_STDCALL GetProcAddress(void* module, const char* name);
 GN_IMPORT unsigned long GN_STDCALL GetLastError(void);
+GN_IMPORT int GN_STDCALL QueryPerformanceCounter(long long* count);
+GN_IMPORT int GN_STDCALL QueryPerformanceFrequency(long long* frequency);
 GN_IMPORT long GN_STDCALL CreateDXGIFactory(const void* iid, void** factory);
 
 typedef int gn_ntstatus;
@@ -965,12 +967,14 @@ static int gn_dxvk_prepare_released_images(void) {
     return 1;
 }
 
-static void gn_dxvk_flush_and_lock(void) {
+/* *qpc_lock: QPC ticks between the flush and the lock, for the stage timeline. */
+static void gn_dxvk_flush_and_lock(long long* qpc_lock) {
     GnDxvkVoidCall flush =
         (GnDxvkVoidCall)gn_com_method(gn_dxvk_interop, 6);
     GnDxvkVoidCall lock =
         (GnDxvkVoidCall)gn_com_method(gn_dxvk_interop, 7);
     if (flush) flush(gn_dxvk_interop);
+    QueryPerformanceCounter(qpc_lock);
     if (lock) lock(gn_dxvk_interop);
 }
 
@@ -1239,9 +1243,11 @@ static int gn_bridge_call_locked(const char* command, char* response, gn_size re
 
 static int gn_unix_control_state; /* 0 untried, 1 works, -1 unavailable */
 
+/* Callers hold gn_lock. args is static: at 10 KB it would need stack probes (__chkstk), which
+ * this CRT-free DLL does not link. */
 static int gn_unix_control_transact(const char* command, gn_uint32 lines,
                                     char* response, gn_size response_size) {
-    struct gn_unix_control_transact_args args;
+    static struct gn_unix_control_transact_args args;
     gn_size len = 0;
     if (gn_unix_control_state < 0) return 0;
     while (command[len] && len + 1 < sizeof(args.request)) {
@@ -1288,18 +1294,21 @@ static int gn_bridge_read_line_locked(char* out, gn_size out_size) {
 }
 
 
-static int gn_bridge_call(const char* command, char* response, gn_size response_size) {
-    int ok;
+/* Caller holds gn_lock. */
+static int gn_bridge_call_held(const char* command, char* response, gn_size response_size) {
     char local[1024];
-    gn_lock_acquire();
     if (gn_unix_control_state >= 0 &&
         gn_unix_control_transact(command, 1, local, sizeof(local))) {
         if (response && response_size) gn_copy(response, response_size, local);
-        ok = gn_starts_with(local, "OK");
-        gn_lock_release();
-        return ok;
+        return gn_starts_with(local, "OK");
     }
-    ok = gn_bridge_call_locked(command, response, response_size);
+    return gn_bridge_call_locked(command, response, response_size);
+}
+
+static int gn_bridge_call(const char* command, char* response, gn_size response_size) {
+    int ok;
+    gn_lock_acquire();
+    ok = gn_bridge_call_held(command, response, response_size);
     gn_lock_release();
     return ok;
 }
@@ -1342,7 +1351,9 @@ static int gn_bridge_frame_sync(char* frame_out, gn_size frame_size) {
                 return 1;
             }
             gn_copy(frame_out, frame_size, first);
-            if (gn_starts_with(first, "ERROR")) {
+            /* Only an unknown command means an old bridge. "ERROR timeout" is transient: the
+             * Android session stops while the headset's home menu is open. */
+            if (gn_starts_with(first, "ERROR unsupported")) {
                 gn_frame_sync_supported = 0;
                 gn_log_line("FRAME_SYNC unsupported by bridge; using separate per-frame requests");
             }
@@ -1356,7 +1367,7 @@ static int gn_bridge_frame_sync(char* frame_out, gn_size frame_size) {
             gn_bridge_read_line_locked(gn_cached_views, sizeof(gn_cached_views)) &&
             gn_bridge_read_line_locked(gn_cached_input[0], sizeof(gn_cached_input[0])) &&
             gn_bridge_read_line_locked(gn_cached_input[1], sizeof(gn_cached_input[1]));
-    } else if (gn_starts_with(frame_out, "ERROR")) {
+    } else if (gn_starts_with(frame_out, "ERROR unsupported")) {
         gn_frame_sync_supported = 0;
         gn_log_line("FRAME_SYNC unsupported by bridge; using separate per-frame requests");
     }
@@ -2472,11 +2483,22 @@ static XrResult XRAPI_CALL gn_xrEndFrame(XrSession session, const XrFrameEndInfo
     }
 
     int submission_failed = 0;
+    /* Raw QPC ticks for the stage timeline; the unixlib converts them (no 64-bit division
+     * here, the x86 build has no libgcc). */
+    long long qpc_frequency = 0, qpc_drain_begin = 0, qpc_drain_lock = 0, qpc_drain_end = 0;
+    if (!QueryPerformanceFrequency(&qpc_frequency) ||
+        !QueryPerformanceCounter(&qpc_drain_begin))
+        qpc_frequency = 0;
     if (gn_gfx_api == GN_GFX_D3D11) {
         if (!gn_dxvk_prepare_released_images()) return XR_ERROR_RUNTIME_FAILURE;
-        gn_dxvk_flush_and_lock();
+        gn_dxvk_flush_and_lock(&qpc_drain_lock);
     }
-    if (gn_gfx_api == GN_GFX_D3D12) gn_vkd3d_lock();
+    if (gn_gfx_api == GN_GFX_D3D12) {
+        QueryPerformanceCounter(&qpc_drain_lock);
+        gn_vkd3d_lock();
+    }
+    QueryPerformanceCounter(&qpc_drain_end);
+    if (gn_gfx_api != GN_GFX_D3D11 && gn_gfx_api != GN_GFX_D3D12) qpc_frequency = 0;
     for (gn_uint32 layer_index = 0;
          layer_index < frameEndInfo->layerCount; ++layer_index) {
         const XrCompositionLayerBaseHeader* base =
@@ -2549,6 +2571,17 @@ static XrResult XRAPI_CALL gn_xrEndFrame(XrSession session, const XrFrameEndInfo
             }
         }
         if (!projection_ready) continue;
+        args.qpc_frequency = qpc_frequency;
+        args.qpc_drain_begin = qpc_drain_begin;
+        args.qpc_drain_lock = qpc_drain_lock;
+        args.qpc_drain_end = qpc_drain_end;
+        {
+            long long qpc_call = 0;
+            if (!QueryPerformanceCounter(&qpc_call)) args.qpc_frequency = 0;
+            args.qpc_call = qpc_call;
+        }
+        /* Only the first projection layer paid for the drain. */
+        qpc_frequency = 0;
         args.result = GN_UNIX_ERROR_UNAVAILABLE;
         if (!gn_unix_call(GN_UNIX_SUBMIT_STEREO, &args) ||
             args.result != GN_UNIX_SUCCESS) {
@@ -3489,6 +3522,65 @@ static XrResult XRAPI_CALL gn_xrStopHapticFeedback(XrSession session, const XrHa
 
 
 
+/* Vendor function for our OpenComposite build: SteamVR mailbox messages that SteamVR itself
+ * would render, such as Half-Life: Alyx's "hlvr/interstitials" loading screen. The app draws
+ * them in the headset. The JSON is base64 so UTF-8 text and newlines fit the line protocol. */
+#define GN_MAILBOX_MESSAGE_MAX 6000u
+
+/* Returns 0 when out is too small. */
+static int gn_base64(char* out, gn_size out_size, const unsigned char* data, gn_size size) {
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    gn_size n = 0;
+    for (gn_size i = 0; i < size; i += 3) {
+        gn_uint32 chunk = (gn_uint32)data[i] << 16;
+        if (i + 1 < size) chunk |= (gn_uint32)data[i + 1] << 8;
+        if (i + 2 < size) chunk |= data[i + 2];
+        if (n + 4 >= out_size) return 0;
+        out[n++] = alphabet[(chunk >> 18) & 63];
+        out[n++] = alphabet[(chunk >> 12) & 63];
+        out[n++] = i + 1 < size ? alphabet[(chunk >> 6) & 63] : '=';
+        out[n++] = i + 2 < size ? alphabet[chunk & 63] : '=';
+    }
+    if (n >= out_size) return 0;
+    out[n] = 0;
+    return 1;
+}
+
+static XrResult XRAPI_CALL gn_xrSendMailboxMessageGNX(XrInstance instance, const char* mailbox,
+                                                       const char* message) {
+    /* Static (guarded by gn_lock) for the same reason as gn_unix_control_transact's args. */
+    static char command[8000];
+    gn_size length, n;
+    int ok;
+    (void)instance;
+    if (!mailbox || !message) return XR_ERROR_VALIDATION_FAILURE;
+    length = gn_strlen(mailbox);
+    if (length == 0 || length > 64) return XR_ERROR_VALIDATION_FAILURE;
+    for (gn_size i = 0; i < length; ++i) {
+        char c = mailbox[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '/' || c == '_' || c == '-' || c == '.'))
+            return XR_ERROR_VALIDATION_FAILURE;
+    }
+    length = gn_strlen(message);
+    if (length > GN_MAILBOX_MESSAGE_MAX) {
+        gn_log2("mailbox message too long for: ", mailbox);
+        return XR_ERROR_VALIDATION_FAILURE;
+    }
+    gn_lock_acquire();
+    n = gn_append(command, sizeof(command), 0, "MAILBOX target=");
+    n = gn_append(command, sizeof(command), n, mailbox);
+    n = gn_append(command, sizeof(command), n, " data=");
+    if (!gn_base64(command + n, sizeof(command) - n, (const unsigned char*)message, length)) {
+        gn_lock_release();
+        return XR_ERROR_VALIDATION_FAILURE;
+    }
+    ok = gn_bridge_call_held(command, NULL, 0);
+    gn_lock_release();
+    return ok ? XR_SUCCESS : XR_ERROR_RUNTIME_FAILURE;
+}
+
 GN_EXPORT XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const char* name, PFN_xrVoidFunction* function) {
     (void)instance;
     if (!name || !function) return XR_ERROR_VALIDATION_FAILURE;
@@ -3558,6 +3650,7 @@ GN_EXPORT XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const c
     GN_PROC(xrGetInputSourceLocalizedName)
     GN_PROC(xrApplyHapticFeedback)
     GN_PROC(xrStopHapticFeedback)
+    GN_PROC(xrSendMailboxMessageGNX)
 #undef GN_PROC
     if (gn_streq(name, "xrLocateSpacesKHR")) {
         *function = (PFN_xrVoidFunction)gn_xrLocateSpaces;

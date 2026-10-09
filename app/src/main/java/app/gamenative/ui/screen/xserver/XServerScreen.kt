@@ -4464,7 +4464,7 @@ private fun getWineStartCommand(
         val launch = if (app.gamenative.xrgame.XrGameSteamLaunch.usesBundledClient(target.executable)) {
             app.gamenative.xrgame.XrGameSteamClient.prepare(context, File(container.rootDir, ".wine"),
                 gameDirectory, drive, gameId, target, profile?.injectExtra == true, profile?.nestedGamePath == true,
-                profile?.followSelfRestart == true)
+                profile?.followSelfRestart == true, container.getExtra("language", null) ?: container.language)
         } else target
         guestProgramLauncherComponent.workingDir = launch.workingDirectory
         envVars.put("SteamAppId", gameId.toString())

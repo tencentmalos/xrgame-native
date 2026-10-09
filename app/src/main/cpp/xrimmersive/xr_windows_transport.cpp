@@ -1,3 +1,4 @@
+#include "../xrgame_profiler.h"
 #include "xr_windows_transport.h"
 
 #include <android/log.h>
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 
 #define LOG_TAG "GameNativeVR"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -23,6 +25,9 @@ namespace {
 
 
 
+
+// The bridge's FRAME line with its stage-timing tuple stays below this.
+constexpr size_t kMaxLine = 1023;
 
 bool readLine(int fd, std::string& out) {
     out.clear();
@@ -49,8 +54,8 @@ bool readLine(int fd, std::string& out) {
             consumed += static_cast<size_t>(read);
         }
         const size_t textBytes = newlinePtr != nullptr ? consume - 1 : consume;
-        if (out.size() < 512) {
-            const size_t available = 512 - out.size();
+        if (out.size() < kMaxLine) {
+            const size_t available = kMaxLine - out.size();
             out.append(buffer, std::min(textBytes, available));
         }
         if (newlinePtr != nullptr) return true;
@@ -106,6 +111,69 @@ long long parseKey(const std::string& line, const char* key, long long fallback)
         pos += needle.size();
     }
     return fallback;
+}
+
+int64_t monotonicNs() {
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return static_cast<int64_t>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+}
+
+// Republishes the bridge's stage-timing tuple (the last eye's FRAME: snap, tb, t) as profiler
+// counters, every field once and then the commit vr.g.fid. Values stay CLOCK_MONOTONIC; the
+// analysis converts them. receivedNs is the app's own receipt time, used as the send end.
+void publishFrameTiming(const std::string& line, int64_t receivedNs) {
+    const size_t base = line.find(" tb=");
+    const size_t list = line.find(" t=");
+    if (base == std::string::npos || list == std::string::npos) return;
+    const long long submitBegin = std::strtoll(line.c_str() + base + 4, nullptr, 10);
+    if (submitBegin <= 0) return;
+    // Order of gn_timing_field in the bridge; values are offsets from tb, "_" when absent.
+    static constexpr int kFields[] = {
+        kXrCounterGameFrameSyncBegin, kXrCounterGameFrameSyncEnd,
+        kXrCounterGameWaitLeftBegin, kXrCounterGameWaitLeftEnd,
+        kXrCounterGameWaitRightBegin, kXrCounterGameWaitRightEnd,
+        kXrCounterGameDrainBegin, kXrCounterGameDrainLock, kXrCounterGameDrainEnd,
+        kXrCounterGameSubmitEnd,
+        kXrCounterShipperFenceBegin, kXrCounterShipperFenceEnd,
+        kXrCounterShipperSendBegin};
+    constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
+    long long offsets[kFieldCount];
+    bool present[kFieldCount];
+    const char* cursor = line.c_str() + list + 3;
+    for (size_t i = 0; i < kFieldCount; ++i) {
+        if (i > 0 && *cursor++ != ',') return;
+        if (*cursor == '_') {
+            present[i] = false;
+            ++cursor;
+            continue;
+        }
+        char* end = nullptr;
+        offsets[i] = std::strtoll(cursor, &end, 10);
+        if (end == cursor) return;
+        present[i] = true;
+        cursor = end;
+    }
+    // Contract v1.1 appends the frame-start delay begin; v1 bridges stop after 13 fields.
+    long long delayOffset = 0;
+    bool delayPresent = false;
+    if (*cursor == ',') {
+        ++cursor;
+        char* end = nullptr;
+        if (*cursor != '_') {
+            delayOffset = std::strtoll(cursor, &end, 10);
+            delayPresent = end != cursor;
+        }
+    }
+    const long long snap = parseKey(line, "snap", -1);
+    if (snap >= 0) xrgame_profile_counter(kXrCounterGameSnap, snap);
+    xrgame_profile_counter(kXrCounterGameSubmitBegin, submitBegin);
+    for (size_t i = 0; i < kFieldCount; ++i) {
+        if (present[i]) xrgame_profile_counter(kFields[i], submitBegin + offsets[i]);
+    }
+    if (delayPresent) xrgame_profile_counter(kXrCounterGameDelayBegin, submitBegin + delayOffset);
+    xrgame_profile_counter(kXrCounterShipperSendEnd, receivedNs);
+    xrgame_profile_counter(kXrCounterGameFid, parseKey(line, "frame", 0));
 }
 
 
@@ -267,7 +335,10 @@ void WindowsFrameTransport::serviceClient(int clientFd) {
                 return;
             }
         } else if (line.rfind("FRAME", 0) == 0) {
+            const int64_t receivedNs = monotonicNs();
+            XrProfileScope profile("host.vr.transport.frame");
             if (!handleFrameLine(clientFd, line)) return;
+            publishFrameTiming(line, receivedNs);
         } else if (line.rfind("ACQUIRE", 0) == 0) {
             if (!handleAcquireLine(clientFd, line)) return;
         } else if (line.rfind("BYE", 0) == 0) {
@@ -409,6 +480,7 @@ bool WindowsFrameTransport::handleFrameLine(int clientFd, const std::string& lin
         latest_[eye].sourceWidth = static_cast<int32_t>(sourceWidth);
         latest_[eye].sourceHeight = static_cast<int32_t>(sourceHeight);
         latest_[eye].flipY = parseKey(line, "flip", 0) != 0;
+        latest_[eye].snapSerial = parseKey(line, "snap", -1);
         latest_[eye].projectionValid =
             parseKey(line, "projection", 0) != 0;
         if (latest_[eye].projectionValid) {
@@ -465,12 +537,15 @@ bool WindowsFrameTransport::handleAcquireLine(int clientFd, const std::string& l
                releaseFenceFds_[eye][index] >= 0;
     };
     bool signaled;
-    if (timeoutMs < 0) {
-        releaseCv_.wait(lock, ready);
-        signaled = true;
-    } else {
-        signaled = releaseCv_.wait_for(
-            lock, std::chrono::milliseconds(timeoutMs), ready);
+    {
+        XrProfileScope profile("host.vr.transport.acquire_wait");
+        if (timeoutMs < 0) {
+            releaseCv_.wait(lock, ready);
+            signaled = true;
+        } else {
+            signaled = releaseCv_.wait_for(
+                lock, std::chrono::milliseconds(timeoutMs), ready);
+        }
     }
     if (!signaled) {
         LOGW("xr transport: timed out waiting for release eye=%lld index=%lld", eye, index);

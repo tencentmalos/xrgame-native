@@ -65,6 +65,7 @@ struct EyeFrame {
     uint64_t registrationSerial{0};
     uint64_t serial{0};
     uint64_t frameId{0};
+    int64_t snapSerial{-1};
 };
 
 class WindowsFrameTransport {

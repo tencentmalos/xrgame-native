@@ -116,6 +116,8 @@ data class ContainerData(
     val sbsTheaterEnabled: Boolean = false,
     val xrPresentationMode: String = "sbs",
     val openCompositeEnabled: Boolean = false,
+    /** XRGame: use XrResolutionRecommendation instead of [xrRenderScale]. */
+    val xrRenderScaleRecommended: Boolean = true,
 ) {
     companion object {
         val Saver = mapSaver(
@@ -195,6 +197,7 @@ data class ContainerData(
                     "sbsTheaterEnabled" to state.sbsTheaterEnabled,
                     "xrPresentationMode" to state.xrPresentationMode,
                     "openCompositeEnabled" to state.openCompositeEnabled,
+                    "xrRenderScaleRecommended" to state.xrRenderScaleRecommended,
                 )
             },
             restore = { savedMap ->
@@ -273,6 +276,7 @@ data class ContainerData(
                     sbsTheaterEnabled = (savedMap["sbsTheaterEnabled"] as? Boolean) ?: false,
                     xrPresentationMode = (savedMap["xrPresentationMode"] as? String) ?: "sbs",
                     openCompositeEnabled = (savedMap["openCompositeEnabled"] as? Boolean) ?: false,
+                    xrRenderScaleRecommended = (savedMap["xrRenderScaleRecommended"] as? Boolean) ?: true,
                 )
             },
         )

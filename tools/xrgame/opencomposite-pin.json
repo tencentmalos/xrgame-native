@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll",
-  "sha256": "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5",
-  "status": "internal-device-candidate",
+  "sha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66",
+  "status": "internal-device-candidate (mailbox forwarding, not yet device-validated)",
   "recipeRepository": "https://github.com/tencentmalos/opencomposite",
   "recipeBase": "7fd3276ac0ffda518a7f5a9157620f292e2032e6",
   "recipeCommit": "96a2388c5f9911273321dc731cd5bcc54232d751",
@@ -13,7 +13,9 @@
     "references/opencomposite/UPSTREAM_COMMIT": "defe43ebf5f3a6815e3e75f2049643763102e48621084a1b971a979842f4a6a3",
     "references/opencomposite/patches/background-support.patch": "52c9ebc0343a28ea07270fb6808261e85137101daad61e59ea0c67d90d121921",
     "references/opencomposite/patches/openvr-system-026.patch": "30d0fd551b3085a24249bd877869cd38755799b806c263305645aa9a8f33aabe",
-    "references/opencomposite/vendor/openvr-2.15.6/openvr.h": "1e6ed57199896cc1f7c5484e50fa18955e97be15be690beb28d998c877ead7fd"
+    "references/opencomposite/vendor/openvr-2.15.6/openvr.h": "1e6ed57199896cc1f7c5484e50fa18955e97be15be690beb28d998c877ead7fd",
+    "references/opencomposite/patches/mailbox-forward.patch": "4a2d7a29c9cdf7cee84a1f4226cd45718a650f9084099c16f095830985ed5d13",
+    "references/opencomposite/build.ps1": "067fb00de0d9b6f7593c54621904ca36e522a03136b0ba901a5f156abd00b9cf"
   },
   "dependencies": {
     "glm": "bf71a834948186f4097caa076cd2663c69a10e1e",
@@ -31,12 +33,14 @@
   },
   "build": {
     "host": "Windows x64",
-    "compiler": "MSVC 19.44.35228.0",
+    "compiler": "MSVC 19.51.36241.0 (Visual Studio 18 Insiders, selected by CMake's default generator)",
     "windowsSdk": "10.0.26100.0",
     "configuration": "Release x64 /MD",
     "target": "OCOVR",
-    "ocVersion": "a27e7e6-xrgame-openvr2156",
-    "vulkanImportLibrary": "MSVC lib.exe /machine:x64 from pinned Vulkan-Loader definition; runtime uses Wine Vulkan",
-    "evidence": "docs/validation/vr-sbs-20261002.md"
+    "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox",
+    "vulkanImportLibrary": "Vulkan SDK 1.4.304.1 Lib/vulkan-1.lib and headers on the Windows host; runtime uses Wine Vulkan",
+    "evidence": "docs/validation/xr-stage-timing-20261009.md",
+    "imports": "Same DLL set as the 12eee850 build; only new import KERNEL32!CreateFile2",
+    "previousSha256": "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5"
   }
 }

@@ -16,6 +16,8 @@
     <string name="xrgame_vr_sbs">SBS — simulated tracking</string>
     <string name="xrgame_vr_openxr">OpenXR headset</string>
     <string name="xrgame_vr_mode_desc">SBS uses the gyroscope and simulated hands, without positional tracking. OpenVR games also need OpenComposite. Headset mode requires a working OpenXR runtime.</string>
+    <string name="xrgame_vr_resolution_recommended">Recommended XR resolution</string>
+    <string name="xrgame_vr_resolution_recommended_desc">Renders each eye at %1$d%% of the headset\'s recommended size (shadPS4\'s Android render-scale default), kept within the runtime\'s maximum swapchain. Turn off to pick a custom scale.</string>
     <string name="xrgame_sbs_waiting">Waiting for VR eye frames…</string>
     <string name="xrgame_sbs_controls">SBS · Fixed controllers · Touch each half to trigger</string>
     <string name="xrgame_vr_recenter">Recenter</string>

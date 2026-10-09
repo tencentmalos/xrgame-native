@@ -54,6 +54,21 @@ if git -C "$src" apply --check "$bootstrap_patch" 2>/dev/null; then
 else
     git -C "$src" apply --reverse --check "$bootstrap_patch"
 fi
+# Host-only AHardwareBuffer interop for the OpenXR bridge (WINE_VK_HOST_AHB=1).
+host_ahb_patch="$project/tools/xrgame/patches/wine-vulkan-host-ahb.patch"
+if git -C "$src" apply --check "$host_ahb_patch" 2>/dev/null; then
+    git -C "$src" apply "$host_ahb_patch"
+else
+    git -C "$src" apply --reverse --check "$host_ahb_patch"
+fi
+# Map the unused rest of a small allocation's 64k granule so neighbouring views share one
+# kernel VMA; Source 2 games otherwise exceed vm.max_map_count (WINE_MERGE_SMALL_VIEWS=0 disables).
+merge_views_patch="$project/tools/xrgame/patches/wine-merge-small-views.patch"
+if git -C "$src" apply --check "$merge_views_patch" 2>/dev/null; then
+    git -C "$src" apply "$merge_views_patch"
+else
+    git -C "$src" apply --reverse --check "$merge_views_patch"
+fi
 if [[ "$phase" == all || "$phase" == host ]]; then
     if [[ ! -f "$host/Makefile" ]]; then
         (cd "$host" && "$src/configure" --enable-win64 --without-x --without-gstreamer --without-vulkan --without-wayland)

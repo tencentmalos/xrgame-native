@@ -16,7 +16,7 @@ typedef unsigned long long gn_u64;
 typedef signed long long gn_i64;
 #endif
 
-#define GN_UNIX_ABI_VERSION 6u
+#define GN_UNIX_ABI_VERSION 8u
 #define GN_UNIX_MAX_SWAPCHAINS 32u
 #define GN_UNIX_MAX_IMAGES 4u
 
@@ -125,16 +125,25 @@ struct gn_unix_submit_image_args {
     gn_i32 result;
 };
 
+/* request holds one control line; MAILBOX lines carry base64 JSON of up to ~6 KB. */
 struct gn_unix_control_transact_args {
-    char request[192];
+    char request[8192];
     char response[2048];
     gn_u32 response_lines;
     gn_i32 result;
 };
 
+/* qpc_* are raw QueryPerformanceCounter ticks taken by the PE runtime around its DXVK/vkd3d
+ * drain; qpc_call is taken just before this call. QPC has its own origin, so the unixlib only
+ * uses differences to qpc_call. qpc_frequency 0 means no drain was measured. */
 struct gn_unix_submit_stereo_args {
     gn_u32 view_count;
     struct gn_unix_submit_view_args views[2];
+    gn_i64 qpc_frequency;
+    gn_i64 qpc_drain_begin;
+    gn_i64 qpc_drain_lock;
+    gn_i64 qpc_drain_end;
+    gn_i64 qpc_call;
     gn_i32 result;
 };
 #pragma pack(pop)

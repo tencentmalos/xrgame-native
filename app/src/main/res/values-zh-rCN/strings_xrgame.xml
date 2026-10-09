@@ -16,6 +16,8 @@
     <string name="xrgame_vr_sbs">SBS 左右眼 — 模拟追踪</string>
     <string name="xrgame_vr_openxr">OpenXR 头显</string>
     <string name="xrgame_vr_mode_desc">SBS 使用陀螺仪和模拟双手，不提供真实位置追踪。OpenVR 游戏还需打开 OpenComposite。头显模式需要可用的 OpenXR 运行时。</string>
+    <string name="xrgame_vr_resolution_recommended">推荐 XR 分辨率</string>
+    <string name="xrgame_vr_resolution_recommended_desc">每只眼按头显推荐尺寸的 %1$d%% 渲染（参考 shadPS4 的 Android 默认渲染比例），并限制在运行时最大交换链以内。关闭后可手动选择比例。</string>
     <string name="xrgame_sbs_waiting">等待 VR 双眼帧…</string>
     <string name="xrgame_sbs_controls">SBS · 固定双手 · 触摸左右区域扣动扳机</string>
     <string name="xrgame_vr_recenter">重置朝向</string>

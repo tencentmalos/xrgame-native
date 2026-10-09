@@ -2,17 +2,23 @@
 set -euo pipefail
 base=${XRGAME_BUILD_ROOT:-/work}
 reference="$base/src/mesa-turnip"
-pin=d15b7c019c8daa17e80051258077d9b2d5146a2b
-test "$(git -C "$reference" rev-parse HEAD)" = "$pin"
+# tencentmalos/mesa-mirror malos/main: shadPS4 codex/shadps4-xr-turnip + Azahar
+# bugfix/turnip_in_swan merged onto codex/turnip-xr-fdm2.
+pin=25ef1647a28d6983bd95f8ef0cc84ea74dd9cc32
+git -C "$reference" cat-file -e "$pin^{commit}"
 project=${XRGAME_PROJECT_ROOT:-"$base/project"}
-patch="$project/tools/xrgame/patches/turnip-x11-ahb.patch"
-patch_sha=$(sha256sum "$patch" | cut -d ' ' -f1)
+# Applied in order; the first two equal feature/malos/xrgame-wine-icd. The third (xrg10)
+# disables concurrent binning in render passes that emit LRZ CP_REG_RMWs (Swan GPU hang).
+patches=("$project/tools/xrgame/patches/turnip-x11-ahb.patch"
+         "$project/tools/xrgame/patches/turnip-ahb-entrypoints.patch"
+         "$project/tools/xrgame/patches/turnip-lrz-rmw-no-cb.patch")
+patch_sha=$( (echo "$pin"; cat "${patches[@]}") | sha256sum | cut -d ' ' -f1)
 work="$base/build/turnip-x11-ahb/${patch_sha:0:16}"
 src="$work/source"
 mkdir -p "$src"
 if [[ ! -f "$work/source-ready" ]]; then
     git -C "$reference" archive "$pin" | tar -xf - -C "$src"
-    git -C "$src" apply "$patch"
+    for patch in "${patches[@]}"; do git -C "$src" apply "$patch"; done
     touch "$work/source-ready"
 fi
 export PATH="$base/toolchains/python/bin:$PATH"

@@ -1,5 +1,6 @@
 package app.gamenative.ui.screen.xr.windows
 
+import android.graphics.Bitmap
 import app.gamenative.ui.screen.xr.XrNative
 
 data class WindowsVrRuntimeSnapshot(
@@ -14,6 +15,9 @@ interface WindowsVrFrameSource {
     fun latest(): WindowsVrRuntimeSnapshot?
     fun applyHaptic(hand: Int, amplitude: Float, duration: Long, frequency: Float): Boolean
     fun detach()
+
+    /** Shows [bitmap] as a world-locked panel instead of the game's frames; null hides it. */
+    fun setInterstitial(bitmap: Bitmap?) {}
 }
 
 class WindowsVrSnapshotProvider : WindowsVrFrameSource {
@@ -21,11 +25,22 @@ class WindowsVrSnapshotProvider : WindowsVrFrameSource {
     private var handle = 0L
     @Volatile
     private var latest: WindowsVrRuntimeSnapshot? = null
+    private var interstitial: Bitmap? = null
 
     private val lock = Any()
 
     fun attach(handle: Long) {
-        synchronized(lock) { this.handle = handle }
+        synchronized(lock) {
+            this.handle = handle
+            if (handle != 0L) XrNative.nativeSetWindowsInterstitial(handle, interstitial)
+        }
+    }
+
+    override fun setInterstitial(bitmap: Bitmap?) {
+        synchronized(lock) {
+            interstitial = bitmap
+            if (handle != 0L) XrNative.nativeSetWindowsInterstitial(handle, bitmap)
+        }
     }
 
     override fun detach() {

@@ -1,0 +1,746 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xr3ds.local/schemas/stage-concurrency-bundle-v2.json",
+  "title": "GameNative stage concurrency bundle (engine schema vendored from Azahar)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "time_domain",
+    "window"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "title": {
+      "type": "string"
+    },
+    "subtitle": {
+      "type": "string"
+    },
+    "time_domain": {
+      "enum": [
+        "trace_cpu_ns",
+        "gpu_hardware_ns",
+        "pica_monotonic_ns"
+      ]
+    },
+    "gpu_cpu_alignment": {
+      "enum": [
+        "calibrated",
+        "uncalibrated",
+        "not-applicable",
+        "unknown"
+      ]
+    },
+    "axis_mode": {
+      "enum": [
+        "frame",
+        "frame_and_time"
+      ],
+      "default": "frame_and_time",
+      "description": "frame_and_time is the normal six-frame review layout; frame is retained only for legacy callers"
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "start_ns",
+        "end_ns"
+      ],
+      "properties": {
+        "start_ns": {
+          "type": "integer"
+        },
+        "end_ns": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "frame_markers": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "frame",
+          "time_ns"
+        ],
+        "properties": {
+          "frame": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "time_ns": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "boundary": {
+            "enum": [
+              "begin",
+              "end"
+            ],
+            "default": "begin",
+            "description": "Whether the sample starts or completes the named frame. GPU Stage Workload Completed Sequence is end."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "frame_workloads": {
+      "type": "array",
+      "description": "Committed completed Guest-VBlank workload tuples; sequence is emitted last in the profiler capture.",
+      "items": {
+        "$ref": "#/$defs/frameWorkload"
+      }
+    },
+    "draw_events": {
+      "type": "array",
+      "description": "Committed PICA draw tuples joined by PICA Active Draw Event Sequence, never timestamp proximity.",
+      "items": {
+        "$ref": "#/$defs/drawEvent"
+      }
+    },
+    "ptracy_counter_queries": {
+      "type": "array",
+      "description": "Raw query_counters(include_samples=true) responses. The analyzer reconstructs tuples from commit windows and rejects missing, duplicate, or truncated fields.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "stage_options": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stageOptions"
+      }
+    },
+    "intervals": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/interval"
+      }
+    },
+    "ptracy_slices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ptracyGroup"
+      }
+    },
+    "token_contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "stages"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          },
+          "stages": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "min",
+                "max"
+              ],
+              "properties": {
+                "min": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "frame_correlations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source_frame",
+          "status"
+        ],
+        "properties": {
+          "source_frame": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "status": {
+            "enum": [
+              "exact_source_frame",
+              "exact_pica_work",
+              "neighborhood",
+              "unavailable"
+            ]
+          },
+          "shared_pica_keys": {
+            "type": "array"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "guest_frame_chains": {
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "string"
+        ]
+      }
+    },
+    "guest_command_traces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "schema",
+          "capture_id",
+          "extension",
+          "frames"
+        ],
+        "properties": {
+          "schema": {
+            "const": "xr3ds.guest-command-trace.manifest.v1"
+          },
+          "capture_id": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "program_id": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "extension": {
+            "const": ".gcmdtrace.3ds"
+          },
+          "source": {
+            "type": "string"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "completeness": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "join_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "frames": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "frame_id",
+                "submissions",
+                "segments",
+                "draws",
+                "resources"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "guest_symbol_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "severity",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "intervals"
+      ]
+    },
+    {
+      "required": [
+        "ptracy_slices"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "required": [
+            "frame_markers"
+          ]
+        },
+        {
+          "required": [
+            "ptracy_counter_queries"
+          ]
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "stageOptions": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "root",
+            "detail"
+          ]
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count_for_concurrency": {
+          "type": "boolean"
+        },
+        "include_in_overlap": {
+          "type": "boolean"
+        },
+        "raw_sum_label": {
+          "type": "string"
+        },
+        "source_role_layout": {
+          "enum": [
+            "lane",
+            "color"
+          ]
+        },
+        "consumes_gpu_output": {
+          "type": "boolean"
+        },
+        "layout": {
+          "enum": [
+            "row",
+            "inline"
+          ],
+          "description": "inline draws the stage inside its parent row; statistics unchanged"
+        },
+        "summary": {
+          "type": "boolean",
+          "description": "include a detail stage in the summary table"
+        },
+        "lane": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "interval": {
+      "type": "object",
+      "required": [
+        "stage",
+        "lane",
+        "start_ns",
+        "end_ns"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lane": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ns": {
+          "type": "integer"
+        },
+        "end_ns": {
+          "type": "integer"
+        },
+        "token": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "scope_name": {
+          "type": "string"
+        },
+        "scope_base": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "stage_id": {
+          "type": "string"
+        },
+        "eye": {
+          "type": "string"
+        },
+        "pass": {
+          "type": "string"
+        },
+        "source_role": {
+          "type": "string"
+        },
+        "output_role": {
+          "type": "string"
+        },
+        "service_screen": {
+          "enum": [
+            "top",
+            "bottom",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "screen": {
+          "enum": [
+            "top",
+            "bottom",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "screen_proof": {
+          "enum": [
+            "direct_display_target",
+            "correlated_service_role",
+            "unresolved"
+          ]
+        },
+        "display_targets": {
+          "type": "string"
+        },
+        "count_for_concurrency": {
+          "type": "boolean"
+        },
+        "include_in_overlap": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ptracyGroup": {
+      "type": "object",
+      "required": [
+        "stage"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "slices"
+          ]
+        },
+        {
+          "required": [
+            "response"
+          ],
+          "properties": {
+            "response": {
+              "type": "object",
+              "required": [
+                "slices"
+              ],
+              "properties": {
+                "slices": {
+                  "type": "array"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name_exact": {
+          "type": "string"
+        },
+        "name_base": {
+          "type": "string"
+        },
+        "eye": {
+          "type": "string"
+        },
+        "pass": {
+          "type": "string"
+        },
+        "source_role": {
+          "type": "string"
+        },
+        "output_role": {
+          "type": "string"
+        },
+        "lane": {
+          "type": "string"
+        },
+        "count_for_concurrency": {
+          "type": "boolean"
+        },
+        "include_in_overlap": {
+          "type": "boolean"
+        },
+        "slices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "startMs",
+              "endMs"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "threadId": {
+                "type": "integer"
+              },
+              "threadName": {
+                "type": "string"
+              },
+              "startMs": {
+                "type": "number"
+              },
+              "endMs": {
+                "type": "number"
+              },
+              "token": {
+                "type": [
+                  "string",
+                  "integer"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "frameWorkload": {
+      "type": "object",
+      "required": [
+        "frame",
+        "time_ns",
+        "draw_calls"
+      ],
+      "properties": {
+        "frame": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "time_ns": {
+          "type": "integer"
+        },
+        "command_lists": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "draw_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexed_draw_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "drawEvent": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "time_ns",
+        "pica_frame_id",
+        "cmdlist_execution_sequence"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "time_ns": {
+          "type": "integer"
+        },
+        "pica_frame_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cmdlist_execution_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "submission_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "segment_sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "command_word_offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metadata": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "draw_ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexed": {
+          "type": "boolean"
+        },
+        "eye": {
+          "enum": [
+            "left",
+            "right",
+            "unknown"
+          ]
+        },
+        "display_target": {
+          "enum": [
+            "unknown",
+            "top_left",
+            "top_right",
+            "bottom",
+            "offscreen"
+          ]
+        },
+        "source_role": {
+          "enum": [
+            "record",
+            "source_candidate",
+            "replay",
+            "auxiliary",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,10 +1,16 @@
+#include "../xrgame_profiler.h"
 #include "xr_immersive.h"
 
 #include <android/log.h>
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <climits>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <dlfcn.h>
 #include <memory>
 #include <unistd.h>
 #include <vector>
@@ -16,6 +22,63 @@
 namespace xrimmersive {
 
 namespace {
+
+// EGL_IMG_context_priority
+constexpr EGLint kEglContextPriorityLevelImg = 0x3100;
+constexpr EGLint kEglContextPriorityHighImg = 0x3101;
+
+// Pico's per-thread KGSL priority (0 runtime/SurfaceFlinger, 4 xrshell, 8 focused app, 12
+// unfocused app; four priorities per ringbuffer). The public system library libsysperftracker.so
+// applies it with GPUOptimization::setPriority(pid, tid, prio); its spatial runtime lifts focused
+// render threads to 4. At 4 our composite (ring 1) preempts the game, which Turnip runs at the
+// default 8 (ring 2). At equal priority it queued ~23 ms behind the game's batches and the
+// runtime paced the XR loop to that (Swan run19). EGL_IMG_context_priority left us at 8 (run20).
+constexpr int kPicoCompositeGpuPriority = 4;
+
+int ReadPicoGpuPriority(int tid) {
+    char path[64];
+    std::snprintf(path, sizeof(path), "/proc/gpu_procs/%d/%d/status", getpid(), tid);
+    FILE *file = std::fopen(path, "r");
+    if (file == nullptr) return -1;
+    char line[96];
+    int priority = -1;
+    while (std::fgets(line, sizeof(line), file) != nullptr) {
+        if (std::sscanf(line, "ctxt_prio: %d", &priority) == 1) break;
+    }
+    std::fclose(file);
+    return priority;
+}
+
+// Returns setPriority's result, or INT_MIN when the interface is missing. A null `when` is the
+// periodic re-request: it logs only the first call and changes of the result.
+int RequestPicoGpuPriority(int priority, const char *when) {
+    static void *library = dlopen("libsysperftracker.so", RTLD_NOW | RTLD_LOCAL);
+    using GetInstance = void *(*)();
+    using SetPriority = int (*)(void *, int, int, int);
+    static auto getInstance = library == nullptr ? nullptr : reinterpret_cast<GetInstance>(
+        dlsym(library, "_ZN15GPUOptimization11getInstanceEv"));
+    static auto setPriority = library == nullptr ? nullptr : reinterpret_cast<SetPriority>(
+        dlsym(library, "_ZN15GPUOptimization11setPriorityEiii"));
+    const int tid = gettid();
+    if (getInstance == nullptr || setPriority == nullptr) {
+        if (when != nullptr) LOGI("Pico GPU priority unavailable (%s): library=%d", when, library != nullptr ? 1 : 0);
+        return INT_MIN;
+    }
+    const int result = setPriority(getInstance(), getpid(), tid, priority);
+    const int error = result < 0 ? errno : 0;
+    static int lastPeriodicResult = INT_MIN;
+    if (when == nullptr) {
+        if (result == lastPeriodicResult) return result;
+        lastPeriodicResult = result;
+        when = "periodic";
+    }
+    const int applied = ReadPicoGpuPriority(tid);
+    LOGI("Pico GPU priority %s: tid=%d requested=%d result=%d errno=%d ctxt_prio=%d", when, tid,
+         priority, result, error, applied);
+    return result;
+}
+
+std::atomic<bool> gWindowsPredictionExtended{false};
 
 bool XrCheck(XrResult result, const char *what) {
     if (XR_FAILED(result)) {
@@ -49,6 +112,10 @@ XrPosef IdentityPose() {
 }
 
 }  // namespace
+
+void SetWindowsPredictionExtended(bool extended) {
+    gWindowsPredictionExtended.store(extended, std::memory_order_relaxed);
+}
 
 bool XrImmersiveSession::initialize(JavaVM *vm, jobject activityRef) {
     vm_ = vm;
@@ -230,21 +297,37 @@ void XrImmersiveSession::runLoop() {
         return;
     }
 
+    // The Pico system puts the focused app's GPU contexts back to its default priority 8 after we
+    // raised ours (Swan run26: requested 4 with result 0, read back 8 during play), and the
+    // composite again queued behind the game. Re-request it once a second from this thread.
+    auto lastPriorityRequest = std::chrono::steady_clock::now();
     while (!stopRequested_.load()) {
         pollXrEvents();
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastPriorityRequest >= std::chrono::seconds(1)) {
+            lastPriorityRequest = now;
+            RequestPicoGpuPriority(kPicoCompositeGpuPriority, nullptr);
+        }
 
         if (!sessionRunning_) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
 
+        XrProfileScope frameProfile("host.vr.xr.frame");
         XrFrameWaitInfo waitInfo{XR_TYPE_FRAME_WAIT_INFO};
         XrFrameState frameState{XR_TYPE_FRAME_STATE};
-        if (!XrCheck(xrWaitFrame(session_, &waitInfo, &frameState), "xrWaitFrame")) break;
+        XrResult waited;
+        {
+            XrProfileScope waitProfile("host.vr.xr.wait_frame");
+            waited = xrWaitFrame(session_, &waitInfo, &frameState);
+        }
+        if (!XrCheck(waited, "xrWaitFrame")) break;
 
         XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
         if (!XrCheck(xrBeginFrame(session_, &beginInfo), "xrBeginFrame")) break;
 
+        XrProfileScope inputProfile("host.vr.xr.input_locate");
         applyPendingPassthroughState();
         syncControllerInputs(frameState.predictedDisplayTime);
 
@@ -254,14 +337,21 @@ void XrImmersiveSession::runLoop() {
             runtimeSnapshot = windowsSnapshot_;
         }
         runtimeSnapshot.frameSerial += 1;
-        runtimeSnapshot.predictedDisplayTime = frameState.predictedDisplayTime;
+        // The game shows this snapshot's frame several XR periods after this one; with the
+        // extended prediction its poses are located at that measured display time.
+        XrTime poseTime = frameState.predictedDisplayTime;
+        if (gWindowsPredictionExtended.load(std::memory_order_relaxed) && predictionLead_ > 0.0f) {
+            poseTime += static_cast<XrTime>(std::min(predictionLead_, 4.0f) *
+                                            static_cast<float>(frameState.predictedDisplayPeriod));
+        }
+        runtimeSnapshot.predictedDisplayTime = poseTime;
         runtimeSnapshot.predictedDisplayPeriod = frameState.predictedDisplayPeriod;
         runtimeSnapshot.sessionState = sessionState_;
         runtimeSnapshot.shouldRender = frameState.shouldRender == XR_TRUE;
         runtimeSnapshot.recenterSerial = recenterSerial_.load();
         XrViewLocateInfo viewLocateInfo{XR_TYPE_VIEW_LOCATE_INFO};
         viewLocateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-        viewLocateInfo.displayTime = frameState.predictedDisplayTime;
+        viewLocateInfo.displayTime = poseTime;
         viewLocateInfo.space = windowsTrackingSpace_;
         XrViewState viewState{XR_TYPE_VIEW_STATE};
         uint32_t viewCount = 0;
@@ -275,17 +365,24 @@ void XrImmersiveSession::runLoop() {
             std::lock_guard<std::mutex> lock(snapshotMutex_);
             runtimeSnapshot.input = snapshot_;
         }
-        syncWindowsTrackingPoses(&runtimeSnapshot.input, frameState.predictedDisplayTime);
+        syncWindowsTrackingPoses(&runtimeSnapshot.input, poseTime);
         {
             std::lock_guard<std::mutex> lock(windowsSnapshotMutex_);
             windowsSnapshot_ = runtimeSnapshot;
         }
         windowsSnapshotCondition_.notify_all();
+        // FRAME_SYNC replies with this serial; the game's snap field joins against it.
+        xrgame_profile_counter(kXrCounterAndroidSerial, static_cast<int64_t>(runtimeSnapshot.frameSerial));
+        inputProfile.end();
 
         // Every xrBeginFrame must be matched by an xrEndFrame, but a layer may only reference a
         // swapchain image that was actually acquired — so a failed renderFrame() still ends the
         // frame, just with no layers.
-        if (frameState.shouldRender && submitWindowsProjection(frameState.predictedDisplayTime)) {
+        if (frameState.shouldRender &&
+            submitWindowsInterstitial(frameState.predictedDisplayTime, runtimeSnapshot.views,
+                                      runtimeSnapshot.viewStateFlags)) {
+        } else if (frameState.shouldRender &&
+                   submitWindowsProjection(frameState.predictedDisplayTime, runtimeSnapshot.frameSerial)) {
         } else if (frameState.shouldRender && renderFrame()) {
             submitQuadLayer(frameState.predictedDisplayTime, localSpace_, swapchain_,
                              swapchainWidth_, swapchainHeight_, true);
@@ -295,6 +392,7 @@ void XrImmersiveSession::runLoop() {
             endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
             endInfo.layerCount = 0;
             endInfo.layers = nullptr;
+            XrProfileScope endProfile("host.vr.xr.end_frame");
             xrEndFrame(session_, &endInfo);
         }
     }
@@ -417,12 +515,36 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         return false;
     }
 
-    const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
-    eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, contextAttribs);
+    // The Windows game renders through Turnip on the same GPU at the default priority, in
+    // command batches of up to ~25 ms. At equal priority our small per-frame composite queued
+    // behind them for ~23 ms (KGSL, Swan run19), and the runtime paced xrWaitFrame to that.
+    // A higher-priority context gets its own ringbuffer and preempts the game like the
+    // compositor does. Pico's per-thread interface works for apps; the standard EGL request is
+    // kept for drivers that honour it. Both fall back to the default silently.
+    RequestPicoGpuPriority(kPicoCompositeGpuPriority, "before context");
+    const char *eglExtensions = eglQueryString(eglDisplay_, EGL_EXTENSIONS);
+    const bool priorityExtension =
+        eglExtensions != nullptr && std::strstr(eglExtensions, "EGL_IMG_context_priority") != nullptr;
+    if (priorityExtension) {
+        const EGLint highPriorityAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3,
+                                              kEglContextPriorityLevelImg, kEglContextPriorityHighImg, EGL_NONE};
+        eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, highPriorityAttribs);
+    }
+    if (eglContext_ == EGL_NO_CONTEXT) {
+        const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+        eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, contextAttribs);
+    }
+    EGLint contextPriority = 0;
+    if (priorityExtension) {
+        eglQueryContext(eglDisplay_, eglContext_, kEglContextPriorityLevelImg, &contextPriority);
+    }
+    LOGI("EGL context priority: extension=%d level=0x%x (high=0x%x)", priorityExtension ? 1 : 0,
+         contextPriority, kEglContextPriorityHighImg);
 
     const EGLint pbufferAttribs[] = {EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE};
     eglPbufferSurface_ = eglCreatePbufferSurface(eglDisplay_, eglConfig_, pbufferAttribs);
     eglMakeCurrent(eglDisplay_, eglPbufferSurface_, eglPbufferSurface_, eglContext_);
+    RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after context");
 
     XrGraphicsBindingOpenGLESAndroidKHR graphicsBinding{XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR};
     graphicsBinding.display = eglDisplay_;
@@ -569,6 +691,7 @@ bool XrImmersiveSession::setupInstanceAndSession() {
     if (!XrCheck(xrCreateSwapchain(session_, &swapchainCreateInfo, &swapchain_), "xrCreateSwapchain")) {
         return false;
     }
+    swapchainFormat_ = chosenFormat;
 
     uint32_t imageCount = 0;
     xrEnumerateSwapchainImages(swapchain_, 0, &imageCount, nullptr);
@@ -1077,19 +1200,208 @@ bool XrImmersiveSession::renderFrame() {
     return true;
 }
 
-bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime) {
+void XrImmersiveSession::setWindowsInterstitial(const uint8_t *rgbaPixels, int32_t width,
+                                                int32_t height, int32_t strideBytes) {
+    std::lock_guard<std::mutex> lock(interstitialMutex_);
+    if (rgbaPixels == nullptr || width <= 0 || height <= 0 || strideBytes < width * 4) {
+        interstitialVisible_.store(false);
+        interstitialPixels_.clear();
+        interstitialChanged_ = false;
+        return;
+    }
+    const size_t rowBytes = static_cast<size_t>(width) * 4;
+    interstitialPixels_.resize(rowBytes * static_cast<size_t>(height));
+    for (int32_t row = 0; row < height; ++row) {
+        std::memcpy(interstitialPixels_.data() + rowBytes * static_cast<size_t>(row),
+                    rgbaPixels + static_cast<size_t>(strideBytes) * static_cast<size_t>(row), rowBytes);
+    }
+    interstitialWidth_ = width;
+    interstitialHeight_ = height;
+    interstitialChanged_ = true;
+    interstitialVisible_.store(true);
+}
+
+// Draws the pending interstitial pixels into a freshly acquired image of its own swapchain.
+// The runtime keeps showing the last released image, so this runs only when the text changes.
+bool XrImmersiveSession::uploadInterstitialLocked() {
+    if (interstitialSwapchain_ == XR_NULL_HANDLE || interstitialSwapchainWidth_ != interstitialWidth_ ||
+        interstitialSwapchainHeight_ != interstitialHeight_) {
+        if (interstitialSwapchain_ != XR_NULL_HANDLE) xrDestroySwapchain(interstitialSwapchain_);
+        interstitialSwapchain_ = XR_NULL_HANDLE;
+        interstitialImages_.clear();
+        interstitialImageReleased_ = false;
+        XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+        info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+        info.format = swapchainFormat_;
+        info.sampleCount = 1;
+        info.width = static_cast<uint32_t>(interstitialWidth_);
+        info.height = static_cast<uint32_t>(interstitialHeight_);
+        info.faceCount = 1;
+        info.arraySize = 1;
+        info.mipCount = 1;
+        if (!XrCheck(xrCreateSwapchain(session_, &info, &interstitialSwapchain_),
+                     "xrCreateSwapchain(interstitial)")) {
+            interstitialSwapchain_ = XR_NULL_HANDLE;
+            return false;
+        }
+        uint32_t count = 0;
+        xrEnumerateSwapchainImages(interstitialSwapchain_, 0, &count, nullptr);
+        interstitialImages_.assign(count, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
+        xrEnumerateSwapchainImages(interstitialSwapchain_, count, &count,
+                                   reinterpret_cast<XrSwapchainImageBaseHeader *>(interstitialImages_.data()));
+        interstitialSwapchainWidth_ = interstitialWidth_;
+        interstitialSwapchainHeight_ = interstitialHeight_;
+    }
+
+    ensureQuadGeometryAndShader();
+    if (quadProgram_ == 0) return false;
+    if (interstitialTexture_ == 0) glGenTextures(1, &interstitialTexture_);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, interstitialTexture_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, interstitialWidth_, interstitialHeight_, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, interstitialPixels_.data());
+
+    XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    uint32_t imageIndex = 0;
+    if (!XrCheck(xrAcquireSwapchainImage(interstitialSwapchain_, &acquire, &imageIndex),
+                 "xrAcquireSwapchainImage(interstitial)")) {
+        glBindTexture(GL_TEXTURE_2D, 0);
+        return false;
+    }
+    XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+    wait.timeout = XR_INFINITE_DURATION;
+    xrWaitSwapchainImage(interstitialSwapchain_, &wait);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           interstitialImages_[imageIndex].image, 0);
+    glViewport(0, 0, interstitialWidth_, interstitialHeight_);
+    glDisable(GL_BLEND);
+    glUseProgram(quadProgram_);
+    glBindBuffer(GL_ARRAY_BUFFER, quadVbo_);
+    glEnableVertexAttribArray(quadPositionLoc_);
+    glVertexAttribPointer(quadPositionLoc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                          reinterpret_cast<void *>(0));
+    glEnableVertexAttribArray(quadTexCoordLoc_);
+    glVertexAttribPointer(quadTexCoordLoc_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                          reinterpret_cast<void *>(2 * sizeof(float)));
+    glUniform1i(quadSamplerLoc_, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    if (!XrCheck(xrReleaseSwapchainImage(interstitialSwapchain_, &release),
+                 "xrReleaseSwapchainImage(interstitial)")) {
+        return false;
+    }
+    interstitialImageReleased_ = true;
+    interstitialChanged_ = false;
+    return true;
+}
+
+// The game's loading interstitial (Half-Life: Alyx draws it through SteamVR, which we replace)
+// is shown as a world-locked panel instead of the game's projection. The game's frames are still
+// consumed and released, so its swapchain waits never block on us while it loads or waits for the
+// trigger press that ends the interstitial.
+bool XrImmersiveSession::submitWindowsInterstitial(XrTime predictedDisplayTime,
+                                                   const std::array<XrView, 2> &views,
+                                                   XrViewStateFlags viewStateFlags) {
+    if (!interstitialVisible_.load()) {
+        interstitialPoseValid_ = false;
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(interstitialMutex_);
+        if (interstitialChanged_ && !uploadInterstitialLocked()) return false;
+    }
+    if (!interstitialImageReleased_) return false;
+
+    if (!interstitialPoseValid_) {
+        constexpr XrViewStateFlags kTracked =
+            XR_VIEW_STATE_ORIENTATION_VALID_BIT | XR_VIEW_STATE_POSITION_VALID_BIT;
+        constexpr float kDistance = 1.6f;
+        float headX = 0.0f, headY = 1.6f, headZ = 0.0f, forwardX = 0.0f, forwardZ = -1.0f;
+        if ((viewStateFlags & kTracked) == kTracked) {
+            headX = 0.5f * (views[0].pose.position.x + views[1].pose.position.x);
+            headY = 0.5f * (views[0].pose.position.y + views[1].pose.position.y);
+            headZ = 0.5f * (views[0].pose.position.z + views[1].pose.position.z);
+            const XrQuaternionf &q = views[0].pose.orientation;
+            const float fx = -2.0f * (q.x * q.z + q.w * q.y);
+            const float fz = -(1.0f - 2.0f * (q.x * q.x + q.y * q.y));
+            const float length = std::sqrt(fx * fx + fz * fz);
+            if (length > 0.001f) {
+                forwardX = fx / length;
+                forwardZ = fz / length;
+            }
+        }
+        const float yaw = std::atan2(-forwardX, -forwardZ);
+        interstitialPose_.orientation = {0.0f, std::sin(0.5f * yaw), 0.0f, std::cos(0.5f * yaw)};
+        interstitialPose_.position = {headX + forwardX * kDistance, headY, headZ + forwardZ * kDistance};
+        interstitialPoseValid_ = true;
+        LOGI("Windows VR interstitial shown %dx%d at (%.2f, %.2f, %.2f)", interstitialSwapchainWidth_,
+             interstitialSwapchainHeight_, interstitialPose_.position.x, interstitialPose_.position.y,
+             interstitialPose_.position.z);
+    }
+
+    if (windowsProjectionReady_ && windowsTransport_.hasStereoContent()) {
+        XrCompositionLayerProjection unused{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+        XrProfileScope renderProfile("host.vr.projection.render");
+        windowsProjection_.render(windowsTransport_, windowsTrackingSpace_, &unused);
+    }
+
+    constexpr float kWidth = 1.4f;
+    XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    quad.space = windowsTrackingSpace_;
+    quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    quad.subImage.swapchain = interstitialSwapchain_;
+    quad.subImage.imageRect = {{0, 0}, {interstitialSwapchainWidth_, interstitialSwapchainHeight_}};
+    quad.subImage.imageArrayIndex = 0;
+    quad.pose = interstitialPose_;
+    quad.size = {kWidth, kWidth * static_cast<float>(interstitialSwapchainHeight_) /
+                             static_cast<float>(interstitialSwapchainWidth_)};
+    const XrCompositionLayerBaseHeader *layers[] = {
+        reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad)};
+    XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
+    endInfo.displayTime = predictedDisplayTime;
+    endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    endInfo.layerCount = 1;
+    endInfo.layers = layers;
+    XrProfileScope endProfile("host.vr.xr.end_frame");
+    XrCheck(xrEndFrame(session_, &endInfo), "xrEndFrame(interstitial)");
+    return true;
+}
+
+bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, uint64_t xrSerial) {
     if (!windowsProjectionReady_ || !windowsTransport_.hasStereoContent()) {
         stereoActive_.store(false);
         stereoMisses_ = 0;
         return false;
     }
     XrCompositionLayerProjection projection{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-    if (!windowsProjection_.render(windowsTransport_, windowsTrackingSpace_, &projection)) {
+    bool rendered;
+    {
+        XrProfileScope renderProfile("host.vr.projection.render");
+        rendered = windowsProjection_.render(windowsTransport_, windowsTrackingSpace_, &projection);
+    }
+    if (!rendered) {
         if (++stereoMisses_ >= 8) stereoActive_.store(false);
         return false;
     }
     stereoMisses_ = 0;
     stereoActive_.store(true);
+    const int64_t snap = windowsProjection_.lastFreshSnap();
+    if (snap >= 0 && xrSerial >= static_cast<uint64_t>(snap)) {
+        const float lead = std::min(8.0f, static_cast<float>(xrSerial - static_cast<uint64_t>(snap)));
+        predictionLead_ = predictionLead_ > 0.0f ? predictionLead_ + 0.1f * (lead - predictionLead_) : lead;
+        xrgame_profile_counter(kXrCounterPredictLead, static_cast<int64_t>(predictionLead_ * 1000.0f));
+    }
     XrCompositionLayerQuad overlay{XR_TYPE_COMPOSITION_LAYER_QUAD};
     const bool overlayRendered = windowsOverlayVisible_.load() && renderFrame();
     if (overlayRendered) {
@@ -1127,8 +1439,17 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime) {
                                                        : XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     endInfo.layerCount = layerCount;
     endInfo.layers = layers.data();
-    if (!XrCheck(xrEndFrame(session_, &endInfo), "xrEndFrame(windows projection)")) {
+    XrResult ended;
+    {
+        XrProfileScope endProfile("host.vr.xr.end_frame");
+        ended = xrEndFrame(session_, &endInfo);
+    }
+    if (!XrCheck(ended, "xrEndFrame(windows projection)")) {
         stereoActive_.store(false);
+        if (windowsProjection_.lastRenderReused()) {
+            LOGE("runtime rejected the reused projection image; redrawing every frame from now on");
+            windowsProjection_.disableReuse();
+        }
     }
     return true;
 }
@@ -1218,6 +1539,7 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
                                                         : XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     endInfo.layerCount = static_cast<uint32_t>(layers.size());
     endInfo.layers = layers.data();
+    XrProfileScope endProfile("host.vr.xr.end_frame");
     XrCheck(xrEndFrame(session_, &endInfo), "xrEndFrame");
 }
 
@@ -1589,6 +1911,16 @@ void XrImmersiveSession::teardown() {
     if (swapchain_ != XR_NULL_HANDLE) {
         xrDestroySwapchain(swapchain_);
         swapchain_ = XR_NULL_HANDLE;
+    }
+    if (interstitialSwapchain_ != XR_NULL_HANDLE) {
+        xrDestroySwapchain(interstitialSwapchain_);
+        interstitialSwapchain_ = XR_NULL_HANDLE;
+        interstitialImages_.clear();
+        interstitialImageReleased_ = false;
+    }
+    if (interstitialTexture_ != 0) {
+        glDeleteTextures(1, &interstitialTexture_);
+        interstitialTexture_ = 0;
     }
     if (localSpace_ != XR_NULL_HANDLE) {
         xrDestroySpace(localSpace_);

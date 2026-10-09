@@ -38,11 +38,13 @@ class XrGameRuntimeTest {
     }
 
     @Test fun ahbDriverDoesNotEnableCpuReadbackOrDisablePresentWait() {
-        val env = EnvVars()
-        XrGameRuntime.configurePresentation(env, "turnip-d15b7c0-xrg5")
-        assertEquals("1", env.get("XRGAME_X11_AHB"))
-        assertFalse(env.has("MESA_VK_WSI_DEBUG"))
-        assertFalse(env.has("VKD3D_DISABLE_EXTENSIONS"))
+        for (driver in listOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10")) {
+            val env = EnvVars()
+            XrGameRuntime.configurePresentation(env, driver)
+            assertEquals("1", env.get("XRGAME_X11_AHB"))
+            assertFalse(env.has("MESA_VK_WSI_DEBUG"))
+            assertFalse(env.has("VKD3D_DISABLE_EXTENSIONS"))
+        }
     }
 
     @Test fun syncStateRotatesOnlyAfterWineStopsAndPreservesUnrelatedFiles() {

@@ -12,7 +12,7 @@ For XRGame's embedded Proton 11 default, FEX maintenance starts from the same `t
 | `proton-wine` | [tencentmalos/proton-wine](https://github.com/tencentmalos/proton-wine) | `feature/malos/wine-guest-debug` | `a0200a75` (2026-09-28 checkpoint) | The bionic arm64ec / x86_64 Proton Wine that GameNative actually ships. See `.github/workflows/build-proton.yml` and `build-scripts/`. Shallow. | LGPL-2.1+ (Wine) |
 | `FEX` | [tencentmalos/FEX](https://github.com/tencentmalos/FEX) (fork of FEX-Emu/FEX) | `feature/malos/xrgame-arm64ec` | `3f1f30a0` (FEX-2608-241) | Same pin as shadPS4. `Source/Windows/{ARM64EC,WOW64,UnixLib}` are the Wine-hosted emulator modules. **FEX's own AGENTS.md/CLAUDE.md forbid AI-generated contributions upstream.** | MIT |
 | `shadPS4` | [tencentmalos/Bachata-S4](https://github.com/tencentmalos/Bachata-S4) (shadPS4 Android/FEX port) | `malos/main` | `a562e810` (2026-09-24) | Android host components to port: session lifecycle, Vulkan presenter, Turnip loading, Oboe audio, input, diagnostics, Litep/KGSL tooling and validation methodology. Its own submodules are **not** initialized. | GPL-2.0-or-later per SPDX headers (compatible with this repo's GPL-3.0); its private Foundation dependency is separately authorized for internal debug builds (2026-09-27), pinned at root `foundation/`; see `docs/debugging/debugbus.md` |
-| `mesa-turnip` | [tencentmalos/mesa-mirror](https://github.com/tencentmalos/mesa-mirror) | `feature/malos/xrgame-wine-icd` | `dd74a5cf` (2026-09-28 checkpoint) | Turnip fork used by shadPS4 on Adreno (KGSL zero-timeout poll, gralloc/Mapper metadata, fragment density map 2 for XR). Shallow. | MIT |
+| `mesa-turnip` | [tencentmalos/mesa-mirror](https://github.com/tencentmalos/mesa-mirror) | `feature/malos/xrgame-wine-icd` | `22451ea2` (2026-10-09, Turnip xrg10 source) | Turnip fork used by shadPS4 on Adreno (KGSL zero-timeout poll, gralloc/Mapper metadata, fragment density map 2 for XR). Shallow. | MIT |
 | `WinNative` | [tencentmalos/WinNative](https://github.com/tencentmalos/WinNative) | default | `e9e5d307` (2026-09-23) | Comparison frontend: Vulkan compositor, FEX UnixLibs toggle, and its own Rust Steam client `wnsteam` (`app/src/main/cpp/wn-steam-client/rust`: CM client, auth, depot download; no JVM). Shallow. | GPL-3.0 |
 | `gfxreconstruct` | [tencentmalos/gfxreconstruct](https://github.com/tencentmalos/gfxreconstruct) (fork of LunarG/gfxreconstruct) | `feature/malos/xrgame-wine-capture` | `3868cd12` (LunarG `dev` `6dc9b65` + Wine capture, 2026-10-05) | API capture and replay for picoXr debug APKs: D3D12/DXGI capture proxies, the Android Vulkan capture layer and the Windows replay tools. See [the API replay spec](../docs/specs/xrgame-native-api-replay-v1.md). Shallow. Its own submodules are **not** initialized. | MIT |
 
@@ -42,7 +42,11 @@ baseline is shadPS4's `references/mesa-turnip-xr-fdm2`, branch
 `codex/turnip-xr-fdm2`, commit `d15b7c019c8daa17e80051258077d9b2d5146a2b`.
 Both `malos/main` and `feature/malos/xrgame-wine-icd` are now published. The
 feature branch carries the Android HAL/Wine ICD exports and X11 AHB presentation.
-The parent gitlink records that source checkpoint. Validated runtime recipes keep
+The parent gitlink records that source checkpoint. Since 2026-10-09 it is `22451ea2`:
+the shadPS4 and Azahar Swan XR Turnip merge (`25ef1647`), the AHB entry points
+(`51f94d33`), and the LRZ RMW / concurrent binning hang fix. Its tree is exactly what
+`turnip-25ef164-xrg10` was built from. The same fix sits alone on `malos/main` in
+`feature/malos/lrz-rmw-no-cb` (`16ad8431`); `malos/main` itself is unchanged. Validated runtime recipes keep
 their explicit older base commits and recorded build-copy patches; advancing a
 maintenance gitlink does not silently change the bundled binaries. Wine and GBE
 follow the same distinction. See the [stage record](../docs/validation/stage-20260928.md).
@@ -74,7 +78,8 @@ filters omitted in a build copy. The source archive collector includes this pin.
 
 `references/opencomposite` is `tencentmalos/opencomposite`, forked from
 `GameNative/opencomposite`, initially at `7fd3276ac0ffda518a7f5a9157620f292e2032e6`.
-The maintained gitlink is `96a2388c5f9911273321dc731cd5bcc54232d751`.
+The maintained gitlink is `7f87df1fe7e6c71b6af38cbba5c39b90ee6130e6` (2026-10-09: adds the
+mailbox forwarding patch for Alyx loading interstitials).
 It contains the GPL-3.0 build recipe and patch, not a vendored full OpenOVR tree.
 The recipe pins `https://gitlab.com/znixian/OpenOVR` at
 `a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d`. Nested upstream pins remain unchanged.

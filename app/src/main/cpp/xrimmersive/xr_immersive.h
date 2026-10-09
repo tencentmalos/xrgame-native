@@ -113,6 +113,10 @@ public:
     bool windowsStereoActive() const;
     bool applyWindowsHaptic(uint32_t hand, float amplitude, XrDuration duration, float frequency);
     void setWindowsOverlayVisible(bool visible);
+    // A game loading interstitial (RGBA_8888, tightly repacked from strideBytes) shown as a
+    // world-locked panel in place of the game's frames; nullptr hides it. Any thread.
+    void setWindowsInterstitial(const uint8_t *rgbaPixels, int32_t width, int32_t height,
+                                int32_t strideBytes);
 
     // Called from the JNI bridge with a freshly PixelCopy'd RGBA_8888 frame of the game's
     // actual rendered output (see ImmersiveXrActivity's capture loop). Copies into a
@@ -157,7 +161,10 @@ private:
     void syncWindowsTrackingPoses(InputSnapshot *snapshot, XrTime predictedDisplayTime);
     void submitQuadLayer(XrTime predictedDisplayTime, XrSpace space, XrSwapchain swapchain,
                           int32_t width, int32_t height, bool sessionActive);
-    bool submitWindowsProjection(XrTime predictedDisplayTime);
+    bool submitWindowsProjection(XrTime predictedDisplayTime, uint64_t xrSerial);
+    bool submitWindowsInterstitial(XrTime predictedDisplayTime, const std::array<XrView, 2> &views,
+                                   XrViewStateFlags viewStateFlags);
+    bool uploadInterstitialLocked();
     void ensureQuadGeometryAndShader();
     void uploadPendingGameFrameLocked();
     void setupPassthrough();
@@ -178,6 +185,7 @@ private:
     bool localFloorExtensionAvailable_ = false;
     XrSpace windowsTrackingSpace_ = XR_NULL_HANDLE;
     XrSwapchain swapchain_ = XR_NULL_HANDLE;
+    int64_t swapchainFormat_ = 0;
     XrSessionState sessionState_ = XR_SESSION_STATE_UNKNOWN;
     bool sessionRunning_ = false;
     windowsvr::WindowsFrameTransport windowsTransport_;
@@ -185,6 +193,9 @@ private:
     bool windowsProjectionReady_ = false;
     std::atomic<bool> stereoActive_{false};
     std::atomic<bool> windowsOverlayVisible_{false};
+    // XR periods from the snapshot a game frame rendered against to the XR frame that first
+    // shows it (EMA); the extended prediction locates the next snapshots that far ahead.
+    float predictionLead_ = 0.0f;
     std::atomic<uint32_t> recenterSerial_{0};
     uint32_t stereoMisses_ = 0;
 
@@ -247,6 +258,24 @@ private:
     int32_t pendingFrameWidth_ = 0;
     int32_t pendingFrameHeight_ = 0;
     bool hasPendingFrame_ = false;
+
+    // Loading interstitial (setWindowsInterstitial). The pixels are uploaded on the render thread
+    // into interstitialSwapchain_ only when they change; the panel pose is fixed in the tracking
+    // space when it appears, in front of where the user is looking.
+    std::mutex interstitialMutex_;
+    std::vector<uint8_t> interstitialPixels_;
+    int32_t interstitialWidth_ = 0;
+    int32_t interstitialHeight_ = 0;
+    bool interstitialChanged_ = false;
+    std::atomic<bool> interstitialVisible_{false};
+    XrSwapchain interstitialSwapchain_ = XR_NULL_HANDLE;
+    std::vector<XrSwapchainImageOpenGLESKHR> interstitialImages_;
+    int32_t interstitialSwapchainWidth_ = 0;
+    int32_t interstitialSwapchainHeight_ = 0;
+    bool interstitialImageReleased_ = false;
+    GLuint interstitialTexture_ = 0;
+    bool interstitialPoseValid_ = false;
+    XrPosef interstitialPose_{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.6f, -1.6f}};
 
     XrActionSet actionSet_ = XR_NULL_HANDLE;
     XrAction buttonAAction_ = XR_NULL_HANDLE;
@@ -345,5 +374,9 @@ private:
     PFN_xrPassthroughLayerResumeFB xrPassthroughLayerResumeFB_ = nullptr;
     PFN_xrPassthroughLayerPauseFB xrPassthroughLayerPauseFB_ = nullptr;
 };
+
+// Windows VR tuning (DebugBus vr_tuning): when set, the snapshots the game renders against are
+// located at the display time measured for its frames instead of the next XR frame's.
+void SetWindowsPredictionExtended(bool extended);
 
 }  // namespace xrimmersive

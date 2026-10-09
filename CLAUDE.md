@@ -7,7 +7,7 @@
 - 产品显示名已于 2026-10-07 更名为 **SteamPSP**（PICO Space Pro）；图标与维护说明见 [品牌资源](docs/branding/README.md)。包名、签名、存储目录和代码标识保持稳定，历史记录不改名。
 - Default to Chinese when talking with the user.
 - 修改 Foundation 前必须从当前固定提交切出独立功能分支，不能直接在共享 `main` 上修改（用户补充，2026-09-27）。
-- 用户于 2026-09-27 授权将私有 `tencentmalos/foundation` 作为 `foundation/` 子仓接入 DebugBus，替代原先的禁止引入规则。只选取 DebugBus 模块供内部调试包使用；操作与边界见 `docs/debugging/debugbus.md`，不公开发布 Foundation 源码。
+- 用户于 2026-09-27 授权将私有 `tencentmalos/foundation` 作为 `foundation/` 子仓接入 DebugBus，替代原先的禁止引入规则。操作与边界见 `docs/debugging/debugbus.md`，不公开发布 Foundation 源码。2026-10-09 用户放开范围：本项目同为学习研究性质，Foundation 的任何模块（upscale、foveation、fsr1、xr 眼动、lite-engine 等）都可编进内部 picoXr 包；仍以子仓链接，不把其源码拷进本公开仓库，APK 只在内部分发。
 - **主仓主干为 `malos/main`**：`tencentmalos/xrgame-native` 的功能分支默认从最新 `malos/main` 创建，并以它作为合并 / PR 目标。子仓分支遵循各自约定；commit / push 仍需用户明确授权。
 - MHW 的 Steam/loader/根目录配置路径启动阻塞已修复，AYN 到达 3D 标题画面、开场剧情和角色创建；已观察用户进入冰原场景；受控 DX11 → DX12 → DX11 重启、原 3 个角色识别和正常退出已通过，长时间稳定性仍待验。重启链路见 `docs/validation/mhw-restart-20260927.md`。目录别名仅为 MHW profile 启用，不修改游戏文件，不放宽零长度 D3D buffer。见 `docs/validation/mhw-startup-20260927.md`。
 - picoXr 必须内置完整运行时（含源码 Steam 客户端、DXVK 与 VKD3D），缺组件禁止出包。x64 Steam 游戏默认配置客户端，旧容器启动时校验并修复运行库；不修改游戏目录或存档。验证范围见 `docs/validation/bundled-runtime-20260927.md`。

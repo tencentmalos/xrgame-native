@@ -21,7 +21,8 @@ object XrGameSteamClient {
     @Synchronized
     fun prepare(context: Context, prefix: File, game: File, drive: Char, appId: Int,
                 target: XrGameSteamLaunch.Launch, injectExtra: Boolean = false,
-                nestedGamePath: Boolean = false, followSelfRestart: Boolean = false): XrGameSteamLaunch.Launch {
+                nestedGamePath: Boolean = false, followSelfRestart: Boolean = false,
+                language: String? = null): XrGameSteamLaunch.Launch {
         val xrProfile = XrGameProfiler.region("steamclient.prepare")
         try {
         check(target.executable.isFile && target.workingDirectory.isDirectory) {
@@ -29,7 +30,7 @@ object XrGameSteamClient {
         }
         // Use the same persisted identity as AutoCloud, including when launching offline.
         // A generated client identity cannot load account-bound saves.
-        val userConfig = userConfiguration(SteamUtils.getSteamId64())
+        val userConfig = userConfiguration(SteamUtils.getSteamId64(), language)
         if (followSelfRestart) {
             val record = File(File(ImageFs.getSharedProtonDir(context), XrGameRuntimeVersions.WINE), "xrgame-build.json")
             check(JSONObject(record.readText()).optInt("xrgameBootstrapVersion") == 1) {
@@ -82,17 +83,19 @@ object XrGameSteamClient {
         }
     }
 
-    internal fun userConfiguration(steamId64: Long?): String {
+    /** [language] is the container's Steam API language name (e.g. "schinese"); others fall back to English. */
+    internal fun userConfiguration(steamId64: Long?, language: String? = null): String {
         check(steamId64 != null && steamId64 ushr 32 == 0x01100001L &&
             steamId64 and 0xffffffffL != 0L) {
             "Steam account identity is missing. Sign in to Steam before launching this game."
         }
         val accountId = steamId64 and 0xffffffffL
+        val steamLanguage = language?.lowercase()?.takeIf { it.matches(Regex("[a-z]{2,32}")) } ?: "english"
         return """
             [user::general]
             account_name=XRGame
             account_steamid=$steamId64
-            language=english
+            language=$steamLanguage
 
             [user::saves]
             local_save_path=C:\Program Files (x86)\Steam\userdata\$accountId

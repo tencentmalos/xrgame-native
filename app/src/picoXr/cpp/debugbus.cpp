@@ -115,10 +115,13 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
         registry.Register("modules", "Loaded host ELF Build IDs; modules [exact-basename]", [](const auto& a) {
             return a.size() <= 1 ? modules(a.empty() ? "" : a[0]) : "{\"error\":\"unexpected_arguments\"}";
         });
-        for (const auto* command : {"status", "runtime", "processes", "present", "api_capture"}) {
+        for (const auto* command : {"status", "runtime", "processes", "present", "api_capture", "vr_tuning"}) {
             registry.Register(command, command == std::string_view("present") ?
                 "Host Present state; present trace <0..3600>" : command == std::string_view("api_capture") ?
-                "GFXReconstruct capture; api_capture [status|start|stop] [container]" : "Host snapshot (JSON schema 1)",
+                "GFXReconstruct capture; api_capture [status|start|stop] [container]" :
+                command == std::string_view("vr_tuning") ?
+                "Windows VR pacing; vr_tuning [pacing=off|auto|half] [start=<us>] [predict=0|1]" :
+                "Host snapshot (JSON schema 1)",
                 [&, command](const auto&) {
                     auto key = env->NewStringUTF(command);
                     auto result = static_cast<jstring>(env->CallObjectMethod(provider, query, key, arguments));

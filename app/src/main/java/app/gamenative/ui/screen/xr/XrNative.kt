@@ -68,6 +68,15 @@ object XrNative {
     external fun nativeSetWindowsOverlayVisible(handle: Long, visible: Boolean)
 
     /**
+     * Shows an RGBA_8888 [bitmap] as a world-locked panel in place of the Windows game's frames
+     * (game loading interstitials); null hides it. The pixels are copied during the call.
+     */
+    external fun nativeSetWindowsInterstitial(handle: Long, bitmap: Bitmap?)
+
+    /** Locates the Windows game's poses at the measured display time of its frames (DebugBus vr_tuning). */
+    external fun nativeSetWindowsPrediction(extended: Boolean)
+
+    /**
      * Hands off one PixelCopy'd frame of the game's actual rendered output (ARGB_8888) to be
      * drawn into the immersive quad layer. See ImmersiveXrActivity's capture loop.
      */

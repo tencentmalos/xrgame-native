@@ -255,6 +255,38 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsOverlayVisible(
     if (handle != nullptr) handle->session->setWindowsOverlayVisible(visible == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsPrediction(JNIEnv *, jclass, jboolean extended) {
+    xrimmersive::SetWindowsPredictionExtended(extended == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsInterstitial(
+    JNIEnv *env, jclass, jlong handlePtr, jobject bitmap) {
+    if (bitmap == nullptr) {
+        std::lock_guard<std::mutex> lock(gHandleMutex);
+        auto *handle = LiveHandle(handlePtr);
+        if (handle != nullptr) handle->session->setWindowsInterstitial(nullptr, 0, 0, 0);
+        return;
+    }
+    AndroidBitmapInfo info;
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) return;
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return;
+    void *pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) return;
+    {
+        std::lock_guard<std::mutex> lock(gHandleMutex);
+        auto *handle = LiveHandle(handlePtr);
+        if (handle != nullptr) {
+            handle->session->setWindowsInterstitial(static_cast<const uint8_t *>(pixels),
+                                                    static_cast<int32_t>(info.width),
+                                                    static_cast<int32_t>(info.height),
+                                                    static_cast<int32_t>(info.stride));
+        }
+    }
+    AndroidBitmap_unlockPixels(env, bitmap);
+}
+
 // Called from ImmersiveXrActivity's PixelCopy capture loop with the game's actual rendered
 // frame (ARGB_8888 bitmap). Copies the pixels into the session's pending-frame buffer; the
 // render thread uploads them to the GPU and draws them into the quad layer on its own.

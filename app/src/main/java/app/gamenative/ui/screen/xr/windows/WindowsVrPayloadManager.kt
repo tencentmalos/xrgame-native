@@ -73,6 +73,10 @@ class WindowsVrPayloadManager(
                 registry.setStringValue("Software\\Wow6432Node\\Khronos\\OpenXR\\1", "ActiveRuntime",
                     "C:\\gamenative-xr\\active_runtime32.json")
             }
+            // A Proton update re-applies wine.inf during the next launch, after this edit, and
+            // points the 64-bit view back at C:\openxr\wineopenxr64.json. Wine never creates
+            // that file, so keep it naming our runtime as well.
+            writeIfChanged(File(container.rootDir, ".wine/drive_c/openxr/wineopenxr64.json"), json64.toByteArray())
             diagnostics.record("registry", "selected per-prefix OpenXR runtime in both registry views")
         } else installRegistry(container, prefixDirectory)
         diagnostics.record("payload", "prepared path=${prefixDirectory.path} runtime64=${runtime64.length()} runtime32=${runtime32.length()} bridge64=${bridge.length()} bridge32=${bridge32.length()} unixlib=${unixlib.length()} manifest=${manifest.length()}")
@@ -96,7 +100,7 @@ class WindowsVrPayloadManager(
             .filter { runCatching { peMachineOf(it) == 0x8664 }.getOrDefault(false) }
         check(targets.isNotEmpty()) { "No x64 openvr_api.dll was found under the launched game" }
         val adapter = context.assets.open("opencomposite_x64.dll").use { it.readBytes() }
-        if (BuildConfig.XRGAME) check(sha256(adapter) == "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5") {
+        if (BuildConfig.XRGAME) check(sha256(adapter) == "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66") {
             "OpenComposite payload checksum mismatch"
         }
         val record = File(File(container.rootDir, ".wine/drive_c/gamenative-xr"), "opencomposite.targets")

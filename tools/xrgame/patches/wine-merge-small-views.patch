@@ -1,0 +1,94 @@
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -274,6 +274,7 @@
+ #define VPROT_PLACEHOLDER      0x0400
+ #define VPROT_FREE_PLACEHOLDER 0x0800
+ #define VPROT_NATIVE           0x1000
++#define VPROT_GRANULE_TAIL     0x2000  /* the rest of the view's last 64k granule is mapped too */
+ 
+ /* Conversion from VPROT_* to Win32 flags */
+ static const BYTE VIRTUAL_Win32Flags[16] =
+@@ -1899,6 +1900,59 @@
+ }
+ 
+ 
++/* xrgame: a Windows allocation always owns whole 64k granules, but only its own pages are
++ * mapped, so every small VirtualAlloc becomes one kernel VMA separated from its neighbours by
++ * a hole. Games that keep tens of thousands of such blocks (Source 2) exceed Android's
++ * vm.max_map_count of 65530 and then fail every mmap. For plain data views placed by us,
++ * also map the unused rest of the last granule with the same protection; nothing else can
++ * be placed there, and adjacent views then merge into a single VMA.
++ * WINE_MERGE_SMALL_VIEWS=0 disables it. virtual_mutex must be held by caller. */
++static void map_granule_tail( struct file_view *view, unsigned int vprot )
++{
++    static int enabled = -1;
++    char *start = (char *)view->base + view->size;
++    char *end = ROUND_ADDR( start + granularity_mask, granularity_mask );
++    int unix_prot;
++
++    if (enabled == -1)
++    {
++        const char *env = getenv( "WINE_MERGE_SMALL_VIEWS" );
++        enabled = !env || *env != '0';
++    }
++    if (!enabled || end <= start) return;
++    if (vprot & ~(VPROT_READ | VPROT_WRITE | VPROT_COMMITTED)) return;
++    if ((UINT_PTR)view->base & granularity_mask) return;
++    if (is_beyond_limit( start, end - start, user_space_limit )) return;
++    if (find_view_range( start, end - start )) return;
++
++    unix_prot = get_unix_prot( vprot );
++    switch (mmap_is_in_reserved_area( start, end - start ))
++    {
++    case 1:
++        if (anon_mmap_fixed( start, end - start, unix_prot, 0 ) == MAP_FAILED) return;
++        break;
++    case 0:
++        if (anon_mmap_tryfixed( start, end - start, unix_prot, 0 ) == MAP_FAILED) return;
++        break;
++    default:
++        return;
++    }
++    view->protect |= VPROT_GRANULE_TAIL;
++}
++
++
++/* Release what map_granule_tail() added. virtual_mutex must be held by caller. */
++static void unmap_granule_tail( struct file_view *view )
++{
++    char *start = (char *)view->base + view->size;
++    char *end = ROUND_ADDR( start + granularity_mask, granularity_mask );
++
++    if (!(view->protect & VPROT_GRANULE_TAIL)) return;
++    view->protect &= ~VPROT_GRANULE_TAIL;
++    if (end > start) unmap_area( start, end - start );
++}
++
++
+ /***********************************************************************
+  *           delete_view
+  *
+@@ -1906,6 +1960,7 @@
+  */
+ static void delete_view( struct file_view *view ) /* [in] View */
+ {
++    unmap_granule_tail( view );
+     if (!(view->protect & VPROT_SYSTEM)) unmap_area( view->base, view->size );
+     set_page_vprot( view->base, view->size, 0 );
+     if (view->protect & VPROT_ARM64EC) clear_arm64ec_range( view->base, view->size );
+@@ -2765,6 +2820,7 @@
+ static NTSTATUS remove_pages_from_view( struct file_view *view, char *base, size_t size )
+ {
+     assert( size < view->size );
++    unmap_granule_tail( view );
+ 
+     if (view->base != base && base + size != (char *)view->base + view->size)
+     {
+@@ -5549,6 +5605,7 @@
+ 
+             if (status == STATUS_SUCCESS)
+             {
++                if (!base && !is_dos_memory) map_granule_tail( view, vprot );
+                 base = view->base;
+                 if (vprot & VPROT_EXEC || force_exec_prot) mprotect_range( base, size, 0, 0 );
+             }
