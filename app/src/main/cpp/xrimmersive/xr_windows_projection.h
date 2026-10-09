@@ -9,6 +9,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#ifdef XR_USE_GRAPHICS_API_VULKAN
+#include <vulkan/vulkan.h>
+#endif
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <vector>

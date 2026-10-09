@@ -1249,6 +1249,8 @@ fun ContainerConfigDialog(
                     },
                 ) { paddingValues ->
                     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+                    // XRGame opens on its own options; the full tab set is behind "Legacy settings".
+                    var legacyView by rememberSaveable { mutableStateOf(!BuildConfig.XRGAME || default) }
                     val tabs = listOf(
                         stringResource(R.string.container_config_tab_general),
                         stringResource(R.string.container_config_tab_graphics),
@@ -1295,34 +1297,49 @@ fun ContainerConfigDialog(
                             )
                             .fillMaxSize(),
                     ) {
-                        ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 0.dp) {
-                            tabs.forEachIndexed { index, label ->
-                                Tab(
-                                    selected = selectedTab == index,
-                                    onClick = { selectedTab = index },
-                                    text = { Text(text = label) },
-                                    modifier = if (index == 0) {
-                                        Modifier.focusRequester(firstTabFocusRequester)
-                                    } else {
-                                        Modifier
-                                    },
-                                )
+                        if (!legacyView) {
+                            Column(
+                                modifier = Modifier
+                                    .verticalScroll(scrollState)
+                                    .weight(1f),
+                            ) {
+                                XrGameSettingsTabContent(state, onOpenLegacy = { legacyView = true })
                             }
-                        }
-                        Column(
-                            modifier = Modifier
-                                .verticalScroll(scrollState)
-                                .weight(1f),
-                        ) {
-                            if (selectedTab == 0) GeneralTabContent(state, nonzeroResolutionError)
-                            if (selectedTab == 1) GraphicsTabContent(state, default)
-                            if (selectedTab == 2) EmulationTabContent(state)
-                            if (selectedTab == 3) ControllerTabContent(state, default)
-                            if (selectedTab == 4) WineTabContent(state)
-                            if (selectedTab == 5) WinComponentsTabContent(state)
-                            if (selectedTab == 6) EnvironmentTabContent(state)
-                            if (selectedTab == 7) DrivesTabContent(state)
-                            if (selectedTab == 8) AdvancedTabContent(state)
+                        } else {
+                            if (BuildConfig.XRGAME && !default) {
+                                TextButton(onClick = { legacyView = false }) {
+                                    Text(text = stringResource(R.string.xrgame_settings_back))
+                                }
+                            }
+                            ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 0.dp) {
+                                tabs.forEachIndexed { index, label ->
+                                    Tab(
+                                        selected = selectedTab == index,
+                                        onClick = { selectedTab = index },
+                                        text = { Text(text = label) },
+                                        modifier = if (index == 0) {
+                                            Modifier.focusRequester(firstTabFocusRequester)
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .verticalScroll(scrollState)
+                                    .weight(1f),
+                            ) {
+                                if (selectedTab == 0) GeneralTabContent(state, nonzeroResolutionError)
+                                if (selectedTab == 1) GraphicsTabContent(state, default)
+                                if (selectedTab == 2) EmulationTabContent(state)
+                                if (selectedTab == 3) ControllerTabContent(state, default)
+                                if (selectedTab == 4) WineTabContent(state)
+                                if (selectedTab == 5) WinComponentsTabContent(state)
+                                if (selectedTab == 6) EnvironmentTabContent(state)
+                                if (selectedTab == 7) DrivesTabContent(state)
+                                if (selectedTab == 8) AdvancedTabContent(state)
+                            }
                         }
                     }
                 }

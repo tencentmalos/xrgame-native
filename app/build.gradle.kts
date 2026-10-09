@@ -827,17 +827,26 @@ androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi
             rootProject.file("build/xrgame-runtime/opencomposite/opencomposite_x64.dll"),
             rootProject.file("tools/xrgame/opencomposite-pin.json"),
             rootProject.fileTree("references/opencomposite/patches"),
-            rootProject.fileTree("references/opencomposite/vendor"))
+            rootProject.fileTree("references/opencomposite/vendor"),
+            rootProject.fileTree("references/Vulkan-Headers/include"),
+            rootProject.fileTree("references/fmt/include"))
+        // The XR composite's reconstruction, foveation and eye gaze (every build type).
+        listOf("basic/underlying/core", "basic/underlying/math", "basic/platform", "basic/allocator/public",
+            "basic/async/container/public", "basic/modules/implements/log", "modules/log", "modules/property",
+            "modules/utils/include", "modules/foveation", "modules/fsr1", "modules/upscale", "modules/xr",
+            "third_party/openxr/openxr_header/openxr_pico").forEach {
+            nativeSources.from(rootProject.fileTree("foundation/$it"))
+        }
+        inputs.property("foundationRevision", providers.provider {
+            providers.exec { commandLine("git", "-C", rootProject.file("foundation"), "rev-parse", "HEAD") }
+                .standardOutput.asText.get().trim()
+        })
         if (variant.buildType == "debug") {
             nativeSources.from(rootProject.fileTree("foundation/modules/debugbus"))
-            listOf("modules/profiler_ring", "basic/underlying/core", "third_party/profiler_sdk/sdk",
+            listOf("modules/profiler_ring", "third_party/profiler_sdk/sdk",
                 "third_party/lz4", "third_party/nlohmann_json/include").forEach {
                 nativeSources.from(rootProject.fileTree("foundation/$it"))
             }
-            inputs.property("foundationRevision", providers.provider {
-                providers.exec { commandLine("git", "-C", rootProject.file("foundation"), "rev-parse", "HEAD") }
-                    .standardOutput.asText.get().trim()
-            })
         }
         sdkDir.set(androidComponents.sdkComponents.sdkDirectory.map { it.asFile.absolutePath })
         ndkDir.set(androidComponents.sdkComponents.ndkDirectory.map { it.asFile.absolutePath })

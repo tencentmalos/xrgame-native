@@ -62,3 +62,9 @@
 	url = https://github.com/tencentmalos/gfxreconstruct.git
 	branch = feature/malos/xrgame-wine-capture
 	shallow = true
+[submodule "references/Vulkan-Headers"]
+	path = references/Vulkan-Headers
+	url = https://github.com/tencentmalos/Vulkan-Headers.git
+[submodule "references/fmt"]
+	path = references/fmt
+	url = https://github.com/tencentmalos/fmt.git

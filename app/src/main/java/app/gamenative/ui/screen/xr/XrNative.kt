@@ -77,6 +77,28 @@ object XrNative {
     external fun nativeSetWindowsPrediction(extended: Boolean)
 
     /**
+     * Rigid correction of the grip pose handed to Windows games (DebugBus vr_grip), in the right
+     * hand's grip frame: [pitch], [yaw], [roll] in degrees about X, Y, Z (in that order) and an
+     * offset in metres. The left hand is mirrored.
+     */
+    external fun nativeSetGripCorrection(pitch: Float, yaw: Float, roll: Float, x: Float, y: Float, z: Float)
+
+    /**
+     * Composite backend for sessions created afterwards: the app-side Turnip (adrenotools,
+     * [libraryName] in [driverDir], hooks in [hookDir]) through XR_KHR_vulkan_enable2 when
+     * [vulkan], else GLES. The system property debug.xrgame.xr.composite (vulkan|gles) overrides.
+     */
+    external fun nativeSetComposite(vulkan: Boolean, driverDir: String, libraryName: String, hookDir: String)
+
+    /**
+     * Windows VR reconstruction on the Vulkan composite, applied from the next frame:
+     * [filter] 0 off / 1 FSR1 / 2 SGSR1, [sharpness] 0..100, [foveation] 0 off / 1 fixed /
+     * 2 eye tracked, [level] 0 low / 1 balanced / 2 high, [outputPercent] 50..100 of the runtime's
+     * recommended eye size, [debug] tints by fragment density.
+     */
+    external fun nativeSetUpscale(filter: Int, sharpness: Int, foveation: Int, level: Int, outputPercent: Int, debug: Boolean)
+
+    /**
      * Hands off one PixelCopy'd frame of the game's actual rendered output (ARGB_8888) to be
      * drawn into the immersive quad layer. See ImmersiveXrActivity's capture loop.
      */

@@ -106,8 +106,51 @@ target_include_directories(vulkan_renderer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
 target_compile_options(vulkan_renderer PRIVATE -fvisibility=hidden)
 target_link_libraries(vulkan_renderer PRIVATE log android vulkan adrenotools dxbc dl atomic)
 
+# Foundation's Vulkan reconstruction (FSR1/SGSR1), foveation and eye gaze for the XR composite.
+# Internal APKs only: linked from the pinned submodule, never copied into this repository.
+get_filename_component(XRGAME_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../.." ABSOLUTE)
+set(FOUNDATION "${XRGAME_ROOT}/foundation")
+if(NOT EXISTS "${FOUNDATION}/modules/upscale/src/VulkanUpscaler.cpp")
+    message(FATAL_ERROR "Initialize the pinned Foundation submodule: git submodule update --init foundation")
+endif()
+foreach(reference Vulkan-Headers fmt)
+    if(NOT EXISTS "${XRGAME_ROOT}/references/${reference}/include")
+        message(FATAL_ERROR "Initialize references/${reference}: git submodule update --init references/${reference}")
+    endif()
+endforeach()
+# One vulkan.hpp configuration for every translation unit that shares Vulkan-Hpp types.
+add_library(xrgame_vulkan_headers INTERFACE)
+target_include_directories(xrgame_vulkan_headers SYSTEM BEFORE INTERFACE "${XRGAME_ROOT}/references/Vulkan-Headers/include")
+target_compile_definitions(xrgame_vulkan_headers INTERFACE VK_NO_PROTOTYPES VK_USE_PLATFORM_ANDROID_KHR VK_ENABLE_BETA_EXTENSIONS
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_STRUCT_SETTERS
+    VULKAN_HPP_NO_TO_STRING)
+add_library(xrgame_fmt INTERFACE)
+target_include_directories(xrgame_fmt SYSTEM INTERFACE "${XRGAME_ROOT}/references/fmt/include")
+target_compile_definitions(xrgame_fmt INTERFACE FMT_HEADER_ONLY=1)
+add_library(fmt::fmt ALIAS xrgame_fmt)
+add_subdirectory("${FOUNDATION}/modules/log" foundation-log EXCLUDE_FROM_ALL)
+
 if(DEFINED OpenXR_DIR)
     find_package(OpenXR REQUIRED CONFIG)
+    add_library(xrgame_foundation_xr STATIC
+        "${FOUNDATION}/modules/foveation/src/Foveation.cpp"
+        "${FOUNDATION}/modules/foveation/src/vulkan/FragmentDensityMap.cpp"
+        "${FOUNDATION}/modules/fsr1/src/Fsr1.cpp"
+        "${FOUNDATION}/modules/upscale/src/VulkanUpscaler.cpp"
+        "${FOUNDATION}/modules/xr/src/XrEyeGazeTracker.cpp")
+    target_include_directories(xrgame_foundation_xr
+        PUBLIC
+            "${FOUNDATION}/modules/foveation/include"
+            "${FOUNDATION}/modules/fsr1/include"
+            "${FOUNDATION}/modules/upscale/include"
+            "${FOUNDATION}/modules/xr/include"
+            "${FOUNDATION}/basic/underlying/math/public"
+        PRIVATE
+            "${FOUNDATION}/modules/fsr1/third_party/fsr1/include")
+    # openxr_pico only; <openxr/openxr.h> stays the loader package's.
+    target_compile_options(xrgame_foundation_xr PRIVATE "SHELL:-idirafter ${FOUNDATION}/third_party/openxr/openxr_header")
+    target_link_libraries(xrgame_foundation_xr PUBLIC xrgame_vulkan_headers spatial::foundation_log PRIVATE OpenXR::openxr_loader)
+    target_compile_features(xrgame_foundation_xr PUBLIC cxx_std_20)
     add_subdirectory("${GN}/xrimmersive" xrimmersive)
     install(FILES "$<TARGET_FILE:OpenXR::openxr_loader>" DESTINATION arm64-v8a)
 else()

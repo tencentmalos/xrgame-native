@@ -17,6 +17,8 @@
          SBS itself does not create a host OpenXR instance. -->
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
+    <!-- Eye-tracked foveation of the Windows VR reconstruction (XR_EXT_eye_gaze_interaction). -->
+    <uses-permission android:name="com.picovr.permission.EYE_TRACKING" />
     <queries>
         <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
         <intent><action android:name="org.khronos.openxr.OpenXRRuntimeService" /></intent>

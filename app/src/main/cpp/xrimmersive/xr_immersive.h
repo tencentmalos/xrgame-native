@@ -6,6 +6,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -19,10 +20,21 @@
 #include "xr_windows_projection.h"
 #include "xr_windows_transport.h"
 
+#ifdef XR_USE_GRAPHICS_API_VULKAN
+#include <vulkan/vulkan.h>
+#endif
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
+namespace spatial::xr {
+class XrEyeGazeTracker;
+}
+
 namespace xrimmersive {
+
+namespace vulkan {
+class Compositor;
+}
 
 // Bit indices match XrGamepadBridge.kt / WinHandler.sendVirtualGamepadState's Xbox layout.
 enum ButtonBit {
@@ -102,6 +114,8 @@ struct WindowsRuntimeSnapshot {
 // Owns the OpenXR instance/session and its dedicated frame-loop thread.
 class XrImmersiveSession {
 public:
+    XrImmersiveSession();
+    ~XrImmersiveSession();
     void configure(int32_t quadWidth, int32_t quadHeight, float refreshRate);
     bool initialize(JavaVM *vm, jobject activityRef);
     void requestStop();
@@ -162,6 +176,10 @@ private:
     void submitQuadLayer(XrTime predictedDisplayTime, XrSpace space, XrSwapchain swapchain,
                           int32_t width, int32_t height, bool sessionActive);
     bool submitWindowsProjection(XrTime predictedDisplayTime, uint64_t xrSerial);
+    // The projection presenter of the active backend.
+    bool renderWindowsProjection(XrCompositionLayerProjection *layer);
+    bool renderQuadImage(uint32_t imageIndex);
+    void locateGaze(XrTime predictedDisplayTime);
     bool submitWindowsInterstitial(XrTime predictedDisplayTime, const std::array<XrView, 2> &views,
                                    XrViewStateFlags viewStateFlags);
     bool uploadInterstitialLocked();
@@ -184,6 +202,7 @@ private:
     XrReferenceSpaceType windowsTrackingSpaceType_ = XR_REFERENCE_SPACE_TYPE_LOCAL;
     bool localFloorExtensionAvailable_ = false;
     XrSpace windowsTrackingSpace_ = XR_NULL_HANDLE;
+    std::array<bool, 2> gripRelationLogged_{};
     XrSwapchain swapchain_ = XR_NULL_HANDLE;
     int64_t swapchainFormat_ = 0;
     XrSessionState sessionState_ = XR_SESSION_STATE_UNKNOWN;
@@ -191,6 +210,11 @@ private:
     windowsvr::WindowsFrameTransport windowsTransport_;
     windowsvr::WindowsProjectionPresenter windowsProjection_;
     bool windowsProjectionReady_ = false;
+    // Vulkan composite (the app-side Turnip through XR_KHR_vulkan_enable2); null keeps GLES.
+    std::unique_ptr<vulkan::Compositor> vulkan_;
+    // XR_EXT_eye_gaze_interaction for eye-tracked foveation of the Vulkan reconstruction.
+    std::unique_ptr<spatial::xr::XrEyeGazeTracker> gaze_;
+    bool eyeGazeExtensionAvailable_ = false;
     std::atomic<bool> stereoActive_{false};
     std::atomic<bool> windowsOverlayVisible_{false};
     // XR periods from the snapshot a game frame rendered against to the XR frame that first
@@ -378,5 +402,9 @@ private:
 // Windows VR tuning (DebugBus vr_tuning): when set, the snapshots the game renders against are
 // located at the display time measured for its frames instead of the next XR frame's.
 void SetWindowsPredictionExtended(bool extended);
+
+// Rigid correction of the grip pose sent to Windows games (DebugBus vr_grip), in the right hand's
+// grip frame: degrees about X, Y, Z (applied in that order) and metres. The left hand is mirrored.
+void SetWindowsGripCorrection(float pitch, float yaw, float roll, float x, float y, float z);
 
 }  // namespace xrimmersive

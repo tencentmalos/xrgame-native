@@ -47,15 +47,24 @@ info = {'revision': subprocess.check_output(['git', '-C', str(repo), 'rev-parse'
         'ndk': (ndk/'source.properties').read_text(), 'libraries': {}}
 for path in sorted(out.glob('arm64-v8a/*.so')):
     info['libraries'][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+def revision(path):
+    return {'revision': subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip(),
+            'dirty': bool(subprocess.check_output(['git', '-C', str(path), 'status', '--porcelain']))}
+# libxrimmersive links Foundation's reconstruction, foveation, eye gaze and logging sources.
+foundation = repo/'foundation'
+subtrees = ['basic/underlying/core', 'basic/underlying/math', 'basic/platform/public', 'basic/allocator/public',
+            'basic/async/container/public', 'basic/modules/implements/log', 'modules/log', 'modules/property',
+            'modules/utils/include', 'modules/foveation', 'modules/fsr1', 'modules/upscale', 'modules/xr/include',
+            'modules/xr/src/XrEyeGazeTracker.cpp', 'third_party/openxr/openxr_header/openxr_pico']
 if (out/'arm64-v8a/libxrgame_debugbus.so').exists():
-    foundation = repo/'foundation'
-    info['foundation'] = {
-        'revision': subprocess.check_output(['git', '-C', str(foundation), 'rev-parse', 'HEAD'], text=True).strip(),
-        'dirty': bool(subprocess.check_output(['git', '-C', str(foundation), 'status', '--porcelain'])),
-        'sources': {str(path.relative_to(foundation)): hashlib.sha256(path.read_bytes()).hexdigest()
-                    for subtree in ['modules/debugbus', 'modules/profiler_ring', 'basic/underlying/core',
-                                    'third_party/profiler_sdk/sdk', 'third_party/lz4', 'third_party/nlohmann_json/include']
-                    for path in sorted((foundation/subtree).rglob('*')) if path.is_file()},
-    }
+    subtrees += ['modules/debugbus', 'modules/profiler_ring', 'third_party/profiler_sdk/sdk', 'third_party/lz4',
+                 'third_party/nlohmann_json/include']
+paths = [foundation/subtree for subtree in subtrees]
+info['foundation'] = revision(foundation) | {
+    'sources': {str(path.relative_to(foundation)): hashlib.sha256(path.read_bytes()).hexdigest()
+                for root in paths for path in ([root] if root.is_file() else sorted(root.rglob('*')))
+                if path.is_file()},
+}
+info['references'] = {name: revision(repo/'references'/name) for name in ['Vulkan-Headers', 'fmt']}
 (out/'BUILD_INFO.json').write_text(json.dumps(info, indent=2)+'\n')
 PY

@@ -9,6 +9,10 @@
 #include <unordered_set>
 
 #include "xr_immersive.h"
+#include "xr_vulkan_compositor.h"
+#include "xr_vulkan_projection.h"
+
+#include <string>
 
 namespace {
 
@@ -258,6 +262,45 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsOverlayVisible(
 JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsPrediction(JNIEnv *, jclass, jboolean extended) {
     xrimmersive::SetWindowsPredictionExtended(extended == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetGripCorrection(JNIEnv *, jclass, jfloat pitch, jfloat yaw,
+                                                                jfloat roll, jfloat x, jfloat y, jfloat z) {
+    xrimmersive::SetWindowsGripCorrection(pitch, yaw, roll, x, y, z);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetComposite(JNIEnv *env, jclass, jboolean vulkan,
+                                                           jstring driverDir, jstring libraryName,
+                                                           jstring hookDir) {
+    auto read = [env](jstring value) {
+        if (value == nullptr) return std::string();
+        const char *chars = env->GetStringUTFChars(value, nullptr);
+        std::string result = chars != nullptr ? chars : "";
+        if (chars != nullptr) env->ReleaseStringUTFChars(value, chars);
+        return result;
+    };
+    xrimmersive::vulkan::CompositeConfig config;
+    config.vulkan = vulkan == JNI_TRUE;
+    config.driverDir = read(driverDir);
+    config.libraryName = read(libraryName);
+    config.hookDir = read(hookDir);
+    xrimmersive::vulkan::SetCompositeConfig(config);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetUpscale(JNIEnv *, jclass, jint filter, jint sharpness,
+                                                         jint foveation, jint level, jint outputPercent,
+                                                         jboolean debug) {
+    xrimmersive::vulkan::UpscaleSettings settings;
+    settings.filter = static_cast<uint32_t>(filter < 0 ? 0 : filter);
+    settings.sharpness = static_cast<uint32_t>(sharpness < 0 ? 0 : sharpness);
+    settings.foveation = static_cast<uint32_t>(foveation < 0 ? 0 : foveation);
+    settings.level = static_cast<uint32_t>(level < 0 ? 0 : level);
+    settings.outputPercent = static_cast<uint32_t>(outputPercent < 0 ? 0 : outputPercent);
+    settings.debug = debug == JNI_TRUE;
+    xrimmersive::vulkan::SetUpscaleSettings(settings);
 }
 
 JNIEXPORT void JNICALL

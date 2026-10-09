@@ -11,7 +11,9 @@ import androidx.annotation.Keep
 import app.gamenative.BuildConfig
 import app.gamenative.PluviaApp
 import app.gamenative.service.ActiveGameRegistry
+import app.gamenative.ui.screen.xr.windows.WindowsVrGripCorrection
 import app.gamenative.ui.screen.xr.windows.WindowsVrTuning
+import app.gamenative.ui.screen.xr.windows.WindowsVrUpscale
 import com.winlator.xserver.extensions.PresentExtension
 import org.json.JSONArray
 import org.json.JSONObject
@@ -63,7 +65,7 @@ class DebugBusService : Service() {
     /** Called synchronously by Foundation handlers on the bounded query worker, never a GPU lock. */
     @Keep
     fun query(command: String, args: Array<String>): String = try {
-        require(command in setOf("present", "api_capture", "vr_tuning") || args.isEmpty()) { "unexpected_arguments" }
+        require(command in setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip") || args.isEmpty()) { "unexpected_arguments" }
         val result = when (command) {
             "status" -> JSONObject()
                 .put("pid", Process.myPid()).put("uid", Process.myUid())
@@ -79,6 +81,8 @@ class DebugBusService : Service() {
             "present" -> present(args)
             "api_capture" -> apiCapture(args)
             "vr_tuning" -> vrTuning(args)
+            "vr_upscale" -> vrUpscale(args)
+            "vr_grip" -> vrGrip(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -96,6 +100,27 @@ class DebugBusService : Service() {
             .put("pacing", WindowsVrTuning.pacing.name.lowercase())
             .put("startTargetUs", WindowsVrTuning.frameStartTargetUs)
             .put("predict", WindowsVrTuning.extendedPrediction)
+    }
+
+    /** Windows VR reconstruction on the Vulkan composite; no arguments reports the current values. */
+    private fun vrUpscale(args: Array<String>): JSONObject {
+        WindowsVrUpscale.apply(args.toList())?.let { throw IllegalArgumentException(it) }
+        val settings = WindowsVrUpscale.settings
+        return JSONObject()
+            .put("filter", settings.filter.key).put("sharp", settings.sharpness)
+            .put("fov", settings.foveation.key).put("level", settings.level.key)
+            .put("out", settings.outputPercent).put("debug", settings.debug)
+    }
+
+    /** Controller grip correction for Windows games; no arguments reports the current values. */
+    private fun vrGrip(args: Array<String>): JSONObject {
+        WindowsVrGripCorrection.apply(args.toList())?.let { throw IllegalArgumentException(it) }
+        val settings = WindowsVrGripCorrection.settings
+        return JSONObject()
+            .put("device", WindowsVrGripCorrection.device)
+            .put("pitch", settings.pitch.toDouble()).put("yaw", settings.yaw.toDouble())
+            .put("roll", settings.roll.toDouble()).put("x", settings.xMm.toDouble())
+            .put("y", settings.yMm.toDouble()).put("z", settings.zMm.toDouble())
     }
 
     private fun runtime(): JSONObject {

@@ -1,5 +1,8 @@
 #include "../xrgame_profiler.h"
 #include "xr_immersive.h"
+#include "xr_vulkan_compositor.h"
+
+#include "spatial/xr/XrEyeGazeTracker.h"
 
 #include <android/log.h>
 #include <algorithm>
@@ -12,6 +15,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <memory>
+#include <mutex>
 #include <unistd.h>
 #include <vector>
 
@@ -80,6 +84,51 @@ int RequestPicoGpuPriority(int priority, const char *when) {
 
 std::atomic<bool> gWindowsPredictionExtended{false};
 
+// Correction applied to the grip pose handed to Windows games (DebugBus vr_grip): a rigid
+// transform in each hand's grip frame. The right hand holds the values as given; the left is
+// mirrored across the YZ plane.
+std::mutex gGripCorrectionMutex;
+std::array<XrPosef, 2> gGripCorrection{};
+bool gGripCorrectionEnabled = false;
+
+XrQuaternionf QuatMultiply(const XrQuaternionf &a, const XrQuaternionf &b) {
+    return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+
+XrQuaternionf QuatConjugate(const XrQuaternionf &q) { return {-q.x, -q.y, -q.z, q.w}; }
+
+XrVector3f QuatRotate(const XrQuaternionf &q, const XrVector3f &v) {
+    const XrQuaternionf p{v.x, v.y, v.z, 0.0f};
+    const XrQuaternionf r = QuatMultiply(QuatMultiply(q, p), QuatConjugate(q));
+    return {r.x, r.y, r.z};
+}
+
+XrQuaternionf QuatAxisAngle(float x, float y, float z, float degrees) {
+    const float half = degrees * static_cast<float>(M_PI) / 360.0f;
+    const float s = std::sin(half);
+    return {x * s, y * s, z * s, std::cos(half)};
+}
+
+// `local` expressed in `base`'s frame.
+XrPosef ComposePose(const XrPosef &base, const XrPosef &local) {
+    XrPosef out;
+    out.orientation = QuatMultiply(base.orientation, local.orientation);
+    const XrVector3f offset = QuatRotate(base.orientation, local.position);
+    out.position = {base.position.x + offset.x, base.position.y + offset.y, base.position.z + offset.z};
+    return out;
+}
+
+// `pose` expressed in `base`'s frame.
+XrPosef RelativePose(const XrPosef &base, const XrPosef &pose) {
+    const XrQuaternionf inverse = QuatConjugate(base.orientation);
+    XrPosef out;
+    out.orientation = QuatMultiply(inverse, pose.orientation);
+    out.position = QuatRotate(inverse, {pose.position.x - base.position.x, pose.position.y - base.position.y,
+                                        pose.position.z - base.position.z});
+    return out;
+}
+
 bool XrCheck(XrResult result, const char *what) {
     if (XR_FAILED(result)) {
         LOGE("%s failed: %d", what, static_cast<int>(result));
@@ -116,6 +165,26 @@ XrPosef IdentityPose() {
 void SetWindowsPredictionExtended(bool extended) {
     gWindowsPredictionExtended.store(extended, std::memory_order_relaxed);
 }
+
+void SetWindowsGripCorrection(float pitch, float yaw, float roll, float x, float y, float z) {
+    std::array<XrPosef, 2> corrections{};
+    for (uint32_t hand = 0; hand < 2; ++hand) {
+        const float mirror = hand == 0 ? -1.0f : 1.0f;
+        // Pitch about X, then yaw about Y, then roll about Z, all in the grip frame.
+        corrections[hand].orientation =
+            QuatMultiply(QuatMultiply(QuatAxisAngle(1, 0, 0, pitch), QuatAxisAngle(0, 1, 0, mirror * yaw)),
+                         QuatAxisAngle(0, 0, 1, mirror * roll));
+        corrections[hand].position = {mirror * x, y, z};
+    }
+    std::lock_guard<std::mutex> lock(gGripCorrectionMutex);
+    gGripCorrection = corrections;
+    gGripCorrectionEnabled = pitch != 0.0f || yaw != 0.0f || roll != 0.0f || x != 0.0f || y != 0.0f || z != 0.0f;
+    LOGI("Windows VR grip correction: pitch=%.1f yaw=%.1f roll=%.1f offset=(%.1f, %.1f, %.1f) mm", pitch, yaw, roll,
+         x * 1000.0f, y * 1000.0f, z * 1000.0f);
+}
+
+XrImmersiveSession::XrImmersiveSession() = default;
+XrImmersiveSession::~XrImmersiveSession() = default;
 
 bool XrImmersiveSession::initialize(JavaVM *vm, jobject activityRef) {
     vm_ = vm;
@@ -313,6 +382,12 @@ void XrImmersiveSession::runLoop() {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
+        // A lost device must not reach xrEndFrame with its layers: the Pico runtime keeps the
+        // rejected layers and later overflows.
+        if (vulkan_ && vulkan_->context().lost()) {
+            LOGE("Vulkan composite device lost — ending the immersive session");
+            break;
+        }
 
         XrProfileScope frameProfile("host.vr.xr.frame");
         XrFrameWaitInfo waitInfo{XR_TYPE_FRAME_WAIT_INFO};
@@ -330,6 +405,7 @@ void XrImmersiveSession::runLoop() {
         XrProfileScope inputProfile("host.vr.xr.input_locate");
         applyPendingPassthroughState();
         syncControllerInputs(frameState.predictedDisplayTime);
+        locateGaze(frameState.predictedDisplayTime);
 
         WindowsRuntimeSnapshot runtimeSnapshot;
         {
@@ -447,6 +523,15 @@ bool XrImmersiveSession::setupInstanceAndSession() {
     const char *picoControllerExtension = "XR_BD_controller_interaction";
     const bool picoControllerExtensionAvailable = IsInstanceExtensionSupported(picoControllerExtension);
     if (picoControllerExtensionAvailable) extensions.push_back(picoControllerExtension);
+    // The GLES binding stays enabled so a failed Vulkan device still leaves a working session.
+    const vulkan::CompositeConfig compositeConfig = vulkan::GetCompositeConfig();
+    const bool vulkanRequested =
+        compositeConfig.vulkan && IsInstanceExtensionSupported(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
+    if (compositeConfig.vulkan && !vulkanRequested) LOGI("XR_KHR_vulkan_enable2 unavailable — GLES composite");
+    if (vulkanRequested) extensions.push_back(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
+    eyeGazeExtensionAvailable_ =
+        vulkanRequested && IsInstanceExtensionSupported(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME);
+    if (eyeGazeExtensionAvailable_) extensions.push_back(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME);
 
     XrInstanceCreateInfoAndroidKHR androidInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
     androidInfo.applicationVM = vm_;
@@ -487,72 +572,91 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         LOGI("XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND not supported by this runtime — passthrough toggle will no-op");
     }
 
-    PFN_xrGetOpenGLESGraphicsRequirementsKHR getGraphicsRequirements = nullptr;
-    xrGetInstanceProcAddr(instance_, "xrGetOpenGLESGraphicsRequirementsKHR",
-                          reinterpret_cast<PFN_xrVoidFunction *>(&getGraphicsRequirements));
-    XrGraphicsRequirementsOpenGLESKHR graphicsRequirements{XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR};
-    if (getGraphicsRequirements != nullptr) {
-        getGraphicsRequirements(instance_, systemId_, &graphicsRequirements);
+    if (vulkanRequested) {
+        // Turnip creates its KGSL context with the device, on this thread.
+        RequestPicoGpuPriority(kPicoCompositeGpuPriority, "before vulkan device");
+        auto compositor = std::make_unique<vulkan::Compositor>();
+        if (compositor->create(instance_, systemId_, compositeConfig)) {
+            vulkan_ = std::move(compositor);
+            RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after vulkan device");
+        } else {
+            compositor->destroy();
+            eyeGazeExtensionAvailable_ = false;
+            LOGE("Vulkan composite unavailable — falling back to GLES");
+        }
     }
 
-    // --- EGL context, dedicated to this session (not yet shared with the app's own
-    // GLRenderer/DXVK-facing surface — see the header comment / plan follow-ups). ---
-    eglDisplay_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    EGLint eglMajor, eglMinor;
-    eglInitialize(eglDisplay_, &eglMajor, &eglMinor);
-    eglBindAPI(EGL_OPENGL_ES_API);
+    if (!vulkan_) {
+        PFN_xrGetOpenGLESGraphicsRequirementsKHR getGraphicsRequirements = nullptr;
+        xrGetInstanceProcAddr(instance_, "xrGetOpenGLESGraphicsRequirementsKHR",
+                              reinterpret_cast<PFN_xrVoidFunction *>(&getGraphicsRequirements));
+        XrGraphicsRequirementsOpenGLESKHR graphicsRequirements{XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR};
+        if (getGraphicsRequirements != nullptr) {
+            getGraphicsRequirements(instance_, systemId_, &graphicsRequirements);
+        }
 
-    const EGLint configAttribs[] = {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-        EGL_NONE,
-    };
-    EGLint numConfigs = 0;
-    eglChooseConfig(eglDisplay_, configAttribs, &eglConfig_, 1, &numConfigs);
-    if (numConfigs == 0) {
-        LOGE("eglChooseConfig found no matching config");
-        return false;
-    }
+        // --- EGL context, dedicated to this session (not yet shared with the app's own
+        // GLRenderer/DXVK-facing surface — see the header comment / plan follow-ups). ---
+        eglDisplay_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        EGLint eglMajor, eglMinor;
+        eglInitialize(eglDisplay_, &eglMajor, &eglMinor);
+        eglBindAPI(EGL_OPENGL_ES_API);
 
-    // The Windows game renders through Turnip on the same GPU at the default priority, in
-    // command batches of up to ~25 ms. At equal priority our small per-frame composite queued
-    // behind them for ~23 ms (KGSL, Swan run19), and the runtime paced xrWaitFrame to that.
-    // A higher-priority context gets its own ringbuffer and preempts the game like the
-    // compositor does. Pico's per-thread interface works for apps; the standard EGL request is
-    // kept for drivers that honour it. Both fall back to the default silently.
-    RequestPicoGpuPriority(kPicoCompositeGpuPriority, "before context");
-    const char *eglExtensions = eglQueryString(eglDisplay_, EGL_EXTENSIONS);
-    const bool priorityExtension =
-        eglExtensions != nullptr && std::strstr(eglExtensions, "EGL_IMG_context_priority") != nullptr;
-    if (priorityExtension) {
-        const EGLint highPriorityAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3,
-                                              kEglContextPriorityLevelImg, kEglContextPriorityHighImg, EGL_NONE};
-        eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, highPriorityAttribs);
-    }
-    if (eglContext_ == EGL_NO_CONTEXT) {
-        const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
-        eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, contextAttribs);
-    }
-    EGLint contextPriority = 0;
-    if (priorityExtension) {
-        eglQueryContext(eglDisplay_, eglContext_, kEglContextPriorityLevelImg, &contextPriority);
-    }
-    LOGI("EGL context priority: extension=%d level=0x%x (high=0x%x)", priorityExtension ? 1 : 0,
-         contextPriority, kEglContextPriorityHighImg);
+        const EGLint configAttribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+            EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+            EGL_NONE,
+        };
+        EGLint numConfigs = 0;
+        eglChooseConfig(eglDisplay_, configAttribs, &eglConfig_, 1, &numConfigs);
+        if (numConfigs == 0) {
+            LOGE("eglChooseConfig found no matching config");
+            return false;
+        }
 
-    const EGLint pbufferAttribs[] = {EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE};
-    eglPbufferSurface_ = eglCreatePbufferSurface(eglDisplay_, eglConfig_, pbufferAttribs);
-    eglMakeCurrent(eglDisplay_, eglPbufferSurface_, eglPbufferSurface_, eglContext_);
-    RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after context");
+        // The Windows game renders through Turnip on the same GPU at the default priority, in
+        // command batches of up to ~25 ms. At equal priority our small per-frame composite queued
+        // behind them for ~23 ms (KGSL, Swan run19), and the runtime paced xrWaitFrame to that.
+        // A higher-priority context gets its own ringbuffer and preempts the game like the
+        // compositor does. Pico's per-thread interface works for apps; the standard EGL request is
+        // kept for drivers that honour it. Both fall back to the default silently.
+        RequestPicoGpuPriority(kPicoCompositeGpuPriority, "before context");
+        const char *eglExtensions = eglQueryString(eglDisplay_, EGL_EXTENSIONS);
+        const bool priorityExtension =
+            eglExtensions != nullptr && std::strstr(eglExtensions, "EGL_IMG_context_priority") != nullptr;
+        if (priorityExtension) {
+            const EGLint highPriorityAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3,
+                                                  kEglContextPriorityLevelImg, kEglContextPriorityHighImg, EGL_NONE};
+            eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, highPriorityAttribs);
+        }
+        if (eglContext_ == EGL_NO_CONTEXT) {
+            const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+            eglContext_ = eglCreateContext(eglDisplay_, eglConfig_, EGL_NO_CONTEXT, contextAttribs);
+        }
+        EGLint contextPriority = 0;
+        if (priorityExtension) {
+            eglQueryContext(eglDisplay_, eglContext_, kEglContextPriorityLevelImg, &contextPriority);
+        }
+        LOGI("EGL context priority: extension=%d level=0x%x (high=0x%x)", priorityExtension ? 1 : 0,
+             contextPriority, kEglContextPriorityHighImg);
+
+        const EGLint pbufferAttribs[] = {EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE};
+        eglPbufferSurface_ = eglCreatePbufferSurface(eglDisplay_, eglConfig_, pbufferAttribs);
+        eglMakeCurrent(eglDisplay_, eglPbufferSurface_, eglPbufferSurface_, eglContext_);
+        RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after context");
+    }
 
     XrGraphicsBindingOpenGLESAndroidKHR graphicsBinding{XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR};
     graphicsBinding.display = eglDisplay_;
     graphicsBinding.config = eglConfig_;
     graphicsBinding.context = eglContext_;
 
+    XrGraphicsBindingVulkan2KHR vulkanBinding{XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR};
+    if (vulkan_) vulkanBinding = vulkan_->binding();
+
     XrSessionCreateInfo sessionCreateInfo{XR_TYPE_SESSION_CREATE_INFO};
-    sessionCreateInfo.next = &graphicsBinding;
+    sessionCreateInfo.next = vulkan_ ? static_cast<const void *>(&vulkanBinding) : &graphicsBinding;
     sessionCreateInfo.systemId = systemId_;
     XrSession createdSession = XR_NULL_HANDLE;
     if (!XrCheck(xrCreateSession(instance_, &sessionCreateInfo, &createdSession), "xrCreateSession")) {
@@ -663,14 +767,18 @@ bool XrImmersiveSession::setupInstanceAndSession() {
     // format, and the content is sRGB-encoded — submitting it as linear GL_RGBA8 double-applies
     // gamma (washed-out output).
     int64_t chosenFormat = formats.empty() ? 0x8C43 /* GL_SRGB8_ALPHA8 */ : formats[0];
-    for (int64_t f : formats) {
-        if (f == 0x8C43) {
-            chosenFormat = f;
-            srgbSwapchain_ = true;
-            break;
+    if (vulkan_) {
+        chosenFormat = vulkan::Compositor::ChooseFormat(formats, &srgbSwapchain_);
+    } else {
+        for (int64_t f : formats) {
+            if (f == 0x8C43) {
+                chosenFormat = f;
+                srgbSwapchain_ = true;
+                break;
+            }
         }
     }
-    if (!srgbSwapchain_) {
+    if (!vulkan_ && !srgbSwapchain_) {
         for (int64_t f : formats) {
             if (f == 0x8058 /* GL_RGBA8 */) {
                 chosenFormat = f;
@@ -695,13 +803,20 @@ bool XrImmersiveSession::setupInstanceAndSession() {
 
     uint32_t imageCount = 0;
     xrEnumerateSwapchainImages(swapchain_, 0, &imageCount, nullptr);
-    swapchainImages_.resize(imageCount);
-    for (auto &image : swapchainImages_) image.type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR;
-    xrEnumerateSwapchainImages(
-        swapchain_, imageCount, &imageCount,
-        reinterpret_cast<XrSwapchainImageBaseHeader *>(swapchainImages_.data()));
-
-    glGenFramebuffers(1, &framebuffer_);
+    if (vulkan_) {
+        if (!vulkan_->attachSwapchain(vulkan::Compositor::kQuad, swapchain_, chosenFormat, swapchainWidth_,
+                                      swapchainHeight_)) {
+            LOGE("Vulkan composite: quad swapchain images unavailable");
+            return false;
+        }
+    } else {
+        swapchainImages_.resize(imageCount);
+        for (auto &image : swapchainImages_) image.type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR;
+        xrEnumerateSwapchainImages(
+            swapchain_, imageCount, &imageCount,
+            reinterpret_cast<XrSwapchainImageBaseHeader *>(swapchainImages_.data()));
+        glGenFramebuffers(1, &framebuffer_);
+    }
 
     uint32_t projectionViewCount = 0;
     xrEnumerateViewConfigurationViews(instance_, systemId_, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
@@ -730,11 +845,18 @@ bool XrImmersiveSession::setupInstanceAndSession() {
                  windowsSnapshot_.stageBounds.height,
                  static_cast<int>(boundsResult));
         }
-        windowsProjectionReady_ = windowsProjection_.initialize(
-            session_, chosenFormat,
-            projectionViews[0].recommendedImageRectWidth,
-            projectionViews[0].recommendedImageRectHeight,
-            eglDisplay_);
+        if (vulkan_) {
+            windowsProjectionReady_ = vulkan_->projection().initialize(
+                &vulkan_->context(), session_, static_cast<VkFormat>(chosenFormat), srgbSwapchain_,
+                projectionViews[0].recommendedImageRectWidth,
+                projectionViews[0].recommendedImageRectHeight);
+        } else {
+            windowsProjectionReady_ = windowsProjection_.initialize(
+                session_, chosenFormat,
+                projectionViews[0].recommendedImageRectWidth,
+                projectionViews[0].recommendedImageRectHeight,
+                eglDisplay_);
+        }
     }
         windowsTransport_.start("@gamenative-xr");
 
@@ -859,9 +981,32 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         suggestBindings("/interaction_profiles/bytedance/pico4_controller", bindings);
     }
 
+    // The gaze action set must be attached in the same call as the controller set.
+    if (eyeGazeExtensionAvailable_) {
+        spatial::xr::XrEyeGazeFunctions functions{};
+        functions.createActionSet = xrCreateActionSet;
+        functions.destroyActionSet = xrDestroyActionSet;
+        functions.createAction = xrCreateAction;
+        functions.destroyAction = xrDestroyAction;
+        functions.stringToPath = xrStringToPath;
+        functions.suggestInteractionProfileBindings = xrSuggestInteractionProfileBindings;
+        functions.createActionSpace = xrCreateActionSpace;
+        functions.destroySpace = xrDestroySpace;
+        functions.getActionStatePose = xrGetActionStatePose;
+        functions.locateSpace = xrLocateSpace;
+        functions.getInstanceProcAddr = xrGetInstanceProcAddr;
+        spatial::xr::XrEyeGazeOptions options{};
+        options.platform_hook = spatial::xr::EyeGazePlatformHook::PicoTrackingMode;
+        gaze_ = std::make_unique<spatial::xr::XrEyeGazeTracker>(instance_, session_, functions, options);
+        if (!gaze_->IsValid()) {
+            LOGI("Eye gaze unavailable: %s", gaze_->GetError().c_str());
+            gaze_.reset();
+        }
+    }
+    std::array<XrActionSet, 2> actionSets{actionSet_, gaze_ ? gaze_->ActionSet() : XR_NULL_HANDLE};
     XrSessionActionSetsAttachInfo attachInfo{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
-    attachInfo.countActionSets = 1;
-    attachInfo.actionSets = &actionSet_;
+    attachInfo.countActionSets = gaze_ ? 2 : 1;
+    attachInfo.actionSets = actionSets.data();
     XrCheck(xrAttachSessionActionSets(session_, &attachInfo), "xrAttachSessionActionSets");
 
     XrActionSpaceCreateInfo aimSpaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
@@ -897,6 +1042,12 @@ void XrImmersiveSession::pollXrEvents() {
                     beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                     XrCheck(xrBeginSession(session_, &beginInfo), "xrBeginSession");
                     sessionRunning_ = true;
+                    // Pico enables eye tracking for a running session (xrSetTrackingModePICO).
+                    if (gaze_ && !gaze_->IsAttached()) {
+                        gaze_->OnActionSetsAttached();
+                        LOGI("Eye gaze attached: platform hook attempted=%d result=%d",
+                             gaze_->PlatformHookAttempted() ? 1 : 0, static_cast<int>(gaze_->PlatformHookResult()));
+                    }
                     break;
                 }
                 case XR_SESSION_STATE_STOPPING:
@@ -1128,6 +1279,13 @@ bool XrImmersiveSession::renderFrame() {
     waitInfo.timeout = XR_INFINITE_DURATION;
     xrWaitSwapchainImage(swapchain_, &waitInfo);
 
+    if (vulkan_) {
+        const bool drawn = renderQuadImage(imageIndex);
+        XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+        xrReleaseSwapchainImage(swapchain_, &releaseInfo);
+        return drawn;
+    }
+
     ensureQuadGeometryAndShader();
     importSharedBufferIfNeeded();
     uploadPendingGameFrameLocked();
@@ -1200,6 +1358,40 @@ bool XrImmersiveSession::renderFrame() {
     return true;
 }
 
+bool XrImmersiveSession::renderQuadImage(uint32_t imageIndex) {
+    AHardwareBuffer *shared = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(sharedBufferMutex_);
+        shared = pendingSharedBuffer_;
+        sharedBufferChanged_ = false;
+        if (shared != nullptr) AHardwareBuffer_acquire(shared);
+    }
+    std::unique_ptr<AHardwareBuffer, void (*)(AHardwareBuffer *)> sharedRef(shared, AHardwareBuffer_release);
+    std::lock_guard<std::mutex> lock(frameMutex_);
+    const uint8_t *pixels = hasPendingFrame_ ? pendingFramePixels_.data() : nullptr;
+    hasPendingFrame_ = false;
+    return vulkan_->drawQuad(imageIndex, shared, pixels, static_cast<uint32_t>(pendingFrameWidth_),
+                             static_cast<uint32_t>(pendingFrameHeight_), quadContentScaleX_.load(),
+                             quadContentScaleY_.load());
+}
+
+void XrImmersiveSession::locateGaze(XrTime predictedDisplayTime) {
+    if (!gaze_ || !vulkan_) return;
+    const spatial::xr::EyeGazeSample sample = gaze_->Locate(windowsTrackingSpace_, predictedDisplayTime);
+    vulkan_->projection().setGaze({sample.valid, sample.pose.orientation});
+    static bool announced = false;
+    if (sample.valid && !announced) {
+        announced = true;
+        LOGI("Eye gaze: first valid sample");
+    }
+}
+
+bool XrImmersiveSession::renderWindowsProjection(XrCompositionLayerProjection *layer) {
+    XrProfileScope renderProfile("host.vr.projection.render");
+    if (vulkan_) return vulkan_->projection().render(windowsTransport_, windowsTrackingSpace_, layer);
+    return windowsProjection_.render(windowsTransport_, windowsTrackingSpace_, layer);
+}
+
 void XrImmersiveSession::setWindowsInterstitial(const uint8_t *rgbaPixels, int32_t width,
                                                 int32_t height, int32_t strideBytes) {
     std::lock_guard<std::mutex> lock(interstitialMutex_);
@@ -1226,6 +1418,7 @@ void XrImmersiveSession::setWindowsInterstitial(const uint8_t *rgbaPixels, int32
 bool XrImmersiveSession::uploadInterstitialLocked() {
     if (interstitialSwapchain_ == XR_NULL_HANDLE || interstitialSwapchainWidth_ != interstitialWidth_ ||
         interstitialSwapchainHeight_ != interstitialHeight_) {
+        if (vulkan_) vulkan_->detachSwapchain(vulkan::Compositor::kInterstitial);
         if (interstitialSwapchain_ != XR_NULL_HANDLE) xrDestroySwapchain(interstitialSwapchain_);
         interstitialSwapchain_ = XR_NULL_HANDLE;
         interstitialImages_.clear();
@@ -1244,13 +1437,44 @@ bool XrImmersiveSession::uploadInterstitialLocked() {
             interstitialSwapchain_ = XR_NULL_HANDLE;
             return false;
         }
-        uint32_t count = 0;
-        xrEnumerateSwapchainImages(interstitialSwapchain_, 0, &count, nullptr);
-        interstitialImages_.assign(count, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
-        xrEnumerateSwapchainImages(interstitialSwapchain_, count, &count,
-                                   reinterpret_cast<XrSwapchainImageBaseHeader *>(interstitialImages_.data()));
+        if (vulkan_) {
+            if (!vulkan_->attachSwapchain(vulkan::Compositor::kInterstitial, interstitialSwapchain_,
+                                          swapchainFormat_, static_cast<uint32_t>(interstitialWidth_),
+                                          static_cast<uint32_t>(interstitialHeight_))) {
+                return false;
+            }
+        } else {
+            uint32_t count = 0;
+            xrEnumerateSwapchainImages(interstitialSwapchain_, 0, &count, nullptr);
+            interstitialImages_.assign(count, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
+            xrEnumerateSwapchainImages(interstitialSwapchain_, count, &count,
+                                       reinterpret_cast<XrSwapchainImageBaseHeader *>(interstitialImages_.data()));
+        }
         interstitialSwapchainWidth_ = interstitialWidth_;
         interstitialSwapchainHeight_ = interstitialHeight_;
+    }
+
+    if (vulkan_) {
+        XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+        uint32_t imageIndex = 0;
+        if (!XrCheck(xrAcquireSwapchainImage(interstitialSwapchain_, &acquire, &imageIndex),
+                     "xrAcquireSwapchainImage(interstitial)")) {
+            return false;
+        }
+        XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+        wait.timeout = XR_INFINITE_DURATION;
+        xrWaitSwapchainImage(interstitialSwapchain_, &wait);
+        const bool drawn = vulkan_->drawInterstitial(imageIndex, interstitialPixels_.data(),
+                                                     static_cast<uint32_t>(interstitialWidth_),
+                                                     static_cast<uint32_t>(interstitialHeight_));
+        XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+        if (!XrCheck(xrReleaseSwapchainImage(interstitialSwapchain_, &release),
+                     "xrReleaseSwapchainImage(interstitial)") || !drawn) {
+            return false;
+        }
+        interstitialImageReleased_ = true;
+        interstitialChanged_ = false;
+        return true;
     }
 
     ensureQuadGeometryAndShader();
@@ -1352,8 +1576,7 @@ bool XrImmersiveSession::submitWindowsInterstitial(XrTime predictedDisplayTime,
 
     if (windowsProjectionReady_ && windowsTransport_.hasStereoContent()) {
         XrCompositionLayerProjection unused{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-        XrProfileScope renderProfile("host.vr.projection.render");
-        windowsProjection_.render(windowsTransport_, windowsTrackingSpace_, &unused);
+        renderWindowsProjection(&unused);
     }
 
     constexpr float kWidth = 1.4f;
@@ -1385,18 +1608,14 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
         return false;
     }
     XrCompositionLayerProjection projection{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-    bool rendered;
-    {
-        XrProfileScope renderProfile("host.vr.projection.render");
-        rendered = windowsProjection_.render(windowsTransport_, windowsTrackingSpace_, &projection);
-    }
+    const bool rendered = renderWindowsProjection(&projection);
     if (!rendered) {
         if (++stereoMisses_ >= 8) stereoActive_.store(false);
         return false;
     }
     stereoMisses_ = 0;
     stereoActive_.store(true);
-    const int64_t snap = windowsProjection_.lastFreshSnap();
+    const int64_t snap = vulkan_ ? vulkan_->projection().lastFreshSnap() : windowsProjection_.lastFreshSnap();
     if (snap >= 0 && xrSerial >= static_cast<uint64_t>(snap)) {
         const float lead = std::min(8.0f, static_cast<float>(xrSerial - static_cast<uint64_t>(snap)));
         predictionLead_ = predictionLead_ > 0.0f ? predictionLead_ + 0.1f * (lead - predictionLead_) : lead;
@@ -1446,8 +1665,11 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     }
     if (!XrCheck(ended, "xrEndFrame(windows projection)")) {
         stereoActive_.store(false);
-        if (windowsProjection_.lastRenderReused()) {
+        const bool reused =
+            vulkan_ ? vulkan_->projection().lastRenderReused() : windowsProjection_.lastRenderReused();
+        if (reused) {
             LOGE("runtime rejected the reused projection image; redrawing every frame from now on");
+            if (vulkan_) vulkan_->projection().disableReuse();
             windowsProjection_.disableReuse();
         }
     }
@@ -1640,10 +1862,11 @@ void XrImmersiveSession::applyPendingPassthroughState() {
 }
 
 void XrImmersiveSession::syncControllerInputs(XrTime predictedDisplayTime) {
-    XrActiveActionSet activeActionSet{actionSet_, XR_NULL_PATH};
+    std::array<XrActiveActionSet, 2> activeActionSets{{{actionSet_, XR_NULL_PATH}, {XR_NULL_HANDLE, XR_NULL_PATH}}};
+    if (gaze_) activeActionSets[1].actionSet = gaze_->ActionSet();
     XrActionsSyncInfo syncInfo{XR_TYPE_ACTIONS_SYNC_INFO};
-    syncInfo.countActiveActionSets = 1;
-    syncInfo.activeActionSets = &activeActionSet;
+    syncInfo.countActiveActionSets = gaze_ ? 2 : 1;
+    syncInfo.activeActionSets = activeActionSets.data();
     if (!XrCheck(xrSyncActions(session_, &syncInfo), "xrSyncActions")) return;
 
     auto getBool = [this](XrAction action) {
@@ -1863,6 +2086,31 @@ void XrImmersiveSession::syncWindowsTrackingPoses(InputSnapshot *snapshot,
             (grip[hand].locationFlags & validBits) == validBits;
         if (snapshot->aimPoseValid[hand]) snapshot->aimPoses[hand] = aim[hand].pose;
         if (snapshot->gripPoseValid[hand]) snapshot->gripPoses[hand] = grip[hand].pose;
+        if (snapshot->aimPoseValid[hand] && snapshot->gripPoseValid[hand] && !gripRelationLogged_[hand]) {
+            // The runtime's own aim in its grip frame: what the game's controller model has to
+            // reproduce for its ray to follow the physical controller.
+            gripRelationLogged_[hand] = true;
+            const XrPosef relation = RelativePose(grip[hand].pose, aim[hand].pose);
+            const XrVector3f forward = QuatRotate(relation.orientation, {0.0f, 0.0f, -1.0f});
+            const XrVector3f up = QuatRotate(relation.orientation, {0.0f, 1.0f, 0.0f});
+            constexpr float kDegrees = 180.0f / static_cast<float>(M_PI);
+            LOGI("Windows VR controller %s: aim in grip frame pitch=%.1f yaw=%.1f roll=%.1f offset=(%.1f, %.1f, %.1f) mm "
+                 "q=(%.4f, %.4f, %.4f, %.4f)",
+                 hand == 0 ? "left" : "right", std::asin(std::clamp(forward.y, -1.0f, 1.0f)) * kDegrees,
+                 std::atan2(-forward.x, -forward.z) * kDegrees, std::atan2(-up.x, up.y) * kDegrees,
+                 relation.position.x * 1000.0f, relation.position.y * 1000.0f, relation.position.z * 1000.0f,
+                 relation.orientation.x, relation.orientation.y, relation.orientation.z, relation.orientation.w);
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(gGripCorrectionMutex);
+        if (gGripCorrectionEnabled) {
+            for (uint32_t hand = 0; hand < 2; ++hand) {
+                if (snapshot->gripPoseValid[hand]) {
+                    snapshot->gripPoses[hand] = ComposePose(snapshot->gripPoses[hand], gGripCorrection[hand]);
+                }
+            }
+        }
     }
     snapshot->handPosesValid = snapshot->aimPoseValid[0] && snapshot->aimPoseValid[1];
 }
@@ -1871,7 +2119,9 @@ void XrImmersiveSession::teardown() {
     stereoActive_.store(false);
     stereoMisses_ = 0;
     windowsTransport_.stop();
+    if (vulkan_) vulkan_->releaseResources();
     windowsProjection_.shutdown();
+    gaze_.reset();
     teardownPassthrough();
     if (gameTexture_ != 0) {
         glDeleteTextures(1, &gameTexture_);
@@ -1962,6 +2212,11 @@ void XrImmersiveSession::teardown() {
             xrDestroySession(session_);
             session_ = XR_NULL_HANDLE;
         }
+    }
+    // The runtime created the Vulkan device for this session; it goes after the session.
+    if (vulkan_) {
+        vulkan_->destroy();
+        vulkan_.reset();
     }
     if (instance_ != XR_NULL_HANDLE) {
         xrDestroyInstance(instance_);

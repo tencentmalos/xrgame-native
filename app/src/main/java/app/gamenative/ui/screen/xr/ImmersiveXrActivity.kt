@@ -56,6 +56,9 @@ import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.WineProcessSnapshotHelper
 import com.winlator.container.Container
+import app.gamenative.ui.screen.xr.windows.WindowsVrGripCorrection
+import app.gamenative.ui.screen.xr.windows.WindowsVrUpscale
+import app.gamenative.xrgame.XrGameRuntimeVersions
 import com.winlator.core.AppUtils
 import com.winlator.renderer.GLRenderer
 import com.winlator.winhandler.WinHandler
@@ -100,6 +103,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val EXTRA_QUAD_DISTANCE = "immersiveQuadDistance"
         private const val EXTRA_QUAD_SCALE = "immersiveQuadScale"
         private const val EXTRA_PASSTHROUGH_ENABLED = "immersivePassthroughEnabled"
+        private const val EYE_TRACKING_REQUEST = 0x4554
         private const val EXTRA_WINDOWS_VR_ENABLED = "windowsVrEnabled"
         private const val EXTRA_WINDOWS_VR_OPEN_COMPOSITE = "windowsVrOpenCompositeEnabled"
 
@@ -520,8 +524,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         var quadW = 1280
         var quadH = 720
         var refreshRate = 72f
+        var sessionContainer: Container? = null
         currentAppId?.let { appId ->
             runCatching { app.gamenative.utils.ContainerUtils.getContainer(this, appId) }.getOrNull()?.let { container ->
+                sessionContainer = container
                 val parts = container.screenSize.split("x")
                 val w = parts.getOrNull(0)?.trim()?.toIntOrNull()
                 val h = parts.getOrNull(1)?.trim()?.toIntOrNull()
@@ -537,6 +543,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             quadW = 1280
         }
         xrSessionHandle = try {
+            configureComposite(sessionContainer)
             XrNative.nativeCreate(this, quadW, quadH, refreshRate)
         } catch (t: Throwable) {
             Timber.w(t, "Native OpenXR module unavailable — immersive rendering/controller mapping disabled")
@@ -549,6 +556,27 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
         startControllerPollingLoop()
         startFrameCaptureLoop()
+    }
+
+    /**
+     * Composite backend and Windows VR reconstruction for the session about to start. The Vulkan
+     * backend loads the bundled Turnip's Android build into this process through adrenotools.
+     */
+    private fun configureComposite(container: Container?) {
+        if (!app.gamenative.BuildConfig.XRGAME) return
+        val backend = container?.let(WindowsVrUpscale::backend) ?: WindowsVrUpscale.DEFAULT_BACKEND
+        val driver = java.io.File(filesDir, "contents/adrenotools/${XrGameRuntimeVersions.TURNIP}")
+        XrNative.nativeSetComposite(backend == WindowsVrUpscale.BACKEND_VULKAN, driver.absolutePath,
+            WindowsVrUpscale.DRIVER_LIBRARY, applicationInfo.nativeLibraryDir)
+        WindowsVrUpscale.set(container?.let(WindowsVrUpscale::fromContainer) ?: WindowsVrUpscale.Settings())
+        WindowsVrGripCorrection.reset(android.os.Build.DEVICE)
+        // Eye-tracked foveation needs Pico's eye tracking permission; without it the gaze stays
+        // invalid and foveation keeps the fixed centre.
+        if (WindowsVrUpscale.settings.foveation == WindowsVrUpscale.Foveation.EYE &&
+            checkSelfPermission(WindowsVrUpscale.EYE_TRACKING_PERMISSION) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(WindowsVrUpscale.EYE_TRACKING_PERMISSION), EYE_TRACKING_REQUEST)
+        }
     }
 
     private fun startControllerPollingLoop() {
