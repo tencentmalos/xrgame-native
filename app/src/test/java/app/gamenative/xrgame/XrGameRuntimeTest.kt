@@ -38,7 +38,8 @@ class XrGameRuntimeTest {
     }
 
     @Test fun ahbDriverDoesNotEnableCpuReadbackOrDisablePresentWait() {
-        for (driver in listOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10")) {
+        for (driver in listOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10", "turnip-25ef164-xrg11",
+                "turnip-04e1d66-xrg12")) {
             val env = EnvVars()
             XrGameRuntime.configurePresentation(env, driver)
             assertEquals("1", env.get("XRGAME_X11_AHB"))

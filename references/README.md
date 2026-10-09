@@ -42,11 +42,14 @@ baseline is shadPS4's `references/mesa-turnip-xr-fdm2`, branch
 `codex/turnip-xr-fdm2`, commit `d15b7c019c8daa17e80051258077d9b2d5146a2b`.
 Both `malos/main` and `feature/malos/xrgame-wine-icd` are now published. The
 feature branch carries the Android HAL/Wine ICD exports and X11 AHB presentation.
-The parent gitlink records that source checkpoint. Since 2026-10-09 it is `22451ea2`:
+The parent gitlink records that source checkpoint. Since 2026-10-09 it is `57e87576`:
 the shadPS4 and Azahar Swan XR Turnip merge (`25ef1647`), the AHB entry points
-(`51f94d33`), and the LRZ RMW / concurrent binning hang fix. Its tree is exactly what
-`turnip-25ef164-xrg10` was built from. The same fix sits alone on `malos/main` in
-`feature/malos/lrz-rmw-no-cb` (`16ad8431`); `malos/main` itself is unchanged. Validated runtime recipes keep
+(`51f94d33`), the LRZ RMW / concurrent binning patch (`22451ea2`; no effect while
+concurrent binning is globally off), and `malos/main` `04e1d665`, which turns LRZ fast
+clear off on A8XX unless `TU_DEBUG=lrzfc`. Its tree is exactly what
+`turnip-04e1d66-xrg12` is built from. On 2026-10-09 `malos/main` was fast-forwarded from
+`d15b7c01` to `04e1d665`, which also published the `25ef1647` merges. The RMW patch alone
+on top of `malos/main` is in `feature/malos/lrz-rmw-no-cb` (`16ad8431`). Validated runtime recipes keep
 their explicit older base commits and recorded build-copy patches; advancing a
 maintenance gitlink does not silently change the bundled binaries. Wine and GBE
 follow the same distinction. See the [stage record](../docs/validation/stage-20260928.md).

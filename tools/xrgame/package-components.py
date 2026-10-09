@@ -55,7 +55,7 @@ PINS = {
     'FEX': '3f1f30a060b633980ed8e7674eb8d8997457edad',
     'dxvk': 'a6764047e587178283fcde4073ae6e1410af594f',
     'vkd3d-proton': '212991fc2c266bc0d59f4c4ce8f80f7126508d71',
-    'mesa-turnip': '25ef1647a28d6983bd95f8ef0cc84ea74dd9cc32',
+    'mesa-turnip': '04e1d665b27d1ac6433d781457353e527bf0be4f',
 }
 
 
@@ -235,14 +235,16 @@ def main():
         turnip = work / 'turnip'
         turnip.mkdir()
         shutil.copy2(root / 'output/turnip/libvulkan_freedreno.so', turnip / 'libvulkan_freedreno.so')
+        shutil.copy2(root / 'output/turnip/libvulkan_freedreno_android.so', turnip / 'libvulkan_freedreno_android.so')
         for name in ['libxcb-dri3.so', 'libxcb-present.so']:
             shutil.copy2(root / 'output/xcb' / name, turnip / name)
         shutil.copy2(root / 'output/xcb/LICENSE', turnip / 'LICENSE-libxcb-MIT')
         xcb_sources = {name: digest(root / 'downloads' / name) for name in
                        ['libxcb-1.17.0.tar.xz', 'xcb-proto-1.17.0.tar.xz']}
-        version = 'turnip-25ef164-xrg10'
+        version = 'turnip-04e1d66-xrg12'
         write_json(turnip / 'meta.json', {'schemaVersion': 1, 'name': version, 'author': 'Mesa contributors',
-                   'description': 'XRGame KGSL, Android and X11 WSI source build', 'vendor': 'Mesa',
+                   'description': 'XRGame KGSL, Android and X11 WSI source build; libvulkan_freedreno_android.so '
+                                  'is the app-process build of the same source', 'vendor': 'Mesa',
                    'driverVersion': version, 'minApi': 33, 'libraryName': 'libvulkan_freedreno.so'})
         write_json(turnip / 'freedreno_icd.aarch64.json', {'file_format_version': '1.0.0',
                    'ICD': {'library_path': 'libvulkan_freedreno.so', 'api_version': '1.3.0'}})
