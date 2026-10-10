@@ -82,6 +82,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val OVERLAY_REFRESH_INTERVAL_MS = 33L // ~30fps — plenty for a menu/HUD,
         private const val OVERLAY_IDLE_REFRESH_INTERVAL_MS = 250L
         private const val OVERLAY_CONTENT_GRACE_MS = 2500L
+        private const val PERF_HUD_POLL_MS = 500L
 
         private const val IMMERSIVE_UI_DENSITY = 2.5f
 
@@ -106,6 +107,11 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val EYE_TRACKING_REQUEST = 0x4554
         private const val EXTRA_WINDOWS_VR_ENABLED = "windowsVrEnabled"
         private const val EXTRA_WINDOWS_VR_OPEN_COMPOSITE = "windowsVrOpenCompositeEnabled"
+
+        /** The live immersive session, for DebugBus automation (debug APKs). */
+        @Volatile
+        internal var current: java.lang.ref.WeakReference<ImmersiveXrActivity>? = null
+            private set
 
         fun start(context: Context, appId: String, isOffline: Boolean) {
             val intent = Intent(context, ImmersiveXrActivity::class.java).apply {
@@ -178,6 +184,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     private var bootingSplashVisible = false
     private var overlayContentLastVisibleAt = 0L
     private var overlayClearSubmitted = false
+    private var perfHudShown: Boolean? = null
+    private var perfHudCheckedAt = 0L
     private var pointerGripHeldLogCounter = 0
 
     private var directGLBridge: DirectGLBridge? = null
@@ -242,10 +250,30 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     private var cachedContainer: Container? = null
     private var directRenderBlockedByEffects by mutableStateOf<Boolean?>(null)
 
+    /**
+     * Pixel size the UI is laid out at. Pico gives this activity a portrait window (1080x1920 on
+     * Swan) although the quad and the overlay panel it is drawn onto are landscape, which
+     * stretched the quick menu three times wider. The UI is laid out landscape instead; the
+     * window is never shown in the headset, only drawn into the overlay bitmap.
+     */
+    private var uiSize = android.graphics.Point(0, 0)
+    private var overlayRoot: android.view.View? = null
+
+    private fun landscapeConfiguration(base: android.content.res.Configuration) =
+        android.content.res.Configuration(base).apply {
+            densityDpi = (IMMERSIVE_UI_DENSITY * android.util.DisplayMetrics.DENSITY_DEFAULT).toInt()
+            if (uiSize.x > 0) {
+                screenWidthDp = (uiSize.x / IMMERSIVE_UI_DENSITY).toInt()
+                screenHeightDp = (uiSize.y / IMMERSIVE_UI_DENSITY).toInt()
+                smallestScreenWidthDp = screenHeightDp
+                orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            }
+        }
+
     override fun attachBaseContext(newBase: Context) {
-        val config = android.content.res.Configuration(newBase.resources.configuration)
-        config.densityDpi = (IMMERSIVE_UI_DENSITY * android.util.DisplayMetrics.DENSITY_DEFAULT).toInt()
-        super.attachBaseContext(newBase.createConfigurationContext(config))
+        val metrics = newBase.resources.displayMetrics
+        uiSize = android.graphics.Point(maxOf(metrics.widthPixels, metrics.heightPixels), minOf(metrics.widthPixels, metrics.heightPixels))
+        super.attachBaseContext(newBase.createConfigurationContext(landscapeConfiguration(newBase.resources.configuration)))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -264,6 +292,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             return
         }
         currentAppId = appId
+        current = java.lang.ref.WeakReference(this)
         windowsVrRuntimeService = app.gamenative.ui.screen.xr.windows.WindowsVrRuntimeService(this)
 
         PluviaApp.isActivityInForeground = true
@@ -271,6 +300,12 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         loadImmersiveSettings(appId)
 
         setContent {
+            // A window configuration change would hand Compose the portrait values again.
+            val windowConfiguration = androidx.compose.ui.platform.LocalConfiguration.current
+            val uiConfiguration = remember(windowConfiguration) { landscapeConfiguration(windowConfiguration) }
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalConfiguration provides uiConfiguration,
+            ) {
             PluviaTheme {
                 val context = LocalContext.current
                 val mainState by viewModel.state.collectAsStateWithLifecycle()
@@ -407,6 +442,11 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 ImmersiveModeChangeIndicator(pointerModeActive = xrPointerModeActive)
                 }
             }
+            }
+        }
+        overlayRoot = findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)?.also { root ->
+            root.layoutParams = android.widget.FrameLayout.LayoutParams(uiSize.x, uiSize.y)
+            Timber.i("Immersive: UI laid out at %dx%d px", uiSize.x, uiSize.y)
         }
     }
 
@@ -468,6 +508,42 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         )
     }
 
+    /**
+     * DebugBus `quickmenu`: [action] open, close or toggle the quick menu on the main thread
+     * (anything else only reports), waiting at most 1.5 s, and returns the state of the menu and
+     * the immersive presentation. `toggled` is null when the main thread did not get to it in time.
+     */
+    internal fun debugQuickMenu(action: String): Map<String, Any?> {
+        val toggled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val ran = action !in setOf("open", "close", "toggle") || run {
+            val done = java.util.concurrent.CountDownLatch(1)
+            runOnUiThread {
+                val toggle = quickMenuToggle
+                val open = if (action == "toggle") !quickMenuVisible else action == "open"
+                if (open != quickMenuVisible && toggle != null) {
+                    toggle()
+                    toggled.set(true)
+                }
+                done.countDown()
+            }
+            done.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+        val overlay = synchronized(overlayLock) { overlayLayerBitmap?.let { "${it.width}x${it.height}" } }
+        return linkedMapOf(
+            "toggled" to if (ran) toggled.get() else null,
+            "visible" to quickMenuVisible,
+            "toggleRegistered" to (quickMenuToggle != null),
+            "overlayPaused" to PluviaApp.isOverlayPaused,
+            "pointerMode" to xrPointerModeActive,
+            "session" to (xrSessionHandle != 0L),
+            "stereo" to flatPresentationSuspended,
+            "directRender" to directRenderActive,
+            "windowsVr" to windowsVrStatus,
+            "mappedWindows" to mappedWindowCount,
+            "overlay" to overlay,
+        )
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -510,6 +586,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (current?.get() === this) current = null
         stopXrSession()
         windowsVrRuntimeService?.close()
         windowsVrRuntimeService = null
@@ -625,6 +702,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                     if (wasInMenuNavigationMode && !inMenuMode) {
                         buttonSuppressMaskUntilRelease = buttons[0]
                     }
+                    if (inMenuMode != wasInMenuNavigationMode) XrNative.nativeSetWindowsInputBlocked(xrSessionHandle, inMenuMode)
                     wasInMenuNavigationMode = inMenuMode
                     val feedGame = !xrPointerModeActive && !inMenuMode
                     if (!feedGame && lastFedGamepad) cachedBridge?.reset()
@@ -764,9 +842,9 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             .takeIf { it > 0L } ?: now
 
         runOnUiThread {
-            val contentView = findViewById<android.view.View>(android.R.id.content)
-            val width = contentView.width
-            val height = contentView.height
+            val uiView = overlayRoot ?: findViewById<android.view.View>(android.R.id.content)
+            val width = uiView.width
+            val height = uiView.height
             if (width <= 0 || height <= 0) return@runOnUiThread
 
             val px = ((localX + halfWidth) / (2f * halfWidth)) * width
@@ -776,7 +854,9 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             val event = android.view.MotionEvent.obtain(downTime, now, action, px, py, 0)
             event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
             try {
-                dispatchTouchEvent(event)
+                // Straight to the UI root: it extends past the portrait window, whose own hit
+                // testing would drop touches beyond its width.
+                if (overlayRoot != null) uiView.dispatchTouchEvent(event) else dispatchTouchEvent(event)
             } finally {
                 event.recycle()
             }
@@ -1232,6 +1312,9 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         bridgedRenderer = null
         directVulkanBridge = null
         (renderer as? com.winlator.renderer.VulkanRenderer)?.setVulkanXrFrameBridge(null)
+        // Without this the quad kept compositing the last flat frame (opaque) under the overlay,
+        // e.g. behind the quick menu once a Windows VR game went stereo.
+        if (xrSessionHandle != 0L) XrNative.nativeSetSharedGameBufferPtr(xrSessionHandle, 0L)
         val bridge = directGLBridge
         if (bridge != null) {
             directGLBridge = null
@@ -1361,12 +1444,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun refreshOverlayLayer() {
+        // On the capture thread: the preference read must not stall the UI thread.
+        syncPerfHud()
         runOnUiThread {
             if (!captureActive.get()) {
                 return@runOnUiThread
             }
 
-            val contentView = findViewById<android.view.View>(android.R.id.content)
+            val contentView = overlayRoot ?: findViewById<android.view.View>(android.R.id.content)
             val width = contentView.width
             val height = contentView.height
             if (width <= 0 || height <= 0) {
@@ -1414,7 +1499,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                     if (surfaceView != null) surfaceView.alpha = 0f
                     try {
                         contentView.draw(canvas)
-                        if (directRenderActive && xrPointerModeActive) {
+                        if ((directRenderActive || flatPresentationSuspended) && xrPointerModeActive) {
                             drawPointerCursors(canvas, width, height)
                         }
                     } finally {
@@ -1441,6 +1526,18 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 Timber.w(t, "Overlay layer refresh failed")
             }
             scheduleNextOverlayRefresh()
+        }
+    }
+
+    /** The immersive HUD follows the quick menu's Performance HUD switch (PrefManager.showFps). Capture thread. */
+    private fun syncPerfHud() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - perfHudCheckedAt < PERF_HUD_POLL_MS) return
+        perfHudCheckedAt = now
+        val shown = app.gamenative.PrefManager.showFps
+        if (shown != perfHudShown) {
+            perfHudShown = shown
+            XrNative.nativeSetPerfHudVisible(shown)
         }
     }
 

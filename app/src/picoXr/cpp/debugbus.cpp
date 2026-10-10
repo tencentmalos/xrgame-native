@@ -8,6 +8,7 @@
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 #include "profiler_core.h"
 
 namespace {
@@ -115,28 +116,36 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
         registry.Register("modules", "Loaded host ELF Build IDs; modules [exact-basename]", [](const auto& a) {
             return a.size() <= 1 ? modules(a.empty() ? "" : a[0]) : "{\"error\":\"unexpected_arguments\"}";
         });
-        for (const auto* command : {"status", "runtime", "processes", "present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip"}) {
-            registry.Register(command, command == std::string_view("present") ?
-                "Host Present state; present trace <0..3600>" : command == std::string_view("api_capture") ?
-                "GFXReconstruct capture; api_capture [status|start|stop] [container]" :
-                command == std::string_view("vr_tuning") ?
-                "Windows VR pacing; vr_tuning [pacing=off|auto|half] [start=<us>] [predict=0|1]" :
-                command == std::string_view("vr_upscale") ?
-                "Windows VR reconstruction; vr_upscale [filter=off|fsr1|sgsr] [sharp=0..100] [fov=off|fixed|eye] "
-                "[level=low|balanced|high] [out=50..100] [debug=0|1]" :
-                command == std::string_view("vr_grip") ?
-                "Windows VR controller grip correction; vr_grip [pitch=<deg>] [yaw=<deg>] [roll=<deg>] "
-                "[x=<mm>] [y=<mm>] [z=<mm>] [reset=1]" :
-                "Host snapshot (JSON schema 1)",
-                [&, command](const auto&) {
-                    auto key = env->NewStringUTF(command);
-                    auto result = static_cast<jstring>(env->CallObjectMethod(provider, query, key, arguments));
-                    env->DeleteLocalRef(key);
-                    if (env->ExceptionCheck()) return std::string{};
-                    auto response = text(env, result);
-                    env->DeleteLocalRef(result);
-                    return response;
-                });
+        // Kotlin providers (DebugBusService.query), each with its help line.
+        static constexpr std::pair<const char*, const char*> providers[] = {
+            {"status", "Host snapshot (JSON schema 1)"},
+            {"runtime", "Host snapshot (JSON schema 1)"},
+            {"processes", "Host snapshot (JSON schema 1)"},
+            {"present", "Host Present state; present trace <0..3600>"},
+            {"api_capture", "GFXReconstruct capture; api_capture [status|start|stop] [container]"},
+            {"vr_tuning", "Windows VR pacing; vr_tuning [pacing=off|auto|half] [start=<us>] [predict=0|1]"},
+            {"vr_upscale", "Windows VR reconstruction; vr_upscale [filter=off|fsr1|sgsr] [sharp=0..100] "
+                           "[fov=off|fixed|eye] [level=low|balanced|high] [out=50..100] [debug=0|1]"},
+            {"vr_grip", "Windows VR controller grip correction; vr_grip [pitch=<deg>] [yaw=<deg>] [roll=<deg>] "
+                        "[x=<mm>] [y=<mm>] [z=<mm>] [reset=1]"},
+            {"launch", "Start a Steam game like its Play button; launch <steamAppId>|status"},
+            {"input", "Immersive controller input; input btn <a|b|x|y|lb|rb|back|start|l3|r3|menu>[_...] [ms] | "
+                      "input axis <lx|ly|rx|ry|lt|rt|lg|rg> <-1..1> [ms] | input release | input status"},
+            {"quickmenu", "Immersive quick menu; quickmenu [status|open|close|toggle|nav <up|down|left|right|ok|"
+                          "back|next|prev>]"},
+            {"vr_hud", "Immersive performance HUD (Vulkan composite); vr_hud [status|on|off]"},
+        };
+        for (const auto& provided : providers) {
+            const char* command = provided.first;
+            registry.Register(command, provided.second, [&, command](const auto&) {
+                auto key = env->NewStringUTF(command);
+                auto result = static_cast<jstring>(env->CallObjectMethod(provider, query, key, arguments));
+                env->DeleteLocalRef(key);
+                if (env->ExceptionCheck()) return std::string{};
+                auto response = text(env, result);
+                env->DeleteLocalRef(result);
+                return response;
+            });
         }
         auto result = registry.Handle(name, args);
         env->DeleteLocalRef(cls);

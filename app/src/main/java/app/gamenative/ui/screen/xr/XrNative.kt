@@ -68,6 +68,12 @@ object XrNative {
     external fun nativeSetWindowsOverlayVisible(handle: Long, visible: Boolean)
 
     /**
+     * While the quick menu or the pause screen has the controllers, Windows VR games keep the
+     * controller poses but get no buttons, triggers or sticks.
+     */
+    external fun nativeSetWindowsInputBlocked(handle: Long, blocked: Boolean)
+
+    /**
      * Shows an RGBA_8888 [bitmap] as a world-locked panel in place of the Windows game's frames
      * (game loading interstitials); null hides it. The pixels are copied during the call.
      */
@@ -82,6 +88,24 @@ object XrNative {
      * offset in metres. The left hand is mirrored.
      */
     external fun nativeSetGripCorrection(pitch: Float, yaw: Float, roll: Float, x: Float, y: Float, z: Float)
+
+    /**
+     * The performance HUD of immersive sessions (the Performance HUD switch), world-locked in LOCAL
+     * space up and to the left of where the user faced when it was shown. It needs the Vulkan
+     * composite; the GLES backend has none.
+     */
+    external fun nativeSetPerfHudVisible(visible: Boolean)
+
+    /** One-line JSON state of the performance HUD (DebugBus vr_hud). */
+    external fun nativePerfHudStatus(): String
+
+    /**
+     * Synthetic controller state (DebugBus input) merged into the real controllers for
+     * [durationMs] (0 releases): [buttons] in XrGamepadBridge's layout plus bit 16 for Menu, and
+     * each [axes] entry whose [axisMask] bit is set replaces leftX, leftY, rightX, rightY (snapshot
+     * values, as nativePollSnapshot returns them), triggerL, triggerR, squeezeL, squeezeR. It reaches the game, the quick menu and Windows VR.
+     */
+    external fun nativeSetDebugInput(buttons: Int, axisMask: Int, axes: FloatArray, durationMs: Int)
 
     /**
      * Composite backend for sessions created afterwards: the app-side Turnip (adrenotools,
@@ -141,7 +165,7 @@ object XrNative {
     /**
      * Same direct-render path, for VulkanRenderer's zero-copy scanout output — ahbPtr is the raw
      * AHardwareBuffer* (as a long) VulkanRenderer already has, with no HardwareBuffer Java object
-     * involved at all. See DirectVulkanBridge/VulkanXrFrameBridge.
+     * involved at all. See DirectVulkanBridge/VulkanXrFrameBridge. 0 drops the shared frame.
      */
     external fun nativeSetSharedGameBufferPtr(handle: Long, ahbPtr: Long)
 }

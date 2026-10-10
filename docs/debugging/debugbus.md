@@ -20,7 +20,8 @@ git submodule update --init foundation
 
 ## 使用
 
-先正常打开 XRGame Native，再启动诊断服务（不会自动启动游戏或更改配置）：
+先正常打开 XRGame Native，再启动诊断服务。启动服务本身不会启动游戏或更改配置；
+只有下文「沉浸式自动化」里的命令会改变状态：
 
 ```sh
 python3 tools/xrgame/debugbus.py --serial <device> --start bridge
@@ -62,6 +63,46 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 | `profiler_capture [status\|stop\|file MiB seconds]` | 有界 Streaming 文件，完成后恢复此前 ring 状态；保留 PROF 与 sidecar |
 
 Litep 的主流程覆盖、开销控制、跨线程/截断语义和采集示例见 [Litep 桩点说明](litep.md)。
+
+### 沉浸式自动化（2026-10-09）
+
+这组命令用于自动化测试：进游戏、按键、开关快捷菜单和 HUD。
+
+```sh
+python3 tools/xrgame/debugbus.py --serial <device> --start launch 546560
+python3 tools/xrgame/debugbus.py --serial <device> launch status
+python3 tools/xrgame/debugbus.py --serial <device> input btn a
+python3 tools/xrgame/debugbus.py --serial <device> input btn menu 800
+python3 tools/xrgame/debugbus.py --serial <device> input axis ly -1 300
+python3 tools/xrgame/debugbus.py --serial <device> quickmenu open
+python3 tools/xrgame/debugbus.py --serial <device> quickmenu nav down
+python3 tools/xrgame/debugbus.py --serial <device> vr_hud on
+```
+
+| 命令 | 作用与边界 |
+| --- | --- |
+| `launch <steamAppId>` / `launch status` | 与点「开始游戏」走同一路径：向 `MainActivity` 发 `app.gamenative.LAUNCH_GAME`（Int `app_id`，`game_source=STEAM`）。已有游戏、沉浸式会话或 X server 时返回 `game_running`。Android 只允许应用有可见窗口时由服务拉起 Activity，否则请求会被系统静默拦下，可改用 `adb shell am start -a app.gamenative.LAUNCH_GAME -n com.tencentmalos.xrgamenative/app.gamenative.MainActivity --ei app_id <id> --es game_source STEAM`。登录、未安装、云存档冲突等对话框仍需人工处理。`status` 返回最近请求、活跃 App ID 和沉浸式会话状态 |
+| `input btn <名>[_<名>…] [ms]` | 按住手柄键，默认 150 ms，最长 10 s。键名 `a b x y lb rb back start l3 r3 menu`，组合用 `_` 连接。`menu` 不足 600 ms 相当于给游戏按 Start，600 ms 及以上切换快捷菜单 |
+| `input axis <轴> <-1..1> [ms]` | 覆盖控制器快照里的一个轴，默认 300 ms：`lx ly rx ry`（摇杆；快捷菜单把 `ly>0` 当作向下，游戏原样收到这个值作为 XInput Y）、`lt rt`（扳机）、`lg rg`（握把，>0.5 同时算 LB/RB） |
+| `input release` / `input status` | 立即释放 / 查看当前覆盖和剩余时间 |
+| `quickmenu [status\|open\|close\|toggle]` | 在主线程开关沉浸式快捷菜单（最多等 1 秒），返回菜单、暂停、指针模式、立体（Windows VR）、直通渲染和 overlay 尺寸 |
+| `quickmenu nav <up\|down\|left\|right\|ok\|back\|next\|prev>` | 用 `input` 发一次菜单导航：左摇杆、A、B、RB、LB |
+| `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改快捷菜单的「性能 HUD」开关（`PrefManager.showFps`）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置 |
+
+`input` 在原生 `syncControllerInputs` 中与真实手柄合并，所以平面游戏的 XInput、快捷菜单导航、
+指针模式双击和 Windows VR（OpenXR action）都会收到。只在沉浸式 XR 会话运行时生效，到期自动释放。
+
+**头显性能 HUD**：仿 shadPS4 的 XR 状态面板。独立 ImGui context，由 Foundation 的
+`XrImguiVulkanLayer` 画进单独的 OpenXR quad 层，1.6×0.2 m。面板固定在 LOCAL 空间，不跟随头部：
+每次打开 HUD（以及 LOCAL 重新居中后），取当时头部的偏航方向，放在前方 2.5 m、左 0.9 m、上 1.0 m
+处，并朝向当时的头部位置。`status` 的 `anchorLocal` 是面板中心在 LOCAL 中的坐标。
+内容为游戏 FPS（只计带来新游戏画面的投影帧）、XR 帧率/显示刷新率、CPU、GPU、内存、电池、
+CPU/GPU 温度、游戏眼图尺寸与重建方式。设备指标来自 Foundation `DeviceMetricsSampler`，
+读不到的项显示 `--`。每秒最多重绘 4 次，GPU 未完成时复用上一张图，不等待 fence。
+只在 Vulkan 合成后端提供；GLES 后端不显示。开关跟随快捷菜单的「性能 HUD」。
+
+Windows VR 调参命令 `vr_tuning`、`vr_upscale`、`vr_grip` 的参数见 `help` 输出，
+验证记录见 [Swan XR 合成](../validation/swan-xr-composite-20261009.md)。
 
 `async_copy` 首轮只覆盖无 wait/idle X fence、无偏移、未启用 Present 限帧的 AHB copy；
 直接采样及其他路径不纳入这次优化。picoXr 可在游戏详情 → 编辑容器 → 图形中切换

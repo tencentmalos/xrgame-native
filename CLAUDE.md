@@ -7,7 +7,7 @@
 - 2026-10-09 Swan：
   - Vulkan 合成 + SGSR 超分 + 眼动 FDM（ETFR）在 Alyx 上生效；
   - Turnip xrg12（mesa `malos/main` `04e1d665`，A8XX 默认关闭 LRZ fast clear）在完整 LRZ 下单次约 19 分钟无硬件卡死，尚未做长时间验收；
-  - 合成器启动时的 GPU page fault 未修，按用户决定暂缓；
+  - 合成器 GPU page fault 已于 2026-10-10 修复：Turnip 在 A840 上不初始化 bin foveation 寄存器，继承了其他上下文留下的值。复位提交为 mesa `malos/main` `adb7e30a`，出包 Turnip xrg13，游戏进程和 app 进程都已加载；fault 为 0，全设备 300 s 为 0。全 LRZ 长时间游玩尚未在 xrg13 上测试。见[根因记录](docs/validation/swan-xr-composite-faults-20261010.md)；
   - Swan 手柄射线默认修正 pitch +24°，尚待确认。
   - 游戏设置在 XRGAME 构建中默认显示精简页，完整配置在「Legacy 设置…」。
   - 见[记录](docs/validation/swan-xr-composite-20261009.md)。GPU hang 按最高优先级处理，要修复根因，不靠开关绕开。

@@ -151,6 +151,50 @@ if(DEFINED OpenXR_DIR)
     target_compile_options(xrgame_foundation_xr PRIVATE "SHELL:-idirafter ${FOUNDATION}/third_party/openxr/openxr_header")
     target_link_libraries(xrgame_foundation_xr PUBLIC xrgame_vulkan_headers spatial::foundation_log PRIVATE OpenXR::openxr_loader)
     target_compile_features(xrgame_foundation_xr PUBLIC cxx_std_20)
+
+    # Head-locked performance HUD of the immersive session, as in shadPS4's XR status panel: Dear
+    # ImGui drawn by Foundation's Vulkan ImGui renderer into an OpenXR quad, with Foundation's
+    # device metrics. One ImGui (Foundation's copy, default configuration) for the whole library.
+    add_library(xrgame_imgui STATIC
+        "${FOUNDATION}/third_party/imgui/imgui.cpp"
+        "${FOUNDATION}/third_party/imgui/imgui_demo.cpp"
+        "${FOUNDATION}/third_party/imgui/imgui_draw.cpp"
+        "${FOUNDATION}/third_party/imgui/imgui_tables.cpp"
+        "${FOUNDATION}/third_party/imgui/imgui_widgets.cpp")
+    target_include_directories(xrgame_imgui PUBLIC "${FOUNDATION}/third_party/imgui")
+    # Foundation's shader script passes glslc options; the NDK ships glslc.
+    file(GLOB XRGAME_NDK_GLSLC "${ANDROID_NDK}/shader-tools/*/glslc")
+    if(XRGAME_NDK_GLSLC)
+        list(GET XRGAME_NDK_GLSLC 0 XRGAME_NDK_GLSLC)
+        set(FOUNDATION_GLSL_COMPILER "${XRGAME_NDK_GLSLC}" CACHE FILEPATH "" FORCE)
+    endif()
+    set(FOUNDATION_IMGUI_VULKAN_HOST_IMGUI_TARGET xrgame_imgui CACHE STRING "" FORCE)
+    add_library(spatial::foundation_host_vulkan_headers ALIAS xrgame_vulkan_headers)
+    add_subdirectory("${FOUNDATION}/modules/imgui_vulkan" foundation-imgui-vulkan EXCLUDE_FROM_ALL)
+    add_subdirectory("${FOUNDATION}/modules/perf_metrics" foundation-perf-metrics EXCLUDE_FROM_ALL)
+    if(NOT FOUNDATION_GLSL_COMPILER)
+        message(FATAL_ERROR "glslc or glslangValidator is required for the HUD's SDF text shaders")
+    endif()
+    add_library(xrgame_foundation_hud STATIC
+        "${FOUNDATION}/modules/xr/src/XrImguiVulkanLayer.cpp"
+        "${FOUNDATION}/modules/xr/src/VulkanOffscreenImages.cpp"
+        "${FOUNDATION}/modules/xr/src/XrMath.cpp"
+        "${FOUNDATION}/basic/underlying/math/private/spatial/math/SpatialMath.cpp")
+    target_include_directories(xrgame_foundation_hud
+        PUBLIC
+            "${FOUNDATION}/modules/xr/include"
+            "${FOUNDATION}/basic/underlying/math/public"
+        PRIVATE
+            "${FOUNDATION}/basic/modules/implements/profiler/public"
+            "${GN}")
+    target_compile_options(xrgame_foundation_hud PRIVATE
+        "SHELL:-idirafter ${FOUNDATION}/third_party/openxr/openxr_header"
+        "SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/foundation_profiler_scope.h")
+    target_link_libraries(xrgame_foundation_hud
+        PUBLIC xrgame_imgui spatial::foundation_imgui_vulkan_renderer spatial::foundation_perf_metrics
+            xrgame_vulkan_headers spatial::foundation_log
+        PRIVATE OpenXR::openxr_loader)
+    target_compile_features(xrgame_foundation_hud PUBLIC cxx_std_20)
     add_subdirectory("${GN}/xrimmersive" xrimmersive)
     install(FILES "$<TARGET_FILE:OpenXR::openxr_loader>" DESTINATION arm64-v8a)
 else()
@@ -160,7 +204,7 @@ endif()
 set(XRGAME_LIBRARIES winlator winlator_11 extras evshim gamenative_dns_v4mapped xrgame_wine_exec xrgame_wine_mapper
     vulkan_renderer asurface_renderer ahbimage drawable xconnectorpatch)
 if(XRGAME_BUILD_PROBES)
-    foreach(profiled_target vulkan_renderer xrimmersive)
+    foreach(profiled_target vulkan_renderer xrimmersive xrgame_foundation_hud)
         target_compile_definitions(${profiled_target} PRIVATE XRGAME_PROFILE=1)
         target_link_libraries(${profiled_target} PRIVATE xrgame_debugbus)
     endforeach()

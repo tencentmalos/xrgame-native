@@ -3,6 +3,7 @@
 #include <android/hardware_buffer_jni.h>
 #include <android/log.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -53,6 +54,7 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeCreate(JNIEnv *env, jclass, jobj
     JavaVM *vm = nullptr;
     env->GetJavaVM(&vm);
 
+    xrimmersive::InitPerfHudJni(env, activity);
     auto *handle = new NativeHandle();
     handle->activityGlobalRef = env->NewGlobalRef(activity);
     handle->session = new xrimmersive::XrImmersiveSession();
@@ -260,6 +262,14 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsOverlayVisible(
 }
 
 JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsInputBlocked(
+    JNIEnv *, jclass, jlong handlePtr, jboolean blocked) {
+    std::lock_guard<std::mutex> lock(gHandleMutex);
+    auto *handle = LiveHandle(handlePtr);
+    if (handle != nullptr) handle->session->setWindowsInputBlocked(blocked == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetWindowsPrediction(JNIEnv *, jclass, jboolean extended) {
     xrimmersive::SetWindowsPredictionExtended(extended == JNI_TRUE);
 }
@@ -268,6 +278,28 @@ JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetGripCorrection(JNIEnv *, jclass, jfloat pitch, jfloat yaw,
                                                                 jfloat roll, jfloat x, jfloat y, jfloat z) {
     xrimmersive::SetWindowsGripCorrection(pitch, yaw, roll, x, y, z);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPerfHudVisible(JNIEnv *, jclass, jboolean visible) {
+    xrimmersive::SetPerfHudVisible(visible == JNI_TRUE);
+}
+
+JNIEXPORT jstring JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePerfHudStatus(JNIEnv *env, jclass) {
+    return env->NewStringUTF(xrimmersive::PerfHudStatusJson().c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetDebugInput(JNIEnv *env, jclass, jint buttons, jint axisMask,
+                                                            jfloatArray axes, jint durationMs) {
+    float values[xrimmersive::kDebugAxisCount] = {};
+    if (axes != nullptr) {
+        const jsize count = std::min<jsize>(env->GetArrayLength(axes), xrimmersive::kDebugAxisCount);
+        env->GetFloatArrayRegion(axes, 0, count, values);
+    }
+    xrimmersive::SetDebugInput(static_cast<uint32_t>(buttons), static_cast<uint32_t>(axisMask), values,
+                               static_cast<uint32_t>(durationMs < 0 ? 0 : durationMs));
 }
 
 JNIEXPORT void JNICALL
@@ -400,12 +432,11 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetSharedGameBuffer(JNIEnv *env,
 // GPUImage.getHardwareBufferPtr()), so this variant skips the Java-object-unwrapping step and
 // reinterprets the pointer directly. Same underlying session method as the GL path above —
 // setSharedGameBuffer()/importSharedBufferIfNeeded() don't care which renderer produced the
-// buffer.
+// buffer. 0 drops the shared frame when the flat presentation stops.
 JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetSharedGameBufferPtr(JNIEnv *, jclass,
                                                                         jlong handlePtr,
                                                                         jlong ahbPtr) {
-    if (ahbPtr == 0) return;
     std::lock_guard<std::mutex> lock(gHandleMutex);
     auto *handle = LiveHandle(handlePtr);
     if (handle == nullptr) return;

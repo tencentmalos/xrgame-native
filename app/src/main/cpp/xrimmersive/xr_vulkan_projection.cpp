@@ -1,13 +1,16 @@
 #include "../xrgame_profiler.h"
 #include "xr_vulkan_projection.h"
+#include "xr_vulkan_probe.h"
 
 #include "spatial/foveation/Foveation.h"
 
 #include <android/log.h>
 #include <poll.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cerrno>
 #include <cmath>
 #include <exception>
@@ -19,6 +22,19 @@
 namespace xrimmersive::vulkan {
 
 namespace {
+
+// Diagnostic trigger (debug.xrgame.xr.ccuprobe=<variant + 1>): runs the guard probe once per new
+// value. Returns the variant to run, or -1.
+int GuardProbeRequest() {
+    static uint32_t frames = 0;
+    static int last = 0;
+    if (frames++ % 72 != 0) return -1;
+    char value[PROP_VALUE_MAX] = {};
+    const int next = __system_property_get("debug.xrgame.xr.ccuprobe", value) > 0 ? std::atoi(value) : 0;
+    if (next == last) return -1;
+    last = next;
+    return next > 0 ? next - 1 : -1;
+}
 
 using windowsvr::BufferKind;
 using windowsvr::EyeFrame;
@@ -222,6 +238,9 @@ spatial::upscale::FoveatedEye ProjectionPresenter::foveate(const EyeFrame &frame
 bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space, XrCompositionLayerProjection *layer) {
     lastFreshSnap_ = -1;
     if (layer == nullptr || context_ == nullptr || context_->lost() || !transport.hasStereoContent()) return false;
+    if (const int probe = GuardProbeRequest(); probe >= 0 && format_ != VK_FORMAT_UNDEFINED) {
+        RunGuardProbe(*context_, format_, static_cast<uint32_t>(probe), 4);
+    }
     std::array<EyeFrame, 2> frames{};
     std::array<bool, 2> fresh{false, false};
     for (uint32_t eye = 0; eye < 2; ++eye) {
@@ -242,6 +261,9 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
     // compositor samples it 1:1, as on the GLES path.
     const uint32_t width = reconstruct ? outputWidth : std::min(sourceWidth, recommendedWidth_);
     const uint32_t height = reconstruct ? outputHeight : std::min(sourceHeight, recommendedHeight_);
+    sourceWidth_ = sourceWidth;
+    sourceHeight_ = sourceHeight;
+    reconstructing_ = reconstruct;
     if (!ensureSwapchain(width, height)) {
         discardFresh(transport, frames, fresh);
         return false;

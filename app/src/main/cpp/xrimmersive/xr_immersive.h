@@ -17,6 +17,7 @@
 #include <GLES2/gl2ext.h>
 #include <android/hardware_buffer.h>
 
+#include "xr_perf_hud.h"
 #include "xr_windows_projection.h"
 #include "xr_windows_transport.h"
 
@@ -127,6 +128,9 @@ public:
     bool windowsStereoActive() const;
     bool applyWindowsHaptic(uint32_t hand, float amplitude, XrDuration duration, float frequency);
     void setWindowsOverlayVisible(bool visible);
+    // While the immersive quick menu or the pause screen has the controllers, Windows VR games get
+    // the poses but no buttons, triggers or sticks. Any thread.
+    void setWindowsInputBlocked(bool blocked);
     // A game loading interstitial (RGBA_8888, tightly repacked from strideBytes) shown as a
     // world-locked panel in place of the game's frames; nullptr hides it. Any thread.
     void setWindowsInterstitial(const uint8_t *rgbaPixels, int32_t width, int32_t height,
@@ -176,6 +180,8 @@ private:
     void submitQuadLayer(XrTime predictedDisplayTime, XrSpace space, XrSwapchain swapchain,
                           int32_t width, int32_t height, bool sessionActive);
     bool submitWindowsProjection(XrTime predictedDisplayTime, uint64_t xrSerial);
+    // The performance HUD quad for this frame, when shown (Vulkan composite only).
+    bool submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime);
     // The projection presenter of the active backend.
     bool renderWindowsProjection(XrCompositionLayerProjection *layer);
     bool renderQuadImage(uint32_t imageIndex);
@@ -197,6 +203,7 @@ private:
     XrSession session_ = XR_NULL_HANDLE;
     std::mutex sessionMutex_;
     XrSpace localSpace_ = XR_NULL_HANDLE;
+    XrSpace viewSpace_ = XR_NULL_HANDLE;
     XrSpace stageSpace_ = XR_NULL_HANDLE;
     XrSpace localFloorSpace_ = XR_NULL_HANDLE;
     XrReferenceSpaceType windowsTrackingSpaceType_ = XR_REFERENCE_SPACE_TYPE_LOCAL;
@@ -212,11 +219,15 @@ private:
     bool windowsProjectionReady_ = false;
     // Vulkan composite (the app-side Turnip through XR_KHR_vulkan_enable2); null keeps GLES.
     std::unique_ptr<vulkan::Compositor> vulkan_;
+    std::unique_ptr<PerfHud> perfHud_;
+    XrDuration displayPeriod_ = 0;
     // XR_EXT_eye_gaze_interaction for eye-tracked foveation of the Vulkan reconstruction.
     std::unique_ptr<spatial::xr::XrEyeGazeTracker> gaze_;
     bool eyeGazeExtensionAvailable_ = false;
     std::atomic<bool> stereoActive_{false};
     std::atomic<bool> windowsOverlayVisible_{false};
+    std::atomic<bool> windowsInputBlocked_{false};
+    bool windowsInputMasked_ = false;
     // XR periods from the snapshot a game frame rendered against to the XR frame that first
     // shows it (EMA); the extended prediction locates the next snapshots that far ahead.
     float predictionLead_ = 0.0f;
@@ -406,5 +417,13 @@ void SetWindowsPredictionExtended(bool extended);
 // Rigid correction of the grip pose sent to Windows games (DebugBus vr_grip), in the right hand's
 // grip frame: degrees about X, Y, Z (applied in that order) and metres. The left hand is mirrored.
 void SetWindowsGripCorrection(float pitch, float yaw, float roll, float x, float y, float z);
+
+// DebugBus `input`: for durationMs (0 releases) ButtonBit buttons are held, kDebugMenuButton holds
+// the Menu button, and each axis whose axisMask bit is set replaces the controller's value. Axes:
+// leftX, leftY, rightX, rightY (snapshot values, after syncControllerInputs' Y flip), triggerL,
+// triggerR, squeezeL, squeezeR.
+constexpr uint32_t kDebugMenuButton = 1u << 16;
+constexpr uint32_t kDebugAxisCount = 8;
+void SetDebugInput(uint32_t buttons, uint32_t axisMask, const float *axes, uint32_t durationMs);
 
 }  // namespace xrimmersive

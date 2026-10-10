@@ -138,6 +138,7 @@ public:
     VkPhysicalDevice physicalDevice() const { return physicalDevice_; }
     VkDevice device() const { return device_; }
     uint32_t queueFamily() const { return queueFamily_; }
+    VkQueue queue() const { return queue_; }
     const Dispatch &vk() const { return vk_; }
     std::mutex &queueMutex() { return queueMutex_; }
     // FDM features enabled on the device (empty when the device cannot foveate external targets).

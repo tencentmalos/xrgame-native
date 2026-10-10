@@ -2,7 +2,9 @@ package app.gamenative.powercontrol.metrics
 
 import android.os.SystemClock
 import java.io.File
+import java.io.FileNotFoundException
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import timber.log.Timber
 
 enum class CpuUsageSource {
@@ -33,6 +35,13 @@ object SystemMetricsSources {
 
     @Volatile
     private var gpuTempPathsCache: List<String>? = null
+
+    /**
+     * Temperature nodes whose open failed (missing, or refused by SELinux such as Swan's kgsl
+     * `temp`). They are not retried in this process: every refused open is logged as an avc
+     * denial, and the HUD samples twice a second.
+     */
+    private val unreadableTempPaths: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     private val fixedGpuTempPaths = listOf(
         "/sys/class/kgsl/kgsl-3d0/temp",
@@ -121,7 +130,7 @@ object SystemMetricsSources {
                 type.contains("big") || type.contains("little") -> 8
                 else -> null
             }
-        }
+        }.filter(::isReadable)
 
         cpuTempPathsCache = paths
         return paths
@@ -146,7 +155,7 @@ object SystemMetricsSources {
             }
         }
 
-        val paths = (fixedGpuTempPaths + zonePaths).distinct()
+        val paths = (fixedGpuTempPaths + zonePaths).distinct().filter(::isReadable)
         gpuTempPathsCache = paths
         return paths
     }
@@ -188,9 +197,24 @@ object SystemMetricsSources {
             .map { it.second }
     }
 
+    /**
+     * access(2) probe: SELinux checks it like an open but does not audit a denial of the node
+     * itself, so discovery can drop nodes the policy refuses without logging one per sample.
+     */
+    private fun isReadable(path: String): Boolean = File(path).canRead()
+
     fun readTemperatureC(paths: List<String>): Int? {
         for (path in paths.distinct()) {
-            val raw = readFirstLine(path)?.trim()?.toIntOrNull() ?: continue
+            if (path in unreadableTempPaths) continue
+            val line = try {
+                File(path).bufferedReader().use { it.readLine() }
+            } catch (_: FileNotFoundException) {
+                unreadableTempPaths += path
+                null
+            } catch (_: Exception) {
+                null
+            }
+            val raw = line?.trim()?.toIntOrNull() ?: continue
             val celsius = if (raw > 1000) (raw + 500) / 1000 else raw
             if (celsius in 1..150) {
                 return celsius

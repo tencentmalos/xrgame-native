@@ -9,8 +9,13 @@ import android.os.SystemClock
 import android.system.Os
 import androidx.annotation.Keep
 import app.gamenative.BuildConfig
+import app.gamenative.MainActivity
 import app.gamenative.PluviaApp
+import app.gamenative.PrefManager
 import app.gamenative.service.ActiveGameRegistry
+import app.gamenative.ui.screen.xr.ImmersiveXrActivity
+import app.gamenative.ui.screen.xr.XrDebugInput
+import app.gamenative.ui.screen.xr.XrNative
 import app.gamenative.ui.screen.xr.windows.WindowsVrGripCorrection
 import app.gamenative.ui.screen.xr.windows.WindowsVrTuning
 import app.gamenative.ui.screen.xr.windows.WindowsVrUpscale
@@ -29,7 +34,13 @@ import java.util.concurrent.TimeoutException
 /** Debug APK only. Android's DUMP permission protects start/bind; dumpsys itself is shell gated. */
 @Keep
 class DebugBusService : Service() {
-    companion object { init { System.loadLibrary("xrgame_debugbus") } }
+    companion object {
+        init { System.loadLibrary("xrgame_debugbus") }
+        private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
+            "launch", "input", "quickmenu", "vr_hud")
+        private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
+        @Volatile private var lastLaunch: Int? = null
+    }
     private val worker = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(1)) {
         Thread(it, "XRGame:DebugBus").apply { isDaemon = true }
     }
@@ -65,7 +76,7 @@ class DebugBusService : Service() {
     /** Called synchronously by Foundation handlers on the bounded query worker, never a GPU lock. */
     @Keep
     fun query(command: String, args: Array<String>): String = try {
-        require(command in setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip") || args.isEmpty()) { "unexpected_arguments" }
+        require(command in ARGUMENT_COMMANDS || args.isEmpty()) { "unexpected_arguments" }
         val result = when (command) {
             "status" -> JSONObject()
                 .put("pid", Process.myPid()).put("uid", Process.myUid())
@@ -83,6 +94,10 @@ class DebugBusService : Service() {
             "vr_tuning" -> vrTuning(args)
             "vr_upscale" -> vrUpscale(args)
             "vr_grip" -> vrGrip(args)
+            "launch" -> launch(args)
+            "input" -> input(args)
+            "quickmenu" -> quickMenu(args)
+            "vr_hud" -> vrHud(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -121,6 +136,82 @@ class DebugBusService : Service() {
             .put("pitch", settings.pitch.toDouble()).put("yaw", settings.yaw.toDouble())
             .put("roll", settings.roll.toDouble()).put("x", settings.xMm.toDouble())
             .put("y", settings.yMm.toDouble()).put("z", settings.zMm.toDouble())
+    }
+
+    /**
+     * Starts a Steam game the same way as its Play button (MainActivity's LAUNCH_GAME intent);
+     * `status` or no argument reports progress. Android only lets the service start the activity
+     * while SteamPSP has a visible window.
+     */
+    private fun launch(args: Array<String>): JSONObject {
+        val action = args.firstOrNull() ?: "status"
+        require(args.size <= 1) { "usage: launch <steamAppId>|status" }
+        if (action != "status") {
+            val appId = action.toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException("usage: launch <steamAppId>|status")
+            require(ActiveGameRegistry.get() == null && ImmersiveXrActivity.current?.get() == null &&
+                PluviaApp.xServerView == null) { "game_running" }
+            startActivity(Intent(LAUNCH_GAME).setClass(this, MainActivity::class.java)
+                .putExtra("app_id", appId).putExtra("game_source", "STEAM")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            lastLaunch = appId
+        }
+        val immersive = ImmersiveXrActivity.current?.get()
+        return JSONObject().put("action", action).put("requested", lastLaunch ?: JSONObject.NULL)
+            .put("activeSteamAppId", ActiveGameRegistry.get()?.appId ?: JSONObject.NULL)
+            .put("xServerPresent", PluviaApp.xServerView != null)
+            .put("immersive", immersive?.let { JSONObject(it.debugQuickMenu("status")) } ?: JSONObject.NULL)
+    }
+
+    /** Synthetic controller input through the immersive session; see [XrDebugInput]. */
+    private fun input(args: Array<String>): JSONObject {
+        if (args.firstOrNull() != "status") {
+            XrDebugInput.apply(args.toList())?.let { throw IllegalArgumentException(it) }
+        } else {
+            require(args.size == 1) { "unexpected_arguments" }
+        }
+        val state = XrDebugInput.last
+        val axes = JSONObject()
+        XrDebugInput.AXES.forEachIndexed { index, name ->
+            if (state.axisMask and (1 shl index) != 0) axes.put(name, state.axes[index].toDouble())
+        }
+        return JSONObject().put("buttons", JSONArray(XrDebugInput.buttonNames(state.buttons)))
+            .put("axes", axes).put("remainingMs", XrDebugInput.remainingMs())
+            .put("session", ImmersiveXrActivity.current?.get() != null)
+            .put("scope", "merged_into_immersive_controllers_while_session_runs")
+    }
+
+    /** Opens, closes or navigates the immersive quick menu; `nav` sends the controller inputs it uses. */
+    private fun quickMenu(args: Array<String>): JSONObject {
+        val action = args.firstOrNull() ?: "status"
+        val navigation = mapOf(
+            // The quick menu reads ly > 0 as down (handleMenuNavigation).
+            "up" to listOf("axis", "ly", "-1"), "down" to listOf("axis", "ly", "1"),
+            "left" to listOf("axis", "lx", "-1"), "right" to listOf("axis", "lx", "1"),
+            "ok" to listOf("btn", "a"), "back" to listOf("btn", "b"),
+            "next" to listOf("btn", "rb"), "prev" to listOf("btn", "lb"),
+        )
+        require(
+            (action in listOf("status", "open", "close", "toggle") && args.size <= 1) ||
+                (action == "nav" && args.size == 2 && args[1] in navigation),
+        ) { "usage: quickmenu [status|open|close|toggle|nav up|down|left|right|ok|back|next|prev]" }
+        val activity = ImmersiveXrActivity.current?.get() ?: return JSONObject().put("active", false)
+        if (action == "nav") {
+            XrDebugInput.apply(navigation.getValue(args[1]) + "150")?.let { throw IllegalArgumentException(it) }
+        }
+        return JSONObject(activity.debugQuickMenu(action)).put("active", true).put("action", action)
+    }
+
+    /** The immersive performance HUD: on/off flips the Performance HUD switch it follows. */
+    private fun vrHud(args: Array<String>): JSONObject {
+        val action = args.firstOrNull() ?: "status"
+        require(args.size <= 1 && action in listOf("status", "on", "off")) { "usage: vr_hud [status|on|off]" }
+        if (action != "status") {
+            PrefManager.showFps = action == "on"
+            XrNative.nativeSetPerfHudVisible(action == "on")
+        }
+        return JSONObject(XrNative.nativePerfHudStatus()).put("showFps", PrefManager.showFps)
+            .put("session", ImmersiveXrActivity.current?.get() != null)
+            .put("scope", "vulkan_composite_local_space_quad")
     }
 
     private fun runtime(): JSONObject {

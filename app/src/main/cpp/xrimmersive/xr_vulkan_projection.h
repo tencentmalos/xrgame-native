@@ -48,6 +48,11 @@ public:
     void setGaze(const GazeSample &gaze) { gaze_ = gaze; }
     bool lastRenderReused() const { return lastRenderReused_; }
     int64_t lastFreshSnap() const { return lastFreshSnap_; }
+    // The game's eye size and the projection eye size of the last rendered frame, and whether it
+    // was reconstructed (for the performance HUD).
+    VkExtent2D sourceExtent() const { return {sourceWidth_, sourceHeight_}; }
+    VkExtent2D outputExtent() const { return {width_, height_}; }
+    bool reconstructing() const { return reconstructing_; }
     void disableReuse() { reuseReleased_ = false; }
     void shutdown();
 
@@ -94,6 +99,9 @@ private:
     bool reuseReleased_ = true;
     bool lastRenderReused_ = false;
     int64_t lastFreshSnap_ = -1;
+    uint32_t sourceWidth_ = 0;
+    uint32_t sourceHeight_ = 0;
+    bool reconstructing_ = false;
     uint64_t presentedFrames_ = 0;
 };
 

@@ -9,6 +9,7 @@
 #include <adrenotools/driver.h>
 #include <android/log.h>
 #include <dlfcn.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -48,9 +49,18 @@ bool LoadXr(XrInstance instance, const char *name, T *out) {
 
 }  // namespace
 
-PFN_vkGetInstanceProcAddr Context::LoadDriver(const std::string &driverDir, const std::string &libraryName,
+PFN_vkGetInstanceProcAddr Context::LoadDriver(const std::string &bundledDir, const std::string &libraryName,
                                               const std::string &hookDir) {
     std::lock_guard<std::mutex> lock(gDriverMutex);
+    // Diagnostic override (debug.xrgame.xr.turnipdir): a driver directory the runtime check
+    // before each launch does not restore, for testing a locally built Turnip.
+    std::string driverDir = bundledDir;
+    char overrideDir[PROP_VALUE_MAX] = {};
+    if (__system_property_get("debug.xrgame.xr.turnipdir", overrideDir) > 0 &&
+        access((WithSlash(overrideDir) + libraryName).c_str(), R_OK) == 0) {
+        LOGI("vulkan composite: driver directory overridden by debug.xrgame.xr.turnipdir=%s", overrideDir);
+        driverDir = overrideDir;
+    }
     const std::string key = WithSlash(driverDir) + libraryName;
     if (gDriverAttempted) {
         if (key != gDriverKey) {

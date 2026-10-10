@@ -91,6 +91,22 @@ std::mutex gGripCorrectionMutex;
 std::array<XrPosef, 2> gGripCorrection{};
 bool gGripCorrectionEnabled = false;
 
+// Synthetic controller state from DebugBus `input`, merged into the real controllers until it
+// expires.
+struct DebugInput {
+    uint32_t buttons = 0;
+    uint32_t axisMask = 0;
+    std::array<float, kDebugAxisCount> axes{};
+    std::chrono::steady_clock::time_point until{};
+};
+std::mutex gDebugInputMutex;
+DebugInput gDebugInput;
+
+DebugInput CurrentDebugInput(std::chrono::steady_clock::time_point now) {
+    std::lock_guard<std::mutex> lock(gDebugInputMutex);
+    return now < gDebugInput.until ? gDebugInput : DebugInput{};
+}
+
 XrQuaternionf QuatMultiply(const XrQuaternionf &a, const XrQuaternionf &b) {
     return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
             a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
@@ -164,6 +180,18 @@ XrPosef IdentityPose() {
 
 void SetWindowsPredictionExtended(bool extended) {
     gWindowsPredictionExtended.store(extended, std::memory_order_relaxed);
+}
+
+void SetDebugInput(uint32_t buttons, uint32_t axisMask, const float *axes, uint32_t durationMs) {
+    std::lock_guard<std::mutex> lock(gDebugInputMutex);
+    gDebugInput = {};
+    if (durationMs == 0) return;
+    gDebugInput.buttons = buttons;
+    gDebugInput.axisMask = axisMask & ((1u << kDebugAxisCount) - 1u);
+    for (uint32_t i = 0; i < kDebugAxisCount; ++i) {
+        if ((gDebugInput.axisMask & (1u << i)) != 0) gDebugInput.axes[i] = std::clamp(axes[i], -1.0f, 1.0f);
+    }
+    gDebugInput.until = std::chrono::steady_clock::now() + std::chrono::milliseconds(durationMs);
 }
 
 void SetWindowsGripCorrection(float pitch, float yaw, float roll, float x, float y, float z) {
@@ -249,6 +277,10 @@ void XrImmersiveSession::setWindowsOverlayVisible(bool visible) {
     windowsOverlayVisible_.store(visible);
 }
 
+void XrImmersiveSession::setWindowsInputBlocked(bool blocked) {
+    windowsInputBlocked_.store(blocked);
+}
+
 void XrImmersiveSession::submitFrame(const uint8_t *rgbaPixels, int32_t width, int32_t height,
                                       int32_t strideBytes) {
     if (width <= 0 || height <= 0) return;
@@ -312,14 +344,17 @@ void XrImmersiveSession::importSharedBufferIfNeeded() {
         // may release the session's reference while the import below is still running.
         if (buffer != nullptr) AHardwareBuffer_acquire(buffer);
     }
-    if (buffer == nullptr) return;
-    std::unique_ptr<AHardwareBuffer, void (*)(AHardwareBuffer *)> bufferRef(
-        buffer, AHardwareBuffer_release);
-
     if (sharedGameImage_ != EGL_NO_IMAGE_KHR) {
         eglDestroyImageKHR(eglDisplay_, sharedGameImage_);
         sharedGameImage_ = EGL_NO_IMAGE_KHR;
     }
+    if (buffer == nullptr) {
+        // Dropped: the quad shows only the overlay again.
+        hasSharedGameTexture_ = false;
+        return;
+    }
+    std::unique_ptr<AHardwareBuffer, void (*)(AHardwareBuffer *)> bufferRef(
+        buffer, AHardwareBuffer_release);
 
     // setSharedGameBuffer() only re-arms sharedBufferChanged_ when the buffer identity changes,
     // so a failed import must re-arm it itself or this buffer would never be retried.
@@ -401,6 +436,8 @@ void XrImmersiveSession::runLoop() {
 
         XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
         if (!XrCheck(xrBeginFrame(session_, &beginInfo), "xrBeginFrame")) break;
+        displayPeriod_ = frameState.predictedDisplayPeriod;
+        if (perfHud_) perfHud_->noteXrFrame(std::chrono::steady_clock::now());
 
         XrProfileScope inputProfile("host.vr.xr.input_locate");
         applyPendingPassthroughState();
@@ -440,6 +477,20 @@ void XrImmersiveSession::runLoop() {
         {
             std::lock_guard<std::mutex> lock(snapshotMutex_);
             runtimeSnapshot.input = snapshot_;
+        }
+        // The quick menu is navigated with the same controllers; the game keeps only the poses,
+        // also until the button that closed the menu is released.
+        InputSnapshot &input = runtimeSnapshot.input;
+        if (windowsInputBlocked_.load()) {
+            windowsInputMasked_ = true;
+        } else if (windowsInputMasked_ && input.buttons == 0 && input.triggerL < 0.1f && input.triggerR < 0.1f) {
+            windowsInputMasked_ = false;
+        }
+        if (windowsInputMasked_) {
+            input.buttons = 0;
+            input.leftX = input.leftY = input.rightX = input.rightY = 0.0f;
+            input.triggerL = input.triggerR = input.squeezeL = input.squeezeR = 0.0f;
+            input.quickMenuClicked = input.menuButtonHeld = input.pointerModeToggled = false;
         }
         syncWindowsTrackingPoses(&runtimeSnapshot.input, poseTime);
         {
@@ -578,6 +629,7 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         auto compositor = std::make_unique<vulkan::Compositor>();
         if (compositor->create(instance_, systemId_, compositeConfig)) {
             vulkan_ = std::move(compositor);
+            perfHud_ = std::make_unique<PerfHud>();
             RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after vulkan device");
         } else {
             compositor->destroy();
@@ -737,6 +789,8 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         return false;
     }
     windowsTrackingSpace_ = localSpace_;
+    spaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+    if (xrCreateReferenceSpace(session_, &spaceCreateInfo, &viewSpace_) != XR_SUCCESS) viewSpace_ = XR_NULL_HANDLE;
     spaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
     const XrResult stageSpaceResult = xrCreateReferenceSpace(session_, &spaceCreateInfo, &stageSpace_);
     if (stageSpaceResult != XR_SUCCESS) stageSpace_ = XR_NULL_HANDLE;
@@ -1067,6 +1121,8 @@ void XrImmersiveSession::pollXrEvents() {
             const uint32_t serial = tracked ? recenterSerial_.fetch_add(1) + 1 : recenterSerial_.load();
             LOGI("OpenXR reference space change: type=%d poseValid=%d counted=%d serial=%u",
                  static_cast<int>(change->referenceSpaceType), change->poseValid ? 1 : 0, tracked ? 1 : 0, serial);
+            // The world-locked HUD lives in LOCAL; after a recentre it is placed in front of the head again.
+            if (change->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL && perfHud_) perfHud_->reanchor();
         } else if (event.type == XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED) {
             auto logProfile = [this](const char *hand, XrPath handPath) {
                 XrInteractionProfileState profileState{XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -1616,6 +1672,7 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     stereoMisses_ = 0;
     stereoActive_.store(true);
     const int64_t snap = vulkan_ ? vulkan_->projection().lastFreshSnap() : windowsProjection_.lastFreshSnap();
+    if (snap >= 0 && perfHud_) perfHud_->noteGameFrame(std::chrono::steady_clock::now());
     if (snap >= 0 && xrSerial >= static_cast<uint64_t>(snap)) {
         const float lead = std::min(8.0f, static_cast<float>(xrSerial - static_cast<uint64_t>(snap)));
         predictionLead_ = predictionLead_ > 0.0f ? predictionLead_ + 0.1f * (lead - predictionLead_) : lead;
@@ -1642,15 +1699,18 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
                                  -distance * std::cos(yaw) * std::cos(pitch)};
         overlay.size = {quadWidth_.load(), quadHeight_.load()};
     }
+    XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    const bool hudShown = submitPerfHud(&hud, true, predictedDisplayTime);
     XrCompositionLayerPassthroughFB passthroughLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
     passthroughLayer.space = XR_NULL_HANDLE;
     passthroughLayer.layerHandle = passthroughLayer_;
-    std::array<const XrCompositionLayerBaseHeader *, 3> layers{};
+    std::array<const XrCompositionLayerBaseHeader *, 4> layers{};
     uint32_t layerCount = 0;
     if (passthroughActive_ && passthroughLayer_ != XR_NULL_HANDLE) {
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&passthroughLayer);
     }
     layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&projection);
+    if (hudShown) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud);
     if (overlayRendered) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&overlay);
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = predictedDisplayTime;
@@ -1752,6 +1812,8 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&passthroughLayer));
     }
     layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
+    XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    if (submitPerfHud(&hud, false, predictedDisplayTime)) layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud));
 
     // Passthrough shows the real world through gaps, so the "background" must be
     // ADDITIVE/ALPHA_BLEND rather than OPAQUE while it's active, or it'll just look black.
@@ -1763,6 +1825,24 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     endInfo.layers = layers.data();
     XrProfileScope endProfile("host.vr.xr.end_frame");
     XrCheck(xrEndFrame(session_, &endInfo), "xrEndFrame");
+}
+
+bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime) {
+    if (!perfHud_ || !vulkan_ || viewSpace_ == XR_NULL_HANDLE || localSpace_ == XR_NULL_HANDLE) return false;
+    PerfHudFrame frame;
+    if (stereo) {
+        const vulkan::ProjectionPresenter &projection = vulkan_->projection();
+        frame.sourceWidth = projection.sourceExtent().width;
+        frame.sourceHeight = projection.sourceExtent().height;
+        frame.outputWidth = projection.outputExtent().width;
+        frame.outputHeight = projection.outputExtent().height;
+        frame.reconstructing = projection.reconstructing();
+        frame.filter = vulkan::GetUpscaleSettings().filter;
+    }
+    if (displayPeriod_ > 0) frame.displayHz = 1e9f / static_cast<float>(displayPeriod_);
+    XrProfileScope profile("host.vr.hud.update");
+    if (!perfHud_->update(session_, vulkan_->context(), frame)) return false;
+    return perfHud_->fill(localSpace_, viewSpace_, displayTime, quad);
 }
 
 void XrImmersiveSession::setQuadTransform(float x, float y, float z, float width, float height,
@@ -1896,14 +1976,21 @@ void XrImmersiveSession::syncControllerInputs(XrTime predictedDisplayTime) {
         }
     };
 
+    // DebugBus input goes through the same paths as the controllers: Menu long/short press,
+    // thumbstick double-click, menu navigation and the Windows VR snapshot.
+    const auto debug = CurrentDebugInput(std::chrono::steady_clock::now());
+    auto debugAxis = [&debug](uint32_t index, float value) {
+        return (debug.axisMask & (1u << index)) != 0 ? debug.axes[index] : value;
+    };
+
     InputSnapshot next;
     next.buttons = 0;
     if (getBool(buttonXAction_)) next.buttons |= (1u << BUTTON_X);
     if (getBool(buttonYAction_)) next.buttons |= (1u << BUTTON_Y);
     if (getBool(buttonAAction_)) next.buttons |= (1u << BUTTON_A);
     if (getBool(buttonBAction_)) next.buttons |= (1u << BUTTON_B);
-    next.squeezeL = getFloat(squeezeLAction_);
-    next.squeezeR = getFloat(squeezeRAction_);
+    next.squeezeL = debugAxis(6, getFloat(squeezeLAction_));
+    next.squeezeR = debugAxis(7, getFloat(squeezeRAction_));
     if (next.squeezeL > 0.5f) next.buttons |= (1u << BUTTON_LB);
     if (next.squeezeR > 0.5f) next.buttons |= (1u << BUTTON_RB);
 
@@ -1914,7 +2001,7 @@ void XrImmersiveSession::syncControllerInputs(XrTime predictedDisplayTime) {
     // window before measuring hold duration — a millisecond-scale dropout mid-hold must not
     // reset the 600ms timer.
     const auto nowMenu = std::chrono::steady_clock::now();
-    const bool rawMenuPressed = getBool(menuLAction_);
+    const bool rawMenuPressed = getBool(menuLAction_) || (debug.buttons & kDebugMenuButton) != 0;
     if (rawMenuPressed) lastMenuRawTrueTime_ = nowMenu;
     const bool debouncedMenuPressed = rawMenuPressed ||
         (nowMenu - lastMenuRawTrueTime_) < std::chrono::milliseconds(50);
@@ -1944,8 +2031,8 @@ void XrImmersiveSession::syncControllerInputs(XrTime predictedDisplayTime) {
         }
     }
 
-    const bool l3Pressed = getBool(thumbstickLClickAction_);
-    const bool r3Pressed = getBool(thumbstickRClickAction_);
+    const bool l3Pressed = getBool(thumbstickLClickAction_) || (debug.buttons & (1u << BUTTON_L3)) != 0;
+    const bool r3Pressed = getBool(thumbstickRClickAction_) || (debug.buttons & (1u << BUTTON_R3)) != 0;
     if (l3Pressed) next.buttons |= (1u << BUTTON_L3);
     if (r3Pressed) next.buttons |= (1u << BUTTON_R3);
 
@@ -1960,6 +2047,13 @@ void XrImmersiveSession::syncControllerInputs(XrTime predictedDisplayTime) {
     // and almost certainly share the same convention.
     next.leftY = -next.leftY;
     next.rightY = -next.rightY;
+    next.leftX = debugAxis(0, next.leftX);
+    next.leftY = debugAxis(1, next.leftY);
+    next.rightX = debugAxis(2, next.rightX);
+    next.rightY = debugAxis(3, next.rightY);
+    next.triggerL = debugAxis(4, next.triggerL);
+    next.triggerR = debugAxis(5, next.triggerR);
+    next.buttons |= debug.buttons & ((1u << (BUTTON_R3 + 1)) - 1u);
     // No synthetic dpad: on a real Xbox controller the left stick and the d-pad are two
     // separate physical controls, and Touch controllers have no physical d-pad at all. Faking
     // one out of the stick's direction fired alongside the real analog values, which is why
@@ -2119,6 +2213,10 @@ void XrImmersiveSession::teardown() {
     stereoActive_.store(false);
     stereoMisses_ = 0;
     windowsTransport_.stop();
+    if (perfHud_) {
+        perfHud_->destroy();
+        perfHud_.reset();
+    }
     if (vulkan_) vulkan_->releaseResources();
     windowsProjection_.shutdown();
     gaze_.reset();
@@ -2175,6 +2273,10 @@ void XrImmersiveSession::teardown() {
     if (localSpace_ != XR_NULL_HANDLE) {
         xrDestroySpace(localSpace_);
         localSpace_ = XR_NULL_HANDLE;
+    }
+    if (viewSpace_ != XR_NULL_HANDLE) {
+        xrDestroySpace(viewSpace_);
+        viewSpace_ = XR_NULL_HANDLE;
     }
     if (stageSpace_ != XR_NULL_HANDLE) {
         xrDestroySpace(stageSpace_);

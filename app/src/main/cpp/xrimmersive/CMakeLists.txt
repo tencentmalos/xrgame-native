@@ -16,11 +16,13 @@ project(xrimmersive)
 
 add_library(xrimmersive SHARED
     xr_immersive.cpp
+    xr_perf_hud.cpp
     jni_bridge.cpp
     sbs_jni.cpp
     xr_vulkan.cpp
     xr_vulkan_compositor.cpp
     xr_vulkan_projection.cpp
+    xr_vulkan_probe.cpp
     xr_vulkan_trace.cpp
     xr_windows_projection.cpp
     xr_windows_transport.cpp
@@ -28,14 +30,15 @@ add_library(xrimmersive SHARED
 
 find_package(OpenXR REQUIRED CONFIG)
 
-# The Vulkan composite needs the Foundation reconstruction target and adrenotools, which the
-# picoXr native build (app/src/picoXr/cpp/CMakeLists.txt) defines before this directory.
-if(NOT TARGET xrgame_foundation_xr OR NOT TARGET adrenotools)
-    message(FATAL_ERROR "xrimmersive is built by the picoXr native build (xrgame_foundation_xr, adrenotools)")
+# The Vulkan composite needs the Foundation reconstruction and HUD targets and adrenotools, which
+# the picoXr native build (app/src/picoXr/cpp/CMakeLists.txt) defines before this directory.
+if(NOT TARGET xrgame_foundation_xr OR NOT TARGET xrgame_foundation_hud OR NOT TARGET adrenotools)
+    message(FATAL_ERROR "xrimmersive is built by the picoXr native build (xrgame_foundation_xr, xrgame_foundation_hud, adrenotools)")
 endif()
 
 target_link_libraries(xrimmersive PRIVATE
     xrgame_foundation_xr
+    xrgame_foundation_hud
     adrenotools
     OpenXR::openxr_loader
     EGL

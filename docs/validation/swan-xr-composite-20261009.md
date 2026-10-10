@@ -73,6 +73,8 @@
 - 运行中偶发 CCU 写越界，地址落在分配之间的空洞。两次都发生在系统指示器 `SystemUIImmersiveIndicator` 弹出之后，第三次弹出时没有复现，期间我们没有释放内存。
 - 调试开关 `debug.xrgame.xr.vktrace=1` 会输出 `xrvktrace`（我们的 Vulkan 调用和各库的入口查询）和 `xraddr`（`VK_EXT_device_address_binding_report` 的 GPU 地址），可以把 fault 地址对应到具体对象。
 - 另外，Pico runtime（`libpxrruntime.so`）只通过我们给的入口查询了 `vkCreateInstance` 和 `vkCreateDevice`，swapchain 图像不经过这个入口创建。
+- 2026-10-09 晚：Alyx 眼图降到 1296x1200 后，CCU 写越界变为持续出现，只在开启重建时发生，地址按超分槽位固定。见[自动化与 HUD 记录](swan-xr-automation-hud-20261009.md#5-合成器-gpu-page-fault新线索未修)。
+- 2026-10-10：根因是 Turnip 在 A840 上不初始化 bin foveation 寄存器，继承了其他上下文留下的值。复位后 fault 为 0，Turnip 主干改动待合入。见[根因记录](swan-xr-composite-faults-20261010.md)。
 
 ## 3. Windows 游戏手柄射线修正
 
