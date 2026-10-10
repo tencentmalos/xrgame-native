@@ -12,7 +12,7 @@ For XRGame's embedded Proton 11 default, FEX maintenance starts from the same `t
 | `proton-wine` | [tencentmalos/proton-wine](https://github.com/tencentmalos/proton-wine) | `feature/malos/wine-guest-debug` | `a0200a75` (2026-09-28 checkpoint) | The bionic arm64ec / x86_64 Proton Wine that GameNative actually ships. See `.github/workflows/build-proton.yml` and `build-scripts/`. Shallow. | LGPL-2.1+ (Wine) |
 | `FEX` | [tencentmalos/FEX](https://github.com/tencentmalos/FEX) (fork of FEX-Emu/FEX) | `feature/malos/xrgame-arm64ec` | `3f1f30a0` (FEX-2608-241) | Same pin as shadPS4. `Source/Windows/{ARM64EC,WOW64,UnixLib}` are the Wine-hosted emulator modules. **FEX's own AGENTS.md/CLAUDE.md forbid AI-generated contributions upstream.** | MIT |
 | `shadPS4` | [tencentmalos/Bachata-S4](https://github.com/tencentmalos/Bachata-S4) (shadPS4 Android/FEX port) | `malos/main` | `a562e810` (2026-09-24) | Android host components to port: session lifecycle, Vulkan presenter, Turnip loading, Oboe audio, input, diagnostics, Litep/KGSL tooling and validation methodology. Its own submodules are **not** initialized. | GPL-2.0-or-later per SPDX headers (compatible with this repo's GPL-3.0); its private Foundation dependency is separately authorized for internal debug builds (2026-09-27), pinned at root `foundation/`; see `docs/debugging/debugbus.md` |
-| `mesa-turnip` | [tencentmalos/mesa-mirror](https://github.com/tencentmalos/mesa-mirror) | `feature/malos/xrgame-wine-icd` | `22451ea2` (2026-10-09, Turnip xrg10 source) | Turnip fork used by shadPS4 on Adreno (KGSL zero-timeout poll, gralloc/Mapper metadata, fragment density map 2 for XR). Shallow. | MIT |
+| `mesa-turnip` | [tencentmalos/mesa-mirror](https://github.com/tencentmalos/mesa-mirror) | `feature/malos/xrgame-wine-icd` | `4815dc71` (2026-10-10, Turnip xrg13 source) | Turnip fork used by shadPS4 on Adreno (KGSL zero-timeout poll, gralloc/Mapper metadata, fragment density map 2 for XR). Shallow. | MIT |
 | `WinNative` | [tencentmalos/WinNative](https://github.com/tencentmalos/WinNative) | default | `e9e5d307` (2026-09-23) | Comparison frontend: Vulkan compositor, FEX UnixLibs toggle, and its own Rust Steam client `wnsteam` (`app/src/main/cpp/wn-steam-client/rust`: CM client, auth, depot download; no JVM). Shallow. | GPL-3.0 |
 | `gfxreconstruct` | [tencentmalos/gfxreconstruct](https://github.com/tencentmalos/gfxreconstruct) (fork of LunarG/gfxreconstruct) | `feature/malos/xrgame-wine-capture` | `3868cd12` (LunarG `dev` `6dc9b65` + Wine capture, 2026-10-05) | API capture and replay for picoXr debug APKs: D3D12/DXGI capture proxies, the Android Vulkan capture layer and the Windows replay tools. See [the API replay spec](../docs/specs/xrgame-native-api-replay-v1.md). Shallow. Its own submodules are **not** initialized. | MIT |
 
@@ -42,12 +42,14 @@ baseline is shadPS4's `references/mesa-turnip-xr-fdm2`, branch
 `codex/turnip-xr-fdm2`, commit `d15b7c019c8daa17e80051258077d9b2d5146a2b`.
 Both `malos/main` and `feature/malos/xrgame-wine-icd` are now published. The
 feature branch carries the Android HAL/Wine ICD exports and X11 AHB presentation.
-The parent gitlink records that source checkpoint. Since 2026-10-09 it is `57e87576`:
+The parent gitlink records that source checkpoint. Since 2026-10-10 it is `4815dc71`:
 the shadPS4 and Azahar Swan XR Turnip merge (`25ef1647`), the AHB entry points
 (`51f94d33`), the LRZ RMW / concurrent binning patch (`22451ea2`; no effect while
-concurrent binning is globally off), and `malos/main` `04e1d665`, which turns LRZ fast
-clear off on A8XX unless `TU_DEBUG=lrzfc`. Its tree is exactly what
-`turnip-04e1d66-xrg12` is built from. On 2026-10-09 `malos/main` was fast-forwarded from
+concurrent binning is globally off), `malos/main` `04e1d665`, which turns LRZ fast
+clear off on A8XX unless `TU_DEBUG=lrzfc`, and `malos/main` `adb7e30a`, which resets the
+bin foveation registers at every command buffer start (the Swan composite page faults, see
+[the record](../docs/validation/swan-xr-composite-faults-20261010.md)). Its tree is exactly
+what `turnip-adb7e30-xrg13` is built from. On 2026-10-09 `malos/main` was fast-forwarded from
 `d15b7c01` to `04e1d665`, which also published the `25ef1647` merges. The RMW patch alone
 on top of `malos/main` is in `feature/malos/lrz-rmw-no-cb` (`16ad8431`). Validated runtime recipes keep
 their explicit older base commits and recorded build-copy patches; advancing a

@@ -25,7 +25,7 @@ object XrGameRuntime {
 
     /** Turnip builds carrying patches/turnip-x11-ahb.patch (Android X11 AHB presentation). */
     private val X11_AHB_TURNIP = setOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10",
-        "turnip-25ef164-xrg11", "turnip-04e1d66-xrg12")
+        "turnip-25ef164-xrg11", "turnip-04e1d66-xrg12", "turnip-adb7e30-xrg13")
 
     fun configure(container: Container) {
         container.containerVariant = Container.BIONIC

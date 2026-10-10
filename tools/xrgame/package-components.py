@@ -55,7 +55,7 @@ PINS = {
     'FEX': '3f1f30a060b633980ed8e7674eb8d8997457edad',
     'dxvk': 'a6764047e587178283fcde4073ae6e1410af594f',
     'vkd3d-proton': '212991fc2c266bc0d59f4c4ce8f80f7126508d71',
-    'mesa-turnip': '04e1d665b27d1ac6433d781457353e527bf0be4f',
+    'mesa-turnip': 'adb7e30a5646f1ae51e49c20ea4a0be4fa683355',
 }
 
 
@@ -241,7 +241,7 @@ def main():
         shutil.copy2(root / 'output/xcb/LICENSE', turnip / 'LICENSE-libxcb-MIT')
         xcb_sources = {name: digest(root / 'downloads' / name) for name in
                        ['libxcb-1.17.0.tar.xz', 'xcb-proto-1.17.0.tar.xz']}
-        version = 'turnip-04e1d66-xrg12'
+        version = 'turnip-adb7e30-xrg13'
         write_json(turnip / 'meta.json', {'schemaVersion': 1, 'name': version, 'author': 'Mesa contributors',
                    'description': 'XRGame KGSL, Android and X11 WSI source build; libvulkan_freedreno_android.so '
                                   'is the app-process build of the same source', 'vendor': 'Mesa',

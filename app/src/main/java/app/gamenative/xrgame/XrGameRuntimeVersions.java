@@ -7,5 +7,5 @@ public final class XrGameRuntimeVersions {
     public static final String FEX = "2608-3f1f30a-xrg5";
     public static final String DXVK = "11.0-a676404-arm64ec-xrg4";
     public static final String VKD3D = "11.0-212991f-arm64ec-xrg1";
-    public static final String TURNIP = "turnip-04e1d66-xrg12";
+    public static final String TURNIP = "turnip-adb7e30-xrg13";
 }

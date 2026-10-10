@@ -4,8 +4,10 @@ base=${XRGAME_BUILD_ROOT:-/work}
 reference="$base/src/mesa-turnip"
 # tencentmalos/mesa-mirror malos/main: shadPS4 codex/shadps4-xr-turnip + Azahar
 # bugfix/turnip_in_swan merged onto codex/turnip-xr-fdm2, plus 04e1d665 (xrg12): LRZ fast clear
-# is off on A8XX unless TU_DEBUG=lrzfc (Swan Alyx GPU hang in LRZ fast-clear passes; LRZ stays on).
-pin=04e1d665b27d1ac6433d781457353e527bf0be4f
+# is off on A8XX unless TU_DEBUG=lrzfc (Swan Alyx GPU hang in LRZ fast-clear passes; LRZ stays on),
+# plus adb7e30a (xrg13): the bin foveation registers are reset at every command buffer start, so
+# values left by other KGSL contexts no longer redirect render target writes on the A840.
+pin=adb7e30a5646f1ae51e49c20ea4a0be4fa683355
 git -C "$reference" cat-file -e "$pin^{commit}"
 project=${XRGAME_PROJECT_ROOT:-"$base/project"}
 # Applied in order; together they equal feature/malos/xrgame-wine-icd. The third (xrg10)
