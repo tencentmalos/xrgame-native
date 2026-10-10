@@ -100,7 +100,7 @@ class WindowsVrPayloadManager(
             .filter { runCatching { peMachineOf(it) == 0x8664 }.getOrDefault(false) }
         check(targets.isNotEmpty()) { "No x64 openvr_api.dll was found under the launched game" }
         val adapter = context.assets.open("opencomposite_x64.dll").use { it.readBytes() }
-        if (BuildConfig.XRGAME) check(sha256(adapter) == "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66") {
+        if (BuildConfig.XRGAME) check(sha256(adapter) == "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d") {
             "OpenComposite payload checksum mismatch"
         }
         val record = File(File(container.rootDir, ".wine/drive_c/gamenative-xr"), "opencomposite.targets")

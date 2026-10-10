@@ -3,6 +3,7 @@
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
 - 2026-10-02 普通 Android SBS 已在 AYN 显示 Alyx 双眼主菜单与虚拟手；OpenComposite 新 ABI 与 GBE 离线本地通信已修复。双手固定 pose，按键/摇杆从 Android 注入到 Windows OpenXR action 的验证通过。完整游玩、物理手柄与 Swan 尚未验收。见 [SBS 规划](docs/specs/xrgame-native-vr-sbs-v1.md)及[证据](docs/validation/vr-sbs-20261002.md)。
+- 2026-10-10 Swan GPU 测量必须在游戏场景里（读档并恢复后）进行，主菜单和暂停状态的数据不算数；对比要在同一局里切换。OpenComposite 原来每只眼都整张拷贝 Alyx 的 3670x1699 双眼纹理，现在只拷显示区域（`displayed-bounds-copy.patch`，DLL `8a8b65ea`）。同局对比：36.0 → 38.3 fps，游戏每帧 GPU 时间 21.9 → 20.3 ms。触发文件 `C:\gamenative-xr\opencomposite-full-copy` 可恢复整张拷贝用于对比，测完删掉。见[记录](docs/validation/swan-oc-bounded-copy-20261010.md)。
 - 2026-10-10 Swan Steam 云存档反复冲突已定位并修复（picoXr）：
   - 删除只在批次里声明、从未真正执行，导致 Alyx 的关卡过渡文件被反复下载和删除，每个批次都推高云端变更号。
   - 云端已有相同内容时，上传返回 0 块、提交报告未提交，被我们的严格判定当成了 UpdateFail。

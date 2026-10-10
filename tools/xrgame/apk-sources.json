@@ -865,8 +865,8 @@
       "pattern": "assets/opencomposite_x64.dll",
       "kind": "repository-build",
       "license": "GPL-3.0-only",
-      "source": "references/opencomposite: pinned OpenOVR + background-support.patch + openvr-system-026.patch + mailbox-forward.patch; source/build hashes in tools/xrgame/opencomposite-pin.json",
-      "sha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66",
+      "source": "references/opencomposite: pinned OpenOVR + background-support.patch + openvr-system-026.patch + mailbox-forward.patch + displayed-bounds-copy.patch; source/build hashes in tools/xrgame/opencomposite-pin.json",
+      "sha256": "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d",
       "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll"
     }
   ]

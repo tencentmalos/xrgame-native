@@ -1,11 +1,11 @@
 {
   "schema": 1,
   "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll",
-  "sha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66",
-  "status": "internal-device-candidate (mailbox forwarding, not yet device-validated)",
+  "sha256": "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d",
+  "status": "internal-device-candidate (D3D11 copies only the displayed bounds; Swan Alyx in-scene A/B recorded)",
   "recipeRepository": "https://github.com/tencentmalos/opencomposite",
   "recipeBase": "7fd3276ac0ffda518a7f5a9157620f292e2032e6",
-  "recipeCommit": "96a2388c5f9911273321dc731cd5bcc54232d751",
+  "recipeCommit": "fffe8b08cd081d077b56da9b9c8a4a97295202e0",
   "recipeBranch": "feature/malos/xrgame-sbs-openvr26",
   "upstream": "https://gitlab.com/znixian/OpenOVR",
   "upstreamCommit": "a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d",
@@ -15,7 +15,8 @@
     "references/opencomposite/patches/openvr-system-026.patch": "30d0fd551b3085a24249bd877869cd38755799b806c263305645aa9a8f33aabe",
     "references/opencomposite/vendor/openvr-2.15.6/openvr.h": "1e6ed57199896cc1f7c5484e50fa18955e97be15be690beb28d998c877ead7fd",
     "references/opencomposite/patches/mailbox-forward.patch": "4a2d7a29c9cdf7cee84a1f4226cd45718a650f9084099c16f095830985ed5d13",
-    "references/opencomposite/build.ps1": "067fb00de0d9b6f7593c54621904ca36e522a03136b0ba901a5f156abd00b9cf"
+    "references/opencomposite/build.ps1": "78bb2a078cb3a9e31b61fe921113a722ccd0622d0d4437dc974a94b8ee61a00c",
+    "references/opencomposite/patches/displayed-bounds-copy.patch": "1c297d747cad4f476148d08970ef4c779e8e4cbc4a2639dc13825e4504d7b68e"
   },
   "dependencies": {
     "glm": "bf71a834948186f4097caa076cd2663c69a10e1e",
@@ -37,10 +38,10 @@
     "windowsSdk": "10.0.26100.0",
     "configuration": "Release x64 /MD",
     "target": "OCOVR",
-    "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox",
+    "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
     "vulkanImportLibrary": "Vulkan SDK 1.4.304.1 Lib/vulkan-1.lib and headers on the Windows host; runtime uses Wine Vulkan",
-    "evidence": "docs/validation/xr-stage-timing-20261009.md",
-    "imports": "Same DLL set as the 12eee850 build; only new import KERNEL32!CreateFile2",
-    "previousSha256": "12eee85027294bb5444be9a326c32d1478846611dcc656984b30d399636508d5"
+    "evidence": "docs/validation/swan-oc-bounded-copy-20261010.md",
+    "imports": "Same DLL set as the 2c3f368b build",
+    "previousSha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66"
   }
 }

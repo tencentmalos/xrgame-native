@@ -83,8 +83,9 @@ filters omitted in a build copy. The source archive collector includes this pin.
 
 `references/opencomposite` is `tencentmalos/opencomposite`, forked from
 `GameNative/opencomposite`, initially at `7fd3276ac0ffda518a7f5a9157620f292e2032e6`.
-The maintained gitlink is `7f87df1fe7e6c71b6af38cbba5c39b90ee6130e6` (2026-10-09: adds the
-mailbox forwarding patch for Alyx loading interstitials).
+The maintained gitlink is `fffe8b08cd081d077b56da9b9c8a4a97295202e0` (2026-10-09 added the
+mailbox forwarding patch for Alyx loading interstitials; 2026-10-10 the D3D11 compositor
+copies only the displayed bounds, see `docs/validation/swan-oc-bounded-copy-20261010.md`).
 It contains the GPL-3.0 build recipe and patch, not a vendored full OpenOVR tree.
 The recipe pins `https://gitlab.com/znixian/OpenOVR` at
 `a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d`. Nested upstream pins remain unchanged.

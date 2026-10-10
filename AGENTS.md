@@ -21,6 +21,10 @@
   - The Swan controller ray gets a +24° grip pitch correction for Windows games (`WindowsVrGripCorrection`, DebugBus `vr_grip`); it is not yet confirmed in the headset.
   - XRGame opens container settings on a compact page; the full tab set is under "Legacy settings…".
   - See [the record](docs/validation/swan-xr-composite-20261009.md). Treat GPU hangs as top priority: fix the root cause rather than relying on a `TU_DEBUG` workaround.
+- **Swan GPU budget and OpenComposite copy (2026-10-10):**
+  - Measure inside a game scene (save restored and unpaused), never at the main menu or while paused; the earlier main-menu budget was void. Compare within one session; separate launches differ too much.
+  - OpenComposite copied Alyx's whole 3670x1699 double-wide texture into each eye's swapchain. `displayed-bounds-copy.patch` copies only the displayed bounds (recipe `fffe8b08`, DLL `8a8b65ea`). Same-session A/B in `a1_intro_world`: 36.0 to 38.3 fps, game GPU time per frame 21.9 to 20.3 ms. The trigger file `C:\gamenative-xr\opencomposite-full-copy` restores the full copy for A/B; remove it after tests.
+  - In scene (SGSR + eye FDM, 100%, 902 MHz cap): game 77.7%, our composite 12.7% (3.2 ms per fresh frame), Pico compositor 9.5%; no upscaling reaches about 45 fps. See [the record](docs/validation/swan-oc-bounded-copy-20261010.md).
 - **Swan Steam Cloud and launcher (2026-10-10):**
   - The repeated save conflicts were our own sync loop. Deletes were only declared in the upload batch and never executed, so Alyx's transient `.hl?` files were re-downloaded and deleted again, and every batch bumped the cloud change number.
   - A file whose SHA the cloud already holds gets zero upload blocks, and its commit then reports nothing committed. The picoXr strict commit check treated that as `UpdateFail`.
