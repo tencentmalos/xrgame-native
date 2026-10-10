@@ -3,6 +3,13 @@
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
 - 2026-10-02 普通 Android SBS 已在 AYN 显示 Alyx 双眼主菜单与虚拟手；OpenComposite 新 ABI 与 GBE 离线本地通信已修复。双手固定 pose，按键/摇杆从 Android 注入到 Windows OpenXR action 的验证通过。完整游玩、物理手柄与 Swan 尚未验收。见 [SBS 规划](docs/specs/xrgame-native-vr-sbs-v1.md)及[证据](docs/validation/vr-sbs-20261002.md)。
+- 2026-10-10 Swan Steam 云存档反复冲突已定位并修复（picoXr）：
+  - 删除只在批次里声明、从未真正执行，导致 Alyx 的关卡过渡文件被反复下载和删除，每个批次都推高云端变更号。
+  - 云端已有相同内容时，上传返回 0 块、提交报告未提交，被我们的严格判定当成了 UpdateFail。
+  - 修复：`XrGameCloudRpc` 记录 EResult，真正执行删除（带护栏），0 块按已同步处理。UpdateFail 时可以「保留本地存档并启动」。
+  - 进 VR 时自动收起游戏库主面板，退出后恢复。
+  - 已挑合上游 3 个 Steam 提交，暂不整体合并上游。
+  - 见[记录](docs/validation/swan-steam-cloud-sync-20261010.md)。
 - 2026-10-04 图形 API 录制回放：picoXr debug 包用 GFXReconstruct 录制，D3D12 在 API 层录，其他 API 录 DXVK 转换后的 Vulkan；通过 DebugBus `api_capture` 触发，在 Windows 上脱离游戏回放。AYN 上录的 MHR D3D12 帧在 Windows 原生 D3D12 上回放正确。Wine/FEX 下 D3D12 必须用 unassisted 内存跟踪，用 page_guard 会黑屏。回放过程的 RenderDoc capture 能在 renderdoc MCP 中打开；先选定事件、ID 用十进制字符串传入后，图像导出和 draw 检查可用。见 [规格](docs/specs/xrgame-native-api-replay-v1.md)及[证据](docs/validation/api-replay-20261004.md)；Vulkan 层模式、MHW 和其余 MCP D3D12 工具尚未验证。
 - 2026-10-09 Swan：
   - Vulkan 合成 + SGSR 超分 + 眼动 FDM（ETFR）在 Alyx 上生效；

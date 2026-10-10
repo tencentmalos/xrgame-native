@@ -33,4 +33,6 @@
     <string name="xrgame_theater_distance">距离：%1$s 米</string>
     <string name="xrgame_theater_reset">重置大屏</string>
     <string name="xrgame_theater_touchpad">SBS 影院使用触控板操作，当前预览不支持直接触屏定位。</string>
+    <string name="xrgame_sync_upload_failed_message">上传本地存档到 Steam 云失败（%s）。本地存档保持不变，可以直接用本地存档启动，下次同步会重新上传。</string>
+    <string name="xrgame_sync_launch_keep_local">保留本地存档并启动</string>
 </resources>

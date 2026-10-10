@@ -991,7 +991,7 @@ fun PluviaMain(
             }
         }
 
-        DialogType.SYNC_IN_PROGRESS -> {
+        DialogType.SYNC_IN_PROGRESS, DialogType.SYNC_UPLOAD_FAIL -> {
             onConfirmClick = {
                 setMessageDialogState(MessageDialogState(false))
                 preLaunchApp(
@@ -2715,9 +2715,32 @@ fun preLaunchApp(
                 }
             }
 
+            SyncResult.UpdateFail -> if (BuildConfig.XRGAME) {
+                // Only the upload failed: the local saves are intact, so launching with them is safe.
+                setMessageDialogState(
+                    MessageDialogState(
+                        visible = true,
+                        type = DialogType.SYNC_UPLOAD_FAIL,
+                        title = context.getString(R.string.sync_error_title),
+                        message = context.getString(R.string.xrgame_sync_upload_failed_message, postSyncInfo.syncResult.toString()),
+                        confirmBtnText = context.getString(R.string.xrgame_sync_launch_keep_local),
+                        dismissBtnText = context.getString(R.string.cancel),
+                    ),
+                )
+            } else {
+                setMessageDialogState(
+                    MessageDialogState(
+                        visible = true,
+                        type = DialogType.SYNC_FAIL,
+                        title = context.getString(R.string.sync_error_title),
+                        message = context.getString(R.string.main_sync_failed, postSyncInfo.syncResult.toString()),
+                        dismissBtnText = context.getString(R.string.ok),
+                    ),
+                )
+            }
+
             SyncResult.UnknownFail,
             SyncResult.DownloadFail,
-            SyncResult.UpdateFail,
             -> {
                 setMessageDialogState(
                     MessageDialogState(

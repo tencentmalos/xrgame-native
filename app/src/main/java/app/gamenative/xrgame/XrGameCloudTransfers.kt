@@ -8,7 +8,12 @@ import timber.log.Timber
 /** Preserve the local save and report an unsuccessful transfer to Steam's upload commit. */
 object XrGameCloudTransfers {
     fun uploadBlock(client: OkHttpClient, request: Request): Boolean = try {
-        client.newCall(request).execute().use { it.isSuccessful }
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Timber.w("Steam Cloud upload block %s returned HTTP %d", request.method, response.code)
+            }
+            response.isSuccessful
+        }
     } catch (error: IOException) {
         // Signed storage URLs and request headers must not enter diagnostics.
         Timber.w("Steam Cloud upload transport failed: %s", error.javaClass.simpleName)

@@ -13,6 +13,8 @@ enum class DialogType(val icon: ImageVector? = null) {
     SYNC_CONFLICT,
     SYNC_FAIL,
     SYNC_IN_PROGRESS,
+    // XRGame: the local saves failed to upload; offers a launch that keeps them.
+    SYNC_UPLOAD_FAIL,
     MULTIPLE_PENDING_OPERATIONS,
     PENDING_OPERATION_NONE,
     PENDING_UPLOAD,

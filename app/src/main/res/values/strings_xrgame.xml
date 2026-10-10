@@ -33,4 +33,6 @@
     <string name="xrgame_theater_distance">Distance: %1$s m</string>
     <string name="xrgame_theater_reset">Reset screen</string>
     <string name="xrgame_theater_touchpad">SBS cinema uses trackpad input. Direct touch is unavailable in this preview.</string>
+    <string name="xrgame_sync_upload_failed_message">Uploading the local saves to Steam Cloud failed (%s). The local saves are unchanged. You can launch with them and the next sync tries the upload again.</string>
+    <string name="xrgame_sync_launch_keep_local">Launch with local saves</string>
 </resources>

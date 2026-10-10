@@ -618,6 +618,34 @@ object SteamAutoCloud {
 
                 var uploadBatchSuccess = true
 
+                // XRGame: the name a file has in the cloud, as the uploads below send it.
+                val cloudFilename: (UserFileInfo) -> String = { file ->
+                    when {
+                        file.root == PathType.SteamUserData -> file.filename
+                        appInfo.ufs.saveFilePatterns.isEmpty() -> file.path + file.filename
+                        else -> file.prefixPath
+                    }
+                }
+                // XRGame calls the Cloud service directly to keep its EResults (null without one).
+                val xrCloud = if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameCloudRpc.service(steamInstance.steamClient) else null
+                if (xrCloud != null) {
+                    Timber.i(
+                        "Steam Cloud upload batch %d at change %d",
+                        uploadBatchResponse.batchID,
+                        uploadBatchResponse.appChangeNumber,
+                    )
+                    // Declaring deletes in the batch does not remove the files; without this the
+                    // next sync downloads them again as never-synced cloud files.
+                    fileChanges.filesDeleted.forEach { file ->
+                        app.gamenative.xrgame.XrGameCloudRpc.deleteFile(
+                            xrCloud,
+                            appInfo.id,
+                            cloudFilename(file),
+                            uploadBatchResponse.batchID,
+                        )
+                    }
+                }
+
                 filesToUpload.map { it.second }.forEachIndexed { index, file ->
                     val absFilePath = file.getAbsPath(prefixToPath)
 
@@ -634,7 +662,28 @@ object SteamAutoCloud {
                     // Report start of upload
                     onProgress?.invoke("Uploading ${file.filename}", 0f)
 
-                    val uploadInfo = steamCloud.beginFileUpload(
+                    // XRGame: Steam asks for no blocks when it already holds this exact content.
+                    var alreadyInCloud = false
+                    val blockRequests = if (xrCloud != null) {
+                        val begin = app.gamenative.xrgame.XrGameCloudRpc.beginFileUpload(
+                            cloud = xrCloud,
+                            cellId = steamInstance.steamClient?.cellID ?: 0,
+                            appId = appInfo.id,
+                            filename = cloudFilename(file),
+                            fileSize = fileSize,
+                            fileSha = file.sha,
+                            timestamp = Date(file.timestamp),
+                            uploadBatchId = uploadBatchResponse.batchID,
+                        )
+                        if (begin.result != EResult.OK || begin.encryptFile) {
+                            // Refused (or encryption requested, which this path cannot provide):
+                            // nothing to commit, and the batch must not count as synced.
+                            uploadBatchSuccess = false
+                            return@forEachIndexed
+                        }
+                        alreadyInCloud = begin.blocks.isEmpty()
+                        begin.blocks
+                    } else steamCloud.beginFileUpload(
                         appId = appInfo.id,
                         filename = if (appInfo.ufs.saveFilePatterns.isEmpty()) {
                             // For SteamUserData files, use just the filename without folder prefix
@@ -657,7 +706,7 @@ object SteamAutoCloud {
                         // timestamp = prootTimestampToDate(file.timestamp),
                         timestamp = Date(file.timestamp),
                         uploadBatchId = uploadBatchResponse.batchID,
-                    ).await()
+                    ).await().blockRequests
 
                     var uploadFileSuccess = true
                     var bytesUploadedForFile = 0L
@@ -665,7 +714,7 @@ object SteamAutoCloud {
                     val progressThreshold = 0.01f // Update every 1% change
 
                     RandomAccessFile(absFilePath.pathString, "r").use { fs ->
-                        uploadInfo.blockRequests.forEach { blockRequest ->
+                        blockRequests.forEach { blockRequest ->
                             val httpUrl = buildUrl(
                                 blockRequest.useHttps,
                                 blockRequest.urlHost,
@@ -713,9 +762,19 @@ object SteamAutoCloud {
                                     .toTypedArray(),
                             )
 
-                            val request = Request.Builder()
-                                .url(httpUrl)
-                                .put(requestBody)
+                            val requestBuilder = Request.Builder().url(httpUrl)
+                            val request = (
+                                if (xrCloud != null) {
+                                    // Steam names the method and may send an explicit body
+                                    // (e.g. a multipart completion) instead of the file block.
+                                    requestBuilder.method(
+                                        app.gamenative.xrgame.XrGameCloudRpc.methodName(blockRequest.httpMethod),
+                                        app.gamenative.xrgame.XrGameCloudRpc.blockBody(blockRequest, byteArray, mediaType),
+                                    )
+                                } else {
+                                    requestBuilder.put(requestBody)
+                                }
+                                )
                                 .headers(headers)
                                 .addHeader("Accept", "text/html,*/*;q=0.9")
                                 .addHeader("accept-encoding", "gzip,identity,*;q=0")
@@ -759,7 +818,20 @@ object SteamAutoCloud {
                         }
                     }
 
-                    val commitSuccess = steamCloud.commitFileUpload(
+                    val commitSuccess = if (xrCloud != null) {
+                        val committed = app.gamenative.xrgame.XrGameCloudRpc.commitFileUpload(
+                            xrCloud,
+                            appInfo.id,
+                            cloudFilename(file),
+                            file.sha,
+                            uploadFileSuccess,
+                        )
+                        // Such a commit reports nothing committed, yet the cloud is in sync.
+                        if (!committed && alreadyInCloud) {
+                            Timber.i("Steam Cloud already holds %s; nothing to upload", file.prefixPath)
+                        }
+                        committed || alreadyInCloud
+                    } else steamCloud.commitFileUpload(
                         transferSucceeded = uploadFileSuccess,
                         appId = appInfo.id,
                         fileSha = file.sha,
@@ -929,7 +1001,19 @@ object SteamAutoCloud {
                     val fileChanges = steamInstance.fileChangeListsDao.getByAppId(appInfo.id).let {
                         val result = getFilesDiff(allLocalUserFiles, it?.userFileInfo ?: emptyList())
 
-                        result.second
+                        // Only where uploadFiles really deletes (it needs the Cloud service).
+                        if (BuildConfig.XRGAME &&
+                            app.gamenative.xrgame.XrGameCloudRpc.service(steamInstance.steamClient) != null &&
+                            !app.gamenative.xrgame.XrGameCloudRpc.allowDeletes(
+                                result.second.filesDeleted,
+                                allLocalUserFiles,
+                                it?.userFileInfo ?: emptyList(),
+                            )
+                        ) {
+                            result.second.copy(filesDeleted = emptyList())
+                        } else {
+                            result.second
+                        }
                     }
 
                     uploadsRequired = fileChanges.filesCreated.isNotEmpty() || fileChanges.filesModified.isNotEmpty()
