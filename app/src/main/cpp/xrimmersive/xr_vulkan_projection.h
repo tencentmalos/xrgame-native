@@ -103,6 +103,7 @@ private:
     uint32_t sourceHeight_ = 0;
     bool reconstructing_ = false;
     uint64_t presentedFrames_ = 0;
+    uint64_t directEyes_ = 0;  // eyes reconstructed straight into the swapchain
 };
 
 }  // namespace xrimmersive::vulkan

@@ -73,6 +73,7 @@ namespace xrimmersive::vulkan {
     X(vkCmdPipelineBarrier)                           \
     X(vkCmdCopyBufferToImage)                         \
     X(vkCmdCopyImage)                                 \
+    X(vkCmdCopyImageToBuffer)                         \
     X(vkCmdClearColorImage)                           \
     X(vkCmdBeginRendering)                            \
     X(vkCmdEndRendering)                              \

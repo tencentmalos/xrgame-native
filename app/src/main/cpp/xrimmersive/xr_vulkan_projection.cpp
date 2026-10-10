@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <cerrno>
 #include <cmath>
 #include <exception>
@@ -34,6 +35,37 @@ int GuardProbeRequest() {
     if (next == last) return -1;
     last = next;
     return next > 0 ? next - 1 : -1;
+}
+
+// Diagnostic trigger (debug.xrgame.xr.upscaleprobe): runs the reconstruction equivalence probe
+// once per new non-zero value.
+bool UpscaleProbeRequest() {
+    static uint32_t frames = 0;
+    static int last = 0;
+    if (frames++ % 72 != 0) return false;
+    char value[PROP_VALUE_MAX] = {};
+    const int next = __system_property_get("debug.xrgame.xr.upscaleprobe", value) > 0 ? std::atoi(value) : 0;
+    if (next == last) return false;
+    last = next;
+    return next != 0;
+}
+
+// Diagnostic (debug.xrgame.xr.upscale.copy=1): reconstruct into Foundation's own image and copy
+// that into the swapchain, as before direct rendering, for same-session A/B measurements.
+bool UpscaleCopyRequested() {
+    static uint32_t frames = 0;
+    static bool requested = false;
+    if (frames++ % 72 == 0) {
+        char value[PROP_VALUE_MAX] = {};
+        const bool next = __system_property_get("debug.xrgame.xr.upscale.copy", value) > 0 &&
+                          std::strcmp(value, "1") == 0;
+        if (next != requested) {
+            LOGI("vulkan projection: reconstruction %s", next ? "copied into the swapchain (diagnostic)"
+                                                                 : "rendered into the swapchain");
+        }
+        requested = next;
+    }
+    return requested;
 }
 
 using windowsvr::BufferKind;
@@ -99,6 +131,7 @@ bool ProjectionPresenter::initialize(Context *context, XrSession session, VkForm
 void ProjectionPresenter::destroySwapchain() {
     if (swapchain_ == XR_NULL_HANDLE) return;
     context_->waitIdle();
+    if (upscaler_) upscaler_->ReleaseTargets();
     for (auto &pair : views_) {
         for (VkImageView view : pair) context_->destroyView(view);
     }
@@ -241,6 +274,7 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
     if (const int probe = GuardProbeRequest(); probe >= 0 && format_ != VK_FORMAT_UNDEFINED) {
         RunGuardProbe(*context_, format_, static_cast<uint32_t>(probe), 4);
     }
+    if (UpscaleProbeRequest() && format_ != VK_FORMAT_UNDEFINED) RunUpscaleEquivalenceProbe(*context_, format_);
     std::array<EyeFrame, 2> frames{};
     std::array<bool, 2> fresh{false, false};
     for (uint32_t eye = 0; eye < 2; ++eye) {
@@ -337,6 +371,7 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
     VkCommandBuffer command = submission->command;
     const VkImage target = images_[imageIndex].image;
     const uint32_t family = context_->queueFamily();
+    const bool copyReconstruction = UpscaleCopyRequested();
     for (uint32_t eye = 0; eye < 2; ++eye) {
         const EyeFrame &frame = frames[eye];
         const Image &source = imported_[eye][frame.imageIndex].image;
@@ -360,14 +395,28 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
             options.filter = static_cast<spatial::upscale::Filter>(settings.filter);
             options.sharpness = settings.sharpness;
             options.debug = settings.debug;
+            const spatial::upscale::FoveatedEye foveation = foveate(frame, width, height, settings);
             spatial::upscale::Output output{};
             try {
-                output = upscaler_->Render(command, parity * 2 + eye, source.view, {source.width, source.height},
-                                           {uScale, vScale, u0, v0}, {width, height}, options,
-                                           foveate(frame, width, height, settings), true);
+                // SGSR writes this eye's swapchain layer itself; other filters reconstruct into
+                // Foundation's image, which is copied below.
+                if (!copyReconstruction) {
+                    const spatial::upscale::Target layer{views_[imageIndex][eye], format_, {width, height},
+                                                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+                    drawn = upscaler_->RenderTo(command, parity * 2 + eye, source.view,
+                                                {source.width, source.height}, {uScale, vScale, u0, v0}, layer,
+                                                options, foveation, true);
+                }
+                if (drawn) {
+                    ++directEyes_;
+                } else {
+                    output = upscaler_->Render(command, parity * 2 + eye, source.view, {source.width, source.height},
+                                               {uScale, vScale, u0, v0}, {width, height}, options, foveation, true);
+                }
             } catch (const std::exception &error) {
                 LOGE("vulkan projection: reconstruction failed, falling back to direct copies: %s", error.what());
                 ++upscaleFailures_;
+                drawn = false;
                 output = {};
             }
             if (output.image != VK_NULL_HANDLE) {
@@ -448,10 +497,11 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
     if (presentedFrames_ == 1 || presentedFrames_ % 600 == 0) {
         const auto stats = upscaler_ ? upscaler_->Stats() : spatial::upscale::Statistics{};
         LOGI("vulkan projection: frames=%llu source=%ux%u output=%ux%u filter=%u fov=%u level=%u gaze=%d "
-             "draws=%llu fdm=%llu tracked=%llu uploads=%llu unchanged=%llu",
+             "draws=%llu direct=%llu fdm=%llu tracked=%llu uploads=%llu unchanged=%llu",
              static_cast<unsigned long long>(presentedFrames_), sourceWidth, sourceHeight, width, height,
              reconstruct ? settings.filter : 0u, settings.foveation, settings.level, gaze_.valid ? 1 : 0,
-             static_cast<unsigned long long>(stats.draws), static_cast<unsigned long long>(stats.fdm_draws),
+             static_cast<unsigned long long>(stats.draws), static_cast<unsigned long long>(directEyes_),
+             static_cast<unsigned long long>(stats.fdm_draws),
              static_cast<unsigned long long>(stats.tracked_draws), static_cast<unsigned long long>(stats.uploads),
              static_cast<unsigned long long>(stats.unchanged));
     }
