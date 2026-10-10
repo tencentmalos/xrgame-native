@@ -13,6 +13,8 @@ import app.gamenative.MainActivity
 import app.gamenative.PluviaApp
 import app.gamenative.PrefManager
 import app.gamenative.service.ActiveGameRegistry
+import app.gamenative.service.SteamService
+import app.gamenative.utils.ContainerUtils
 import app.gamenative.ui.screen.xr.ImmersiveXrActivity
 import app.gamenative.ui.screen.xr.XrDebugInput
 import app.gamenative.ui.screen.xr.XrNative
@@ -37,7 +39,7 @@ class DebugBusService : Service() {
     companion object {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
-            "launch", "input", "quickmenu", "vr_hud")
+            "launch", "input", "quickmenu", "vr_hud", "vr_oc")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
     }
@@ -98,6 +100,8 @@ class DebugBusService : Service() {
             "input" -> input(args)
             "quickmenu" -> quickMenu(args)
             "vr_hud" -> vrHud(args)
+            "game_state" -> gameState()
+            "vr_oc" -> vrOpenComposite(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -140,16 +144,24 @@ class DebugBusService : Service() {
 
     /**
      * Starts a Steam game the same way as its Play button (MainActivity's LAUNCH_GAME intent);
-     * `status` or no argument reports progress. Android only lets the service start the activity
-     * while SteamPSP has a visible window.
+     * `status` or no argument reports progress. `load=<save>` makes this one launch load a Source 2
+     * save (`+load <save>`, e.g. `s0/autosave`) instead of stopping at the main menu; the container's
+     * own arguments are not changed. Android only lets the service start the activity while SteamPSP
+     * has a visible window.
      */
     private fun launch(args: Array<String>): JSONObject {
+        val usage = "usage: launch <steamAppId> [load=<save>]|status"
         val action = args.firstOrNull() ?: "status"
-        require(args.size <= 1) { "usage: launch <steamAppId>|status" }
+        require(args.size <= 2 && (action != "status" || args.size <= 1)) { usage }
         if (action != "status") {
-            val appId = action.toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException("usage: launch <steamAppId>|status")
+            val appId = action.toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException(usage)
+            val save = args.getOrNull(1)?.let {
+                require(it.startsWith("load=") && XrGameDebugLaunch.isSaveName(it.removePrefix("load="))) { usage }
+                it.removePrefix("load=")
+            }
             require(ActiveGameRegistry.get() == null && ImmersiveXrActivity.current?.get() == null &&
                 PluviaApp.xServerView == null) { "game_running" }
+            if (save != null) XrGameDebugLaunch.loadSave(appId, save)
             startActivity(Intent(LAUNCH_GAME).setClass(this, MainActivity::class.java)
                 .putExtra("app_id", appId).putExtra("game_source", "STEAM")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -160,6 +172,7 @@ class DebugBusService : Service() {
             .put("activeSteamAppId", ActiveGameRegistry.get()?.appId ?: JSONObject.NULL)
             .put("xServerPresent", PluviaApp.xServerView != null)
             .put("immersive", immersive?.let { JSONObject(it.debugQuickMenu("status")) } ?: JSONObject.NULL)
+            .put("pendingArguments", XrGameDebugLaunch.pendingArguments() ?: JSONObject.NULL)
     }
 
     /** Synthetic controller input through the immersive session; see [XrDebugInput]. */
@@ -180,7 +193,10 @@ class DebugBusService : Service() {
             .put("scope", "merged_into_immersive_controllers_while_session_runs")
     }
 
-    /** Opens, closes or navigates the immersive quick menu; `nav` sends the controller inputs it uses. */
+    /**
+     * Opens, closes or navigates the immersive quick menu; `nav` sends the controller inputs it uses.
+     * `exit` confirms the menu's Exit item, so the game exits with the exit cloud sync.
+     */
     private fun quickMenu(args: Array<String>): JSONObject {
         val action = args.firstOrNull() ?: "status"
         val navigation = mapOf(
@@ -191,9 +207,9 @@ class DebugBusService : Service() {
             "next" to listOf("btn", "rb"), "prev" to listOf("btn", "lb"),
         )
         require(
-            (action in listOf("status", "open", "close", "toggle") && args.size <= 1) ||
+            (action in listOf("status", "open", "close", "toggle", "exit") && args.size <= 1) ||
                 (action == "nav" && args.size == 2 && args[1] in navigation),
-        ) { "usage: quickmenu [status|open|close|toggle|nav up|down|left|right|ok|back|next|prev]" }
+        ) { "usage: quickmenu [status|open|close|toggle|exit|nav up|down|left|right|ok|back|next|prev]" }
         val activity = ImmersiveXrActivity.current?.get() ?: return JSONObject().put("active", false)
         if (action == "nav") {
             XrDebugInput.apply(navigation.getValue(args[1]) + "150")?.let { throw IllegalArgumentException(it) }
@@ -212,6 +228,52 @@ class DebugBusService : Service() {
         return JSONObject(XrNative.nativePerfHudStatus()).put("showFps", PrefManager.showFps)
             .put("session", ImmersiveXrActivity.current?.get() != null)
             .put("scope", "vulkan_composite_local_space_quad")
+    }
+
+    /**
+     * Scene readiness of the running Steam game from its Source 2 `-condebug` console log; see
+     * [XrGameConsoleState]. Reports state names and save/map targets only, never log lines. A log
+     * last written before the running immersive session started belongs to an earlier process
+     * (`current` false) and never counts as in scene.
+     */
+    private fun gameState(): JSONObject {
+        val appId = ActiveGameRegistry.get()?.appId ?: lastLaunch
+        val immersive = ImmersiveXrActivity.current?.get()
+        val result = JSONObject().put("appId", appId ?: JSONObject.NULL)
+            .put("session", immersive != null)
+            .put("scope", "source2_condebug_console_log")
+        val installDir = appId?.let { File(SteamService.getAppDirPath(it)) } ?: return result.put("log", JSONObject.NULL)
+        val log = XrGameConsoleState.findLog(installDir) ?: return result.put("log", JSONObject.NULL)
+        val state = XrGameConsoleState.read(log)
+        val current = PluviaApp.xServerView != null &&
+            (immersive == null || log.lastModified() >= immersive.createdAtMs)
+        return result.put("log", log.relativeTo(installDir).path).put("bytes", log.length())
+            .put("modifiedMs", log.lastModified()).put("current", current)
+            .put("launchedAt", state.launchedAt ?: JSONObject.NULL)
+            .put("hostState", state.hostState ?: JSONObject.NULL).put("target", state.target ?: JSONObject.NULL)
+            .put("pendingState", state.pendingState ?: JSONObject.NULL)
+            .put("pendingTarget", state.pendingTarget ?: JSONObject.NULL)
+            .put("paused", state.paused).put("inScene", current && state.inScene)
+            .put("lastEventAt", state.lastEventAt ?: JSONObject.NULL)
+    }
+
+    /**
+     * OpenComposite's same-session A/B switch: `full_copy=1` creates the trigger file that makes it
+     * copy the whole submitted texture again, `full_copy=0` removes it. The DLL checks it once a second.
+     */
+    private fun vrOpenComposite(args: Array<String>): JSONObject {
+        require(args.size <= 1 && (args.isEmpty() || args[0] in listOf("full_copy=0", "full_copy=1"))) {
+            "usage: vr_oc [full_copy=0|1]"
+        }
+        val appId = ActiveGameRegistry.get()?.appId ?: lastLaunch ?: error("no_active_game")
+        val container = ContainerUtils.getContainer(this, "STEAM_$appId")
+        val trigger = File(container.rootDir, ".wine/drive_c/gamenative-xr/opencomposite-full-copy")
+        when (args.firstOrNull()) {
+            "full_copy=1" -> check(trigger.parentFile?.isDirectory == true && (trigger.exists() || trigger.createNewFile()))
+            "full_copy=0" -> trigger.delete()
+        }
+        return JSONObject().put("appId", appId).put("fullCopy", trigger.exists())
+            .put("scope", "trigger_file_checked_by_opencomposite_once_a_second")
     }
 
     private fun runtime(): JSONObject {

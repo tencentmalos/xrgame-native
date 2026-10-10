@@ -128,12 +128,14 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
                            "[fov=off|fixed|eye] [level=low|balanced|high] [out=50..100] [debug=0|1]"},
             {"vr_grip", "Windows VR controller grip correction; vr_grip [pitch=<deg>] [yaw=<deg>] [roll=<deg>] "
                         "[x=<mm>] [y=<mm>] [z=<mm>] [reset=1]"},
-            {"launch", "Start a Steam game like its Play button; launch <steamAppId>|status"},
+            {"launch", "Start a Steam game like its Play button; launch <steamAppId> [load=<save>]|status"},
             {"input", "Immersive controller input; input btn <a|b|x|y|lb|rb|back|start|l3|r3|menu>[_...] [ms] | "
                       "input axis <lx|ly|rx|ry|lt|rt|lg|rg> <-1..1> [ms] | input release | input status"},
-            {"quickmenu", "Immersive quick menu; quickmenu [status|open|close|toggle|nav <up|down|left|right|ok|"
-                          "back|next|prev>]"},
+            {"quickmenu", "Immersive quick menu; quickmenu [status|open|close|toggle|exit|nav <up|down|left|right|"
+                          "ok|back|next|prev>]"},
             {"vr_hud", "Immersive performance HUD (Vulkan composite); vr_hud [status|on|off]"},
+            {"game_state", "Scene readiness from the running game's Source 2 console log (-condebug)"},
+            {"vr_oc", "OpenComposite full-texture copy A/B switch; vr_oc [full_copy=0|1]"},
         };
         for (const auto& provided : providers) {
             const char* command = provided.first;

@@ -77,20 +77,38 @@ python3 tools/xrgame/debugbus.py --serial <device> input axis ly -1 300
 python3 tools/xrgame/debugbus.py --serial <device> quickmenu open
 python3 tools/xrgame/debugbus.py --serial <device> quickmenu nav down
 python3 tools/xrgame/debugbus.py --serial <device> vr_hud on
+python3 tools/xrgame/debugbus.py --serial <device> launch 546560 load=s0/autosave
+python3 tools/xrgame/debugbus.py --serial <device> game_state
+python3 tools/xrgame/debugbus.py --serial <device> input axis rt 1 300
+python3 tools/xrgame/debugbus.py --serial <device> vr_oc full_copy=1
+python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 ```
 
 | 命令 | 作用与边界 |
 | --- | --- |
 | `launch <steamAppId>` / `launch status` | 与点「开始游戏」走同一路径：向 `MainActivity` 发 `app.gamenative.LAUNCH_GAME`（Int `app_id`，`game_source=STEAM`）。已有游戏、沉浸式会话或 X server 时返回 `game_running`。Android 只允许应用有可见窗口时由服务拉起 Activity，否则请求会被系统静默拦下，可改用 `adb shell am start -a app.gamenative.LAUNCH_GAME -n com.tencentmalos.xrgamenative/app.gamenative.MainActivity --ei app_id <id> --es game_source STEAM`。登录、未安装、云存档冲突等对话框仍需人工处理。`status` 返回最近请求、活跃 App ID 和沉浸式会话状态 |
+| `launch <steamAppId> load=<存档>` | 只对这一次启动追加 `+load <存档>`（Source 2，如 Alyx 的 `s0/autosave`），不经主菜单直接读档；不改容器的启动参数，只在下次启动该游戏时生效一次。存档名为 `名字` 或 `目录/名字`（字母、数字、下划线）。`status` 的 `pendingArguments` 显示尚未用掉的参数 |
+| `game_state` | 从运行中游戏的 Source 2 控制台日志（`-condebug`，Alyx 为 `game/hlvr/console.log`）判断是否已进场景：`hostState`/`target`（如 `Restoring Save`/`s0/autosave`、`Loading`/`startup` 即主菜单）、尚在加载的 `pendingState`、`paused`、`inScene`。只返回状态名、存档/地图名和时间戳，不返回日志原文（含玩家名）。日志最后写入早于本次沉浸式会话时 `current=false`，`inScene` 恒为 false。Alyx 每次读档约 3 s 后自动暂停，扣扳机（`input axis rt 1 300`）后继续；测量前应确认 `inScene` 持续为 true |
+| `vr_oc [full_copy=0\|1]` | OpenComposite 同局 A/B 开关：`full_copy=1` 在当前游戏容器的 `C:\gamenative-xr\` 下创建 `opencomposite-full-copy`，恢复整张纹理拷贝；`0` 删除。DLL 每秒检查一次。测完务必设回 0 |
 | `input btn <名>[_<名>…] [ms]` | 按住手柄键，默认 150 ms，最长 10 s。键名 `a b x y lb rb back start l3 r3 menu`，组合用 `_` 连接。`menu` 不足 600 ms 相当于给游戏按 Start，600 ms 及以上切换快捷菜单 |
 | `input axis <轴> <-1..1> [ms]` | 覆盖控制器快照里的一个轴，默认 300 ms：`lx ly rx ry`（摇杆；快捷菜单把 `ly>0` 当作向下，游戏原样收到这个值作为 XInput Y）、`lt rt`（扳机）、`lg rg`（握把，>0.5 同时算 LB/RB） |
 | `input release` / `input status` | 立即释放 / 查看当前覆盖和剩余时间 |
 | `quickmenu [status\|open\|close\|toggle]` | 在主线程开关沉浸式快捷菜单（最多等 1 秒），返回菜单、暂停、指针模式、立体（Windows VR）、直通渲染和 overlay 尺寸 |
+| `quickmenu exit` | 打开快捷菜单（如未打开），把焦点放到「退出」并像 A 键一样确认，游戏按菜单退出的原路径结束（退出云同步、OpenComposite DLL 还原）。立即返回 `exitRequested`，约 1 s 后执行；用 `launch status` 确认会话已结束。比连续 `nav down` 再按 A 可靠 |
 | `quickmenu nav <up\|down\|left\|right\|ok\|back\|next\|prev>` | 用 `input` 发一次菜单导航：左摇杆、A、B、RB、LB |
 | `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改快捷菜单的「性能 HUD」开关（`PrefManager.showFps`）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置 |
 
 `input` 在原生 `syncControllerInputs` 中与真实手柄合并，所以平面游戏的 XInput、快捷菜单导航、
 指针模式双击和 Windows VR（OpenXR action）都会收到。只在沉浸式 XR 会话运行时生效，到期自动释放。
+
+**无人值守进场景（2026-10-10，Swan + Alyx 验证）**：GPU 测量必须在游戏场景里做。
+1. 先 `am start` 打开 SteamPSP，再 `--start`，然后 `launch 546560 load=s0/autosave`。
+2. 轮询 `game_state`，直到 `current=true` 且 `hostState=Restoring Save`。
+3. 出现 `paused=true` 后发 `input axis rt 1 300`。
+4. 等 `inScene` 持续为 true 后开始测量。
+5. 结束时用 `quickmenu exit`。
+
+设备无网络时 Steam 登录不上，启动和退出都会跳过云同步，下次联网启动时再同步。
 
 **头显性能 HUD**：仿 shadPS4 的 XR 状态面板。独立 ImGui context，由 Foundation 的
 `XrImguiVulkanLayer` 画进单独的 OpenXR quad 层，1.6×0.2 m。面板固定在 LOCAL 空间，不跟随头部：

@@ -34,9 +34,10 @@ def main():
                 return 1
         request = args.request or ['help']
         # adb shell joins remote arguments. The protocol only accepts identifiers, integers and
-        # key=value pairs; reject shell metacharacters rather than passing arbitrary code through adb.
-        if len(request) > 5 or any(len(s) > 64 or not s or s[0] == '=' or
-                                 any(not (c.isascii() and (c.isalnum() or c in '._-=')) for c in s)
+        # key=value pairs (values may be relative names such as s0/autosave); reject shell
+        # metacharacters rather than passing arbitrary code through adb.
+        if len(request) > 5 or any(len(s) > 64 or not s or s[0] in '=/' or
+                                 any(not (c.isascii() and (c.isalnum() or c in '._-=/')) for c in s)
                                  for s in request):
             parser.error('Use command identifiers, integers or key=value arguments (up to 5 tokens, 64 characters each)')
         result = subprocess.run(adb + ['dumpsys', 'activity', 'service', COMPONENT, *request],

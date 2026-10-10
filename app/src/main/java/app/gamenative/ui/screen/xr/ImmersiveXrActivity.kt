@@ -83,6 +83,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val OVERLAY_IDLE_REFRESH_INTERVAL_MS = 250L
         private const val OVERLAY_CONTENT_GRACE_MS = 2500L
         private const val PERF_HUD_POLL_MS = 500L
+        // Lets the quick menu compose and take focus before the next step of a DebugBus exit.
+        private const val DEBUG_EXIT_STEP_MS = 500L
 
         private const val IMMERSIVE_UI_DENSITY = 2.5f
 
@@ -127,6 +129,9 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     /** True while this session has moved the launcher's task to the back (headsets). */
     private var launcherHidden = false
+
+    /** Wall-clock creation time; DebugBus game_state ignores game logs written before it. */
+    internal val createdAtMs = System.currentTimeMillis()
 
     @Volatile
     private var backAction: (() -> Unit)? = null
@@ -517,6 +522,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
      * the immersive presentation. `toggled` is null when the main thread did not get to it in time.
      */
     internal fun debugQuickMenu(action: String): Map<String, Any?> {
+        if (action == "exit") {
+            debugExit()
+            return debugQuickMenu("status") + ("exitRequested" to true)
+        }
         val toggled = java.util.concurrent.atomic.AtomicBoolean(false)
         val ran = action !in setOf("open", "close", "toggle") || run {
             val done = java.util.concurrent.CountDownLatch(1)
@@ -545,6 +554,25 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             "mappedWindows" to mappedWindowCount,
             "overlay" to overlay,
         )
+    }
+
+    /**
+     * DebugBus `quickmenu exit`: opens the quick menu if needed, focuses its Exit item and confirms
+     * it like the controller's A button, so the game exits through the menu's own path (exit cloud
+     * sync, OpenComposite restore). Stick navigation could leave the focus on another row.
+     */
+    private fun debugExit() {
+        runOnUiThread {
+            if (!quickMenuVisible) quickMenuToggle?.invoke()
+            window.decorView.postDelayed({
+                quickMenuFocusExit?.invoke()
+                window.decorView.postDelayed({
+                    Timber.i("Immersive: DebugBus confirms the quick menu Exit item")
+                    dispatchMenuKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
+                    dispatchMenuKeyEvent(android.view.KeyEvent.KEYCODE_BUTTON_A)
+                }, DEBUG_EXIT_STEP_MS)
+            }, DEBUG_EXIT_STEP_MS)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

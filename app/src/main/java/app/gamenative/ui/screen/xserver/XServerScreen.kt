@@ -4081,7 +4081,8 @@ private fun setupXEnvironment(
         }
         gameExecutable = "wine explorer /desktop=shell," + xServer.screenInfo + " " +
             getWineStartCommand(context, appId, container, bootToContainer, testGraphics, appLaunchInfo, envVars, guestProgramLauncherComponent, gameSource, offline) +
-            (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "")
+            (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "") +
+            (if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameDebugLaunch.take(appId) else "")
         preInstallCommands = PreInstallSteps.getPreInstallCommands(
             container,
             appId,
