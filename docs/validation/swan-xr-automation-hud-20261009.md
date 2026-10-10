@@ -100,6 +100,23 @@
 - 这几轮 Alyx 的眼图为 1296x1200，是输出 2592x2400 的一半（GPU 99% 时 Alyx 自动降了分辨率）。run35 的源尺寸更大，当时只有零星 fault。推测某个 pass 按输出尺寸写进了源尺寸的图像，或地址计算以该图像为基准越界。具体是哪个 draw，需要 RD 抓帧或 fault 快照确认。
 - 越界写落在地址空洞时产生 fault；如果落在其他分配上，会静默破坏数据。
 
+## 6. 进 VR 时收起主面板（2026-10-10）
+
+在 Swan 上，游戏库主面板（`MainActivity`）原本会和 XR 画面同时显示。
+
+**实现**：
+- 头显上的 XRGame 构建中，`ImmersiveXrActivity` 每次 onResume，用 `moveTaskToBack` 把主面板所在任务移到后台。两者不在同一任务时才这样做。
+- 不能 finish 主面板：游戏运行时它的 `onDestroy` 会调用 `shutdownEnvironment()`。
+- 主面板 `onPause` 时看到沉浸式在前台，不会暂停游戏。
+- 沉浸式会话正常结束（finish）时，用 `AppTask.moveToFront` 把主面板带回前台。
+
+**设备结果**：
+- run54：用户自己进入游戏时，主面板任务 502 被移到后台，状态为 `visible=false`，游戏正常运行。
+- run55、run56：用快捷菜单「退出游戏」后，日志出现 `launcher task … brought back`，`MainActivity` 回到前台。
+- 从 Pico 系统菜单关闭应用会直接杀掉进程，这种情况下不会恢复主面板。
+
+**自动化注意**：用 DebugBus 退出游戏的步骤是 `quickmenu open`，连续 `nav down` 直到焦点移不动（会自动聚焦到「退出」），等约 2.5 s 后再 `input btn a`。等待太短时，A 可能落到别的按钮上。
+
 ## 构建与证据
 
 | 轮次 | APK SHA-256 | `libxrimmersive.so` Build ID | 内容 |

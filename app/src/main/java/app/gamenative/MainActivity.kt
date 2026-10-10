@@ -81,6 +81,14 @@ class MainActivity : ComponentActivity() {
         private var totalIndex = 0
 
         private var currentOrientationChangeValue: Int = 0
+
+        /**
+         * The live launcher, so a headset immersive session can move its 2D panel out of sight
+         * (ImmersiveXrActivity); finishing it instead would shut the running game down (onDestroy).
+         */
+        @Volatile
+        var current: java.lang.ref.WeakReference<MainActivity>? = null
+            private set
         private var availableOrientations: EnumSet<Orientation> = EnumSet.of(Orientation.UNSPECIFIED)
 
         fun isHeadset(context: Context): Boolean =
@@ -197,6 +205,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        current = java.lang.ref.WeakReference(this)
 
         app.gamenative.launch.installLaunchReadiness(applicationContext, lifecycleScope)
 
@@ -440,6 +449,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (current?.get() === this) current = null
         // emit before super so Compose DisposableEffects (which unregister
         // listeners during super.onDestroy's lifecycle transition) still fire
         if (!isChangingConfigurations) {

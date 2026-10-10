@@ -125,6 +125,9 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    /** True while this session has moved the launcher's task to the back (headsets). */
+    private var launcherHidden = false
+
     @Volatile
     private var backAction: (() -> Unit)? = null
 
@@ -565,6 +568,38 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             }
         }
         startXrSessionIfNeeded()
+        hideLauncherPanel()
+    }
+
+    /**
+     * On a headset the launcher (MainActivity) stays visible as a 2D panel next to the immersive
+     * session. Move its task to the back while the session runs; finishing it would shut the game
+     * down (MainActivity.onDestroy). Its onPause sees isImmersiveActivityResumed and leaves the
+     * game running.
+     */
+    private fun hideLauncherPanel() {
+        if (!app.gamenative.BuildConfig.XRGAME || !app.gamenative.MainActivity.isHeadset(this)) return
+        val launcher = app.gamenative.MainActivity.current?.get() ?: return
+        if (launcher.isFinishing || launcher.isDestroyed || launcher.taskId == taskId) return
+        if (launcher.moveTaskToBack(true)) {
+            launcherHidden = true
+            Timber.i("Immersive: launcher task %d moved to the back", launcher.taskId)
+        }
+    }
+
+    /** Brings the launcher back when the session ends, so the user returns to the library. */
+    private fun restoreLauncherPanel() {
+        if (!launcherHidden) return
+        launcherHidden = false
+        val launcher = app.gamenative.MainActivity.current?.get() ?: return
+        if (launcher.isFinishing || launcher.isDestroyed) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
+        // A task that went away meanwhile throws from taskInfo/moveToFront.
+        runCatching {
+            getSystemService(android.app.ActivityManager::class.java)?.appTasks
+                ?.firstOrNull { it.taskInfo.taskId == launcher.taskId }?.moveToFront()
+        }.onSuccess { if (it != null) Timber.i("Immersive: launcher task %d brought back", launcher.taskId) }
+            .onFailure { Timber.w(it, "Immersive: could not bring the launcher back") }
     }
 
     override fun onPause() {
@@ -587,6 +622,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     override fun onDestroy() {
         if (current?.get() === this) current = null
+        if (isFinishing) restoreLauncherPanel()
         stopXrSession()
         windowsVrRuntimeService?.close()
         windowsVrRuntimeService = null
