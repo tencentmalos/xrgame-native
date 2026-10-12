@@ -666,8 +666,7 @@ class MainViewModel @Inject constructor(
                 else "app.gamenative.ui.screen.xr.sbs.SbsVrActivity"
                 context.startActivity(android.content.Intent().setClassName(context, activity)
                     .putExtra("app_id", appId).putExtra("is_offline", _offline.value))
-            } else if (app.gamenative.BuildConfig.XR_BUILD &&
-                container.isLaunchImmersiveMode() &&
+            } else if (container.isLaunchImmersiveMode() &&
                 app.gamenative.MainActivity.isHeadset(context)
             ) {
                 bootingSplashTimeoutJob?.cancel()

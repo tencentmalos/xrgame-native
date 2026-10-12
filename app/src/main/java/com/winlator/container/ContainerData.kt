@@ -19,7 +19,7 @@ data class ContainerData(
     val graphicsDriverConfig: String = "",
     val rendererPresentMode: String = "fifo",
     val displayRenderer: String = Container.DEFAULT_DISPLAY_RENDERER,
-    val xrRefreshRate: Int = 72,
+    val xrRefreshRate: Int = if (app.gamenative.BuildConfig.XRGAME) 90 else 72,
     val xrRenderScale: Int = 100,
     val sfCompatMode: Boolean = true,
     var dxwrapper: String = Container.DEFAULT_DXWRAPPER,
@@ -115,6 +115,10 @@ data class ContainerData(
     val windowsVrEnabled: Boolean = false,
     val sbsTheaterEnabled: Boolean = false,
     val xrPresentationMode: String = "sbs",
+    /** Headsets: show a flat game on a big screen inside an OpenXR session (ImmersiveXrActivity). */
+    val launchImmersiveMode: Boolean = app.gamenative.BuildConfig.XR_BUILD,
+    /** XRGame 2D big screen preset ([app.gamenative.ui.screen.xr.XrScreenPresets]); empty when resized by hand. */
+    val xrScreenPreset: String = "",
     val openCompositeEnabled: Boolean = false,
     /** XRGame: use XrResolutionRecommendation instead of [xrRenderScale]. */
     val xrRenderScaleRecommended: Boolean = true,
@@ -196,6 +200,8 @@ data class ContainerData(
                     "windowsVrEnabled" to state.windowsVrEnabled,
                     "sbsTheaterEnabled" to state.sbsTheaterEnabled,
                     "xrPresentationMode" to state.xrPresentationMode,
+                    "launchImmersiveMode" to state.launchImmersiveMode,
+                    "xrScreenPreset" to state.xrScreenPreset,
                     "openCompositeEnabled" to state.openCompositeEnabled,
                     "xrRenderScaleRecommended" to state.xrRenderScaleRecommended,
                 )
@@ -210,7 +216,7 @@ data class ContainerData(
                     graphicsDriverConfig = (savedMap["graphicsDriverConfig"] as? String) ?: "",
                     rendererPresentMode = (savedMap["rendererPresentMode"] as? String) ?: "fifo",
                     displayRenderer = (savedMap["displayRenderer"] as? String) ?: "vulkan",
-                    xrRefreshRate = (savedMap["xrRefreshRate"] as? Int) ?: 72,
+                    xrRefreshRate = (savedMap["xrRefreshRate"] as? Int) ?: if (app.gamenative.BuildConfig.XRGAME) 90 else 72,
                     xrRenderScale = (savedMap["xrRenderScale"] as? Int) ?: 100,
                     sfCompatMode = (savedMap["sfCompatMode"] as? Boolean) ?: true,
                     dxwrapper = savedMap["dxwrapper"] as String,
@@ -275,6 +281,8 @@ data class ContainerData(
                     windowsVrEnabled = (savedMap["windowsVrEnabled"] as? Boolean) ?: false,
                     sbsTheaterEnabled = (savedMap["sbsTheaterEnabled"] as? Boolean) ?: false,
                     xrPresentationMode = (savedMap["xrPresentationMode"] as? String) ?: "sbs",
+                    launchImmersiveMode = (savedMap["launchImmersiveMode"] as? Boolean) ?: app.gamenative.BuildConfig.XR_BUILD,
+                    xrScreenPreset = (savedMap["xrScreenPreset"] as? String) ?: "",
                     openCompositeEnabled = (savedMap["openCompositeEnabled"] as? Boolean) ?: false,
                     xrRenderScaleRecommended = (savedMap["xrRenderScaleRecommended"] as? Boolean) ?: true,
                 )

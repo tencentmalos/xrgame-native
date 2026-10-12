@@ -96,6 +96,9 @@ object XrNative {
      */
     external fun nativeSetPerfHudVisible(visible: Boolean)
 
+    /** The game's presented frame rate for sessions without a stereo projection (2D big screen). */
+    external fun nativeSetPerfHudGameFps(fps: Float)
+
     /** One-line JSON state of the performance HUD (DebugBus vr_hud). */
     external fun nativePerfHudStatus(): String
 

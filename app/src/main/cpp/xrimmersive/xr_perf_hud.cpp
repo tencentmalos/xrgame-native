@@ -50,6 +50,13 @@ constexpr auto kStaleAfter = std::chrono::seconds(2);
 
 std::atomic<bool> gVisible{false};
 
+struct ExternalFps {
+    float fps = 0.0f;
+    Clock::time_point at{};
+};
+std::mutex gExternalFpsMutex;
+ExternalFps gExternalFps;
+
 struct Status {
     bool created = false;
     std::string error;
@@ -205,6 +212,11 @@ void SetPerfHudVisible(bool visible) {
 
 bool PerfHudVisible() { return gVisible.load(); }
 
+void SetPerfHudGameFps(float fps) {
+    std::lock_guard<std::mutex> lock(gExternalFpsMutex);
+    gExternalFps = {fps, Clock::now()};
+}
+
 std::string PerfHudStatusJson() {
     std::lock_guard<std::mutex> lock(gStatusMutex);
     auto number = [](const std::optional<double> &value) {
@@ -308,7 +320,11 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
 
     const auto device_sample = device ? device->latest() : std::nullopt;
     const bool deviceFresh = device_sample && now - device_sample->sampled_at < kStaleAfter;
-    const auto game = Fresh(gameFps, now);
+    auto game = Fresh(gameFps, now);
+    if (!game) {
+        std::lock_guard<std::mutex> lock(gExternalFpsMutex);
+        if (gExternalFps.at != Clock::time_point{} && now - gExternalFps.at < kStaleAfter) game = gExternalFps.fps;
+    }
     const auto xr = Fresh(xrFps, now);
     {
         std::lock_guard<std::mutex> lock(gStatusMutex);
@@ -351,8 +367,9 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
     values[7] = frame.sourceWidth == 0 ? std::string(dash)
                 : Format("%.0fx%.0f", frame.sourceWidth, frame.sourceHeight) +
                       (frame.reconstructing ? kFilters[std::min<uint32_t>(frame.filter, 2)] : "");
-    static constexpr std::array<const char *, 8> kLabels{"GAME FPS", "XR FPS / HZ", "CPU", "GPU",
-                                                         "MEMORY", "BATTERY", "TEMP CPU / GPU", "GAME EYE"};
+    std::array<const char *, 8> kLabels{"GAME FPS", "XR FPS / HZ", "CPU", "GPU",
+                                        "MEMORY", "BATTERY", "TEMP CPU / GPU", "GAME EYE"};
+    if (frame.flat) kLabels[7] = "GAME SCREEN";
 
     const ImU32 accent = IM_COL32(107, 200, 255, 255);
     ImDrawList *drawList = ImGui::GetBackgroundDrawList();

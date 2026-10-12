@@ -24,6 +24,9 @@ class Context;
 
 // The Performance HUD switch, for every session; any thread.
 void SetPerfHudVisible(bool visible);
+// The game's frame rate measured outside the composite (the X server's presented frames), for
+// sessions without a stereo projection such as the 2D big screen; any thread.
+void SetPerfHudGameFps(float fps);
 bool PerfHudVisible();
 // One-line JSON for DebugBus vr_hud; any thread.
 std::string PerfHudStatusJson();
@@ -31,13 +34,15 @@ std::string PerfHudStatusJson();
 void InitPerfHudJni(JNIEnv *env, jobject context);
 
 struct PerfHudFrame {
-    // Game eye and projection eye of the last stereo frame; zero outside stereo.
+    // Game eye and projection eye of the last stereo frame, or the game screen on the 2D big
+    // screen (flat); zero when neither is known.
     uint32_t sourceWidth = 0;
     uint32_t sourceHeight = 0;
     uint32_t outputWidth = 0;
     uint32_t outputHeight = 0;
     uint32_t filter = 0;  // 0 none, 1 FSR1, 2 SGSR1
     bool reconstructing = false;
+    bool flat = false;
     float displayHz = 0.0f;
 };
 

@@ -242,10 +242,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     private var wasInMenuNavigationMode = false
     private var buttonSuppressMaskUntilRelease = 0
 
-    private var quadDistance by mutableFloatStateOf(ImmersiveControls.DEFAULT_DISTANCE)
+    private var quadDistance by mutableFloatStateOf(defaultQuadDistance())
     private var quadHorizontal by mutableFloatStateOf(ImmersiveControls.DEFAULT_OFFSET)
     private var quadVertical by mutableFloatStateOf(ImmersiveControls.DEFAULT_OFFSET)
-    private var quadScale by mutableFloatStateOf(ImmersiveControls.DEFAULT_SCALE)
+    private var quadScale by mutableFloatStateOf(defaultQuadScale())
     private var passthroughEnabled by mutableStateOf(false)
     private var windowsVrEnabled by mutableStateOf(false)
     @Volatile
@@ -467,12 +467,12 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 return@launch
             }
             cachedContainer = container
-            quadDistance = container.getExtra(EXTRA_QUAD_DISTANCE, ImmersiveControls.DEFAULT_DISTANCE.toString())
-                .toFloatOrNull() ?: ImmersiveControls.DEFAULT_DISTANCE
+            quadDistance = container.getExtra(EXTRA_QUAD_DISTANCE, defaultQuadDistance().toString())
+                .toFloatOrNull() ?: defaultQuadDistance()
             quadHorizontal = ImmersiveControls.DEFAULT_OFFSET
             quadVertical = ImmersiveControls.DEFAULT_OFFSET
-            quadScale = container.getExtra(EXTRA_QUAD_SCALE, ImmersiveControls.DEFAULT_SCALE.toString())
-                .toFloatOrNull() ?: ImmersiveControls.DEFAULT_SCALE
+            quadScale = container.getExtra(EXTRA_QUAD_SCALE, defaultQuadScale().toString())
+                .toFloatOrNull() ?: defaultQuadScale()
             passthroughEnabled = container.getExtra(EXTRA_PASSTHROUGH_ENABLED, "false").toBoolean()
             windowsVrEnabled = container.getExtra(EXTRA_WINDOWS_VR_ENABLED, "false").toBoolean()
             openCompositeEnabled = container.getExtra(EXTRA_WINDOWS_VR_OPEN_COMPOSITE, "false").toBoolean()
@@ -501,6 +501,13 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             container.saveData()
         }
     }
+
+    // XRGame (Swan) starts the big screen at its default preset, on the 1.5 m focal plane.
+    private fun defaultQuadDistance(): Float =
+        if (app.gamenative.BuildConfig.XRGAME) XrScreenPresets.DEFAULT.distanceMeters else ImmersiveControls.DEFAULT_DISTANCE
+
+    private fun defaultQuadScale(): Float =
+        if (app.gamenative.BuildConfig.XRGAME) XrScreenPresets.DEFAULT.scale else ImmersiveControls.DEFAULT_SCALE
 
     private fun applyQuadTransform() {
         if (xrSessionHandle == 0L) return
@@ -705,7 +712,12 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
      */
     private fun configureComposite(container: Container?) {
         if (!app.gamenative.BuildConfig.XRGAME) return
-        val backend = container?.let(WindowsVrUpscale::backend) ?: WindowsVrUpscale.DEFAULT_BACKEND
+        // The 2D big screen uses the Vulkan composite like OpenXR VR games, so it gets the same
+        // status layer; a backend set in the container's XRGAME_XR_COMPOSITE still wins.
+        val windowsVr = container?.getExtra(EXTRA_WINDOWS_VR_ENABLED, "false")?.toBoolean() == true
+        val configured = container?.let { com.winlator.core.envvars.EnvVars(it.envVars).get(WindowsVrUpscale.ENV_BACKEND) }
+            ?.takeIf { it in WindowsVrUpscale.BACKENDS }
+        val backend = configured ?: if (windowsVr) WindowsVrUpscale.DEFAULT_BACKEND else WindowsVrUpscale.BACKEND_VULKAN
         val driver = java.io.File(filesDir, "contents/adrenotools/${XrGameRuntimeVersions.TURNIP}")
         XrNative.nativeSetComposite(backend == WindowsVrUpscale.BACKEND_VULKAN, driver.absolutePath,
             WindowsVrUpscale.DRIVER_LIBRARY, applicationInfo.nativeLibraryDir)
@@ -1603,6 +1615,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             perfHudShown = shown
             XrNative.nativeSetPerfHudVisible(shown)
         }
+        // The game's presented frame rate (the 2D HUD's FPS); stereo sessions count their own.
+        if (shown) XrNative.nativeSetPerfHudGameFps(app.gamenative.powercontrol.PowerManager.currentFps)
     }
 
     private fun stopFrameCaptureLoop() {

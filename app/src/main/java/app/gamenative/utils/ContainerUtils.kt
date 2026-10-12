@@ -389,6 +389,13 @@ object ContainerUtils {
             windowsVrEnabled = container.getExtra("windowsVrEnabled", "false").toBoolean(),
             sbsTheaterEnabled = container.getExtra("sbsTheaterEnabled", "false").toBoolean(),
             xrPresentationMode = container.getExtra("xrPresentationMode", "sbs"),
+            launchImmersiveMode = container.isLaunchImmersiveMode(),
+            xrScreenPreset = if (!app.gamenative.BuildConfig.XRGAME) "" else app.gamenative.ui.screen.xr.XrScreenPresets.match(
+                container.getExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.SCALE, "").toFloatOrNull()
+                    ?: app.gamenative.ui.screen.xr.XrScreenPresets.DEFAULT.scale,
+                container.getExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.DISTANCE, "").toFloatOrNull()
+                    ?: app.gamenative.ui.screen.xr.XrScreenPresets.DEFAULT.distanceMeters,
+            )?.key ?: "",
             openCompositeEnabled = container.getExtra("windowsVrOpenCompositeEnabled", "false").toBoolean(),
             xrRenderScaleRecommended = container.getExtra(
                 XrResolutionRecommendation.EXTRA_MODE, XrResolutionRecommendation.MODE_RECOMMENDED,
@@ -585,6 +592,17 @@ object ContainerUtils {
         container.putExtra("windowsVrEnabled", (containerData.windowsVrEnabled && !containerData.sbsTheaterEnabled).toString())
         container.putExtra("sbsTheaterEnabled", containerData.sbsTheaterEnabled.toString())
         container.putExtra("xrPresentationMode", containerData.xrPresentationMode)
+        // Only the 2D big screen writes its preset; the SBS cinema keeps its own size and distance.
+        app.gamenative.ui.screen.xr.XrScreenPresets.byKey(containerData.xrScreenPreset)
+            ?.takeIf { containerData.launchImmersiveMode }?.let {
+            container.putExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.SCALE, it.scale.toString())
+            container.putExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.DISTANCE, it.distanceMeters.toString())
+        }
+        // XRGame's display modes are exclusive; the upstream XR builds keep their own toggle.
+        container.setLaunchImmersiveMode(
+            containerData.launchImmersiveMode && !(app.gamenative.BuildConfig.XRGAME &&
+                (containerData.windowsVrEnabled || containerData.sbsTheaterEnabled)),
+        )
         container.putExtra("windowsVrOpenCompositeEnabled", containerData.openCompositeEnabled.toString())
         container.putExtra(
             XrResolutionRecommendation.EXTRA_MODE,

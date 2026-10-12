@@ -25,6 +25,12 @@
     <string name="xrgame_display_mode">显示模式（实验性）</string>
     <string name="xrgame_display_flat">普通平面</string>
     <string name="xrgame_theater_sbs">SBS 影院 — 非 VR 游戏</string>
+    <string name="xrgame_openxr_screen">2D 大屏（XR）</string>
+    <string name="xrgame_screen_size">大屏尺寸</string>
+    <string name="xrgame_screen_preset">%1$d 英寸 · %2$s 米 · 水平视角约 %3$d°</string>
+    <string name="xrgame_screen_default">（默认）</string>
+    <string name="xrgame_screen_custom">自定义（运行中手动调整）</string>
+    <string name="xrgame_openxr_screen_desc">进入 OpenXR 会话，把普通游戏显示在一块大屏上，与 OpenXR VR 游戏共用沉浸式会话、快捷菜单和刷新率设置。只在头显上提供。</string>
     <string name="xrgame_theater_desc">普通游戏显示在虚拟大屏上，使用两个固定视点模拟双眼。此模式使用 Vulkan 合成器，本次会话不启用插帧。手柄、键盘照常使用，触屏作为触控板。运行中可调整大屏大小和距离。</string>
     <string name="xrgame_theater_controls">影院设置</string>
     <string name="xrgame_theater_preview_flat">预览平面</string>

@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -679,27 +680,52 @@ private fun WindowsVrCompositeSection(state: ContainerConfigState) {
 @Composable
 internal fun XrDisplaySection(state: ContainerConfigState, default: Boolean) {
     val config = state.config.value
+    val context = LocalContext.current
+    val headset = remember { app.gamenative.MainActivity.isHeadset(context) }
     if (BuildConfig.XRGAME && !default) {
         SettingsListDropdown(
             colors = settingsTileColors(),
             title = { Text(stringResource(R.string.xrgame_display_mode)) },
-            value = if (config.sbsTheaterEnabled) 3 else if (!config.windowsVrEnabled) 0 else if (config.xrPresentationMode == "openxr") 2 else 1,
-            items = listOf(stringResource(R.string.xrgame_display_flat), stringResource(R.string.xrgame_vr_sbs), stringResource(R.string.xrgame_vr_openxr), stringResource(R.string.xrgame_theater_sbs)),
+            value = if (config.sbsTheaterEnabled) 3 else if (!config.windowsVrEnabled) {
+                if (config.launchImmersiveMode && headset) 4 else 0
+            } else if (config.xrPresentationMode == "openxr") 2 else 1,
+            items = listOf(stringResource(R.string.xrgame_display_flat), stringResource(R.string.xrgame_vr_sbs), stringResource(R.string.xrgame_vr_openxr), stringResource(R.string.xrgame_theater_sbs)) +
+                if (headset) listOf(stringResource(R.string.xrgame_openxr_screen)) else emptyList(),
             onItemSelected = { idx -> state.config.value = config.copy(
-                windowsVrEnabled = idx == 1 || idx == 2, sbsTheaterEnabled = idx == 3,
+                windowsVrEnabled = idx == 1 || idx == 2, sbsTheaterEnabled = idx == 3, launchImmersiveMode = idx == 4,
                 xrPresentationMode = if (idx == 2) "openxr" else "sbs",
             ) },
         )
         if (config.sbsTheaterEnabled) Text(
             stringResource(R.string.xrgame_theater_desc), Modifier.padding(horizontal = 16.dp),
         )
+        if (headset && config.launchImmersiveMode && !config.windowsVrEnabled && !config.sbsTheaterEnabled) {
+            Text(stringResource(R.string.xrgame_openxr_screen_desc), Modifier.padding(horizontal = 16.dp))
+            val presets = app.gamenative.ui.screen.xr.XrScreenPresets.PRESETS
+            val selected = presets.indexOfFirst { it.key == config.xrScreenPreset }
+            val labels = presets.map {
+                stringResource(R.string.xrgame_screen_preset, it.diagonalInches, "%.1f".format(it.distanceMeters), it.horizontalDegrees) +
+                    if (it == app.gamenative.ui.screen.xr.XrScreenPresets.DEFAULT) stringResource(R.string.xrgame_screen_default) else ""
+            }
+            SettingsListDropdown(
+                colors = settingsTileColors(),
+                title = { Text(stringResource(R.string.xrgame_screen_size)) },
+                value = if (selected >= 0) selected else presets.size,
+                items = labels + if (selected < 0) listOf(stringResource(R.string.xrgame_screen_custom)) else emptyList(),
+                onItemSelected = { idx ->
+                    presets.getOrNull(idx)?.let { state.config.value = config.copy(xrScreenPreset = it.key) }
+                },
+            )
+        }
         if (config.windowsVrEnabled) Text(
             stringResource(R.string.xrgame_vr_mode_desc), Modifier.padding(horizontal = 16.dp),
         )
     }
-    if (!default && (BuildConfig.XR_BUILD || BuildConfig.XRGAME && config.windowsVrEnabled)) {
+    val openXrScreen = BuildConfig.XRGAME && headset && config.launchImmersiveMode && !config.windowsVrEnabled &&
+        !config.sbsTheaterEnabled
+    if (!default && (BuildConfig.XR_BUILD || BuildConfig.XRGAME && (config.windowsVrEnabled || openXrScreen))) {
         // SBS follows the Android display clock; only a headset negotiates XR rates.
-        if (!BuildConfig.XRGAME || config.xrPresentationMode == "openxr") {
+        if (!BuildConfig.XRGAME || config.xrPresentationMode == "openxr" || openXrScreen) {
             val xrRates = listOf(72, 90, 120)
             SettingsListDropdown(
                 colors = settingsTileColors(),

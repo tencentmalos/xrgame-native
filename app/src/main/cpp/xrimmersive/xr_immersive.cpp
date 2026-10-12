@@ -1838,6 +1838,10 @@ bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo
         frame.outputHeight = projection.outputExtent().height;
         frame.reconstructing = projection.reconstructing();
         frame.filter = vulkan::GetUpscaleSettings().filter;
+    } else if (pendingFrameWidth_ > 0 && pendingFrameHeight_ > 0) {
+        frame.sourceWidth = static_cast<uint32_t>(pendingFrameWidth_);
+        frame.sourceHeight = static_cast<uint32_t>(pendingFrameHeight_);
+        frame.flat = true;
     }
     if (displayPeriod_ > 0) frame.displayHz = 1e9f / static_cast<float>(displayPeriod_);
     XrProfileScope profile("host.vr.hud.update");

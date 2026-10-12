@@ -90,7 +90,8 @@ public class Container {
     private String graphicsDriverConfig = DEFAULT_GRAPHICSDRIVERCONFIG;
     private String rendererPresentMode = "fifo";
     private String displayRenderer = Container.DEFAULT_DISPLAY_RENDERER;
-    private int xrRefreshRate = 72;
+    // XRGame targets Swan, whose XR display runs at 90 Hz; the upstream XR flavors keep 72.
+    private int xrRefreshRate = app.gamenative.BuildConfig.XRGAME ? 90 : 72;
     private int xrRenderScale = 100;
     private boolean sfCompatMode = true;
     private String wincomponents = DEFAULT_WINCOMPONENTS;
