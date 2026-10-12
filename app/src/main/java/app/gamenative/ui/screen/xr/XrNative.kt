@@ -99,6 +99,9 @@ object XrNative {
     /** The game's presented frame rate for sessions without a stereo projection (2D big screen). */
     external fun nativeSetPerfHudGameFps(fps: Float)
 
+    /** The input driving the game's pad (XR controllers or a physical gamepad), shown as INPUT. */
+    external fun nativeSetPerfHudInput(label: String)
+
     /** One-line JSON state of the performance HUD (DebugBus vr_hud). */
     external fun nativePerfHudStatus(): String
 

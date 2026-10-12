@@ -396,6 +396,9 @@ object ContainerUtils {
                 container.getExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.DISTANCE, "").toFloatOrNull()
                     ?: app.gamenative.ui.screen.xr.XrScreenPresets.DEFAULT.distanceMeters,
             )?.key ?: "",
+            xrPassthrough = container.getExtra(
+                app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_PASSTHROUGH_ENABLED, "false",
+            ).toBoolean(),
             openCompositeEnabled = container.getExtra("windowsVrOpenCompositeEnabled", "false").toBoolean(),
             xrRenderScaleRecommended = container.getExtra(
                 XrResolutionRecommendation.EXTRA_MODE, XrResolutionRecommendation.MODE_RECOMMENDED,
@@ -597,6 +600,12 @@ object ContainerUtils {
             ?.takeIf { containerData.launchImmersiveMode }?.let {
             container.putExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.SCALE, it.scale.toString())
             container.putExtra(app.gamenative.ui.screen.xr.SbsTheaterSettings.DISTANCE, it.distanceMeters.toString())
+        }
+        if (app.gamenative.BuildConfig.XRGAME && containerData.launchImmersiveMode) {
+            container.putExtra(
+                app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_PASSTHROUGH_ENABLED,
+                containerData.xrPassthrough.toString(),
+            )
         }
         // XRGame's display modes are exclusive; the upstream XR builds keep their own toggle.
         container.setLaunchImmersiveMode(

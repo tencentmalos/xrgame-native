@@ -86,6 +86,9 @@ public class WinHandler {
     private final short[] lastHighFreq = new short[MAX_PLAYERS];
     private final boolean[] isRumbling = new boolean[MAX_PLAYERS];
     private final int[] rumbleDeviceIds = new int[MAX_PLAYERS];
+    // Device a slot's rumble goes to instead of the slot's controller; -1 for none. XR sessions
+    // point player 1 at the physical gamepad that currently drives it.
+    private final int[] rumbleDeviceOverrides = new int[MAX_PLAYERS];
     private long lastStandalonePhoneRumbleMs = 0;
     private boolean isShowingAssignDialog = false;
     private Context activity;
@@ -169,7 +172,12 @@ public class WinHandler {
         this.currentControllerId = -1;
         for (int i = 0; i < rumbleDeviceIds.length; i++) {
             rumbleDeviceIds[i] = -1;
+            rumbleDeviceOverrides[i] = -1;
         }
+    }
+
+    public void setRumbleDeviceOverride(int slot, int deviceId) {
+        if (slot >= 0 && slot < MAX_PLAYERS) rumbleDeviceOverrides[slot] = deviceId;
     }
 
     public void refreshControllerMappings() {
@@ -811,7 +819,8 @@ public class WinHandler {
                         short highFreq = buffer.getShort(OFF_RUMBLE_HIGH);
 
                         ExternalController controller = getControllerFromSlot(sl);
-                        int deviceId = controller != null ? controller.getDeviceId() : -1;
+                        int deviceId = rumbleDeviceOverrides[sl] >= 0 ? rumbleDeviceOverrides[sl]
+                                : controller != null ? controller.getDeviceId() : -1;
                         if (rumbleDeviceIds[sl] != deviceId) {
                             if (isRumbling[sl]) {
                                 stopVibration(sl);

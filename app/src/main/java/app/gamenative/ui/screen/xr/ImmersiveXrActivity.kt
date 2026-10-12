@@ -78,6 +78,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val EXTRA_APP_ID = "app_id"
         private const val EXTRA_IS_OFFLINE = "is_offline"
         private const val POLL_INTERVAL_MS = 11L
+        // A physical gamepad's Start follows the XR Menu button: a tap reaches the game, a hold
+        // toggles the quick menu (see xr_immersive.cpp's menu long-press).
+        private const val START_HOLD_MS = 600L
+        private const val START_TAP_MS = 100L
         private const val CAPTURE_RETRY_DELAY_MS = 200L
         private const val OVERLAY_REFRESH_INTERVAL_MS = 33L // ~30fps — plenty for a menu/HUD,
         private const val OVERLAY_IDLE_REFRESH_INTERVAL_MS = 250L
@@ -105,7 +109,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
         private const val EXTRA_QUAD_DISTANCE = "immersiveQuadDistance"
         private const val EXTRA_QUAD_SCALE = "immersiveQuadScale"
-        private const val EXTRA_PASSTHROUGH_ENABLED = "immersivePassthroughEnabled"
+        /** Container extra: passthrough (VST) behind the 2D big screen, also set from the game settings. */
+        internal const val EXTRA_PASSTHROUGH_ENABLED = "immersivePassthroughEnabled"
         private const val EYE_TRACKING_REQUEST = 0x4554
         private const val EXTRA_WINDOWS_VR_ENABLED = "windowsVrEnabled"
         private const val EXTRA_WINDOWS_VR_OPEN_COMPOSITE = "windowsVrOpenCompositeEnabled"
@@ -179,6 +184,18 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         }
     }
     private var cachedBridge: XrGamepadBridge? = null
+    // Physical gamepads (a Bluetooth Xbox pad) by device id. Pico's own virtual inputs mirror the
+    // XR controllers, which arrive through OpenXR instead.
+    private val physicalGamepads = HashMap<Int, com.winlator.inputcontrols.ExternalController>()
+    private var lastActiveInput = XrGamepadBridge.XR_INPUT
+    private val gamepadHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var physicalStartLongPressed = false
+    private val physicalStartLongPress = Runnable {
+        physicalStartLongPressed = true
+        quickMenuSetStartHeld?.invoke(false)
+        Timber.i("Immersive: gamepad Start held, toggling the quick menu")
+        quickMenuToggle?.invoke()
+    }
 
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
@@ -656,6 +673,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     override fun onDestroy() {
+        gamepadHandler.removeCallbacksAndMessages(null)
+        cachedWinHandler?.setRumbleDeviceOverride(0, -1)
         if (current?.get() === this) current = null
         if (isFinishing) restoreLauncherPanel()
         stopXrSession()
@@ -784,7 +803,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                     if (!feedGame && lastFedGamepad) cachedBridge?.reset()
                     lastFedGamepad = feedGame
                     when {
-                        xrPointerModeActive -> handlePointerMode(buttons[0], axes, handPoses, flags[0])
+                        xrPointerModeActive -> {
+                            handlePointerMode(buttons[0], axes, handPoses, flags[0])
+                            cachedBridge?.commitPhysicalIfActive()
+                        }
                         inMenuMode && !flags[2] -> handleMenuNavigation(buttons[0], axes)
                         inMenuMode -> Unit
                         else -> {
@@ -1617,6 +1639,87 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         }
         // The game's presented frame rate (the 2D HUD's FPS); stereo sessions count their own.
         if (shown) XrNative.nativeSetPerfHudGameFps(app.gamenative.powercontrol.PowerManager.currentFps)
+        val input = cachedBridge?.activeInput ?: XrGamepadBridge.XR_INPUT
+        if (input != lastActiveInput) {
+            lastActiveInput = input
+            Timber.i("Immersive: game input switched to %s", input)
+            // Player 1's rumble follows the gamepad that drives it.
+            cachedWinHandler?.setRumbleDeviceOverride(0, cachedBridge?.activePhysicalDeviceId ?: -1)
+        }
+        if (shown) XrNative.nativeSetPerfHudInput(input)
+    }
+
+    private fun physicalGamepad(device: android.view.InputDevice?): com.winlator.inputcontrols.ExternalController? {
+        if (device == null || device.isVirtual || !com.winlator.inputcontrols.ExternalController.isGameController(device)) return null
+        if (device.name.startsWith("pvr-virtual-input") || device.name.startsWith("pico-virtual-input")) return null
+        return physicalGamepads.getOrPut(device.id) {
+            com.winlator.inputcontrols.ExternalController.getController(device.id) ?: return null
+        }
+    }
+
+    /**
+     * Physical gamepads: in menus they navigate like in MainActivity (XServerScreen leaves that to
+     * Compose focus); in game they update their own state, and pressing one makes it the input
+     * that drives the player-1 pad (see [XrGamepadBridge]).
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val gamepad = physicalGamepad(event.device) ?: return super.dispatchKeyEvent(event)
+        when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_BUTTON_MODE -> {
+                if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) quickMenuToggle?.invoke()
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_BUTTON_START -> {
+                handlePhysicalStart(gamepad, event)
+                return true
+            }
+        }
+        if (quickMenuVisible || PluviaApp.isOverlayPaused) {
+            val consumed = PluviaApp.events.emit(app.gamenative.events.AndroidEvent.KeyEvent(event)) { results ->
+                results.any { it }
+            } == true
+            return consumed || super.dispatchKeyEvent(event)
+        }
+        if (event.repeatCount == 0) {
+            gamepad.updateStateFromKeyEvent(event)
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) cachedBridge?.notePhysicalInput(gamepad)
+        }
+        return true
+    }
+
+    /**
+     * Start on a physical gamepad: held for [START_HOLD_MS] it toggles the quick menu; a shorter
+     * press sends the game one momentary Start (dropped while a menu is open).
+     */
+    private fun handlePhysicalStart(gamepad: com.winlator.inputcontrols.ExternalController, event: android.view.KeyEvent) {
+        if (event.repeatCount > 0) return
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            physicalStartLongPressed = false
+            quickMenuSetStartHeld?.invoke(true)
+            gamepadHandler.postDelayed(physicalStartLongPress, START_HOLD_MS)
+        } else if (event.action == android.view.KeyEvent.ACTION_UP) {
+            gamepadHandler.removeCallbacks(physicalStartLongPress)
+            quickMenuSetStartHeld?.invoke(false)
+            if (!physicalStartLongPressed && !quickMenuVisible && !PluviaApp.isOverlayPaused) {
+                gamepad.state.setPressed(XrGamepadBridge.BUTTON_START, true)
+                cachedBridge?.notePhysicalInput(gamepad)
+                gamepadHandler.postDelayed({ gamepad.state.setPressed(XrGamepadBridge.BUTTON_START, false) }, START_TAP_MS)
+            }
+        }
+    }
+
+    override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
+        val gamepad = physicalGamepad(ev.device) ?: return super.dispatchGenericMotionEvent(ev)
+        if (quickMenuVisible || PluviaApp.isOverlayPaused) {
+            val consumed = PluviaApp.events.emit(app.gamenative.events.AndroidEvent.MotionEvent(ev)) { results ->
+                results.any { it }
+            } == true
+            return consumed || super.dispatchGenericMotionEvent(ev)
+        }
+        if (gamepad.updateStateFromMotionEvent(ev) && XrGamepadBridge.isSignificant(gamepad.state)) {
+            cachedBridge?.notePhysicalInput(gamepad)
+        }
+        return true
     }
 
     private fun stopFrameCaptureLoop() {

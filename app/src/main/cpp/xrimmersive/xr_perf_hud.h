@@ -27,6 +27,8 @@ void SetPerfHudVisible(bool visible);
 // The game's frame rate measured outside the composite (the X server's presented frames), for
 // sessions without a stereo projection such as the 2D big screen; any thread.
 void SetPerfHudGameFps(float fps);
+// The input driving the game's pad, shown as INPUT; ASCII; any thread.
+void SetPerfHudInput(const std::string &label);
 bool PerfHudVisible();
 // One-line JSON for DebugBus vr_hud; any thread.
 std::string PerfHudStatusJson();

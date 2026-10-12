@@ -13,6 +13,8 @@
         tools:ignore="ScopedStorage" />
 
     <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="false" />
+    <!-- VST passthrough behind the 2D big screen (XR_FB_passthrough). -->
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
     <!-- Khronos loader discovery on Android 11+, including the future Swan runtime.
          SBS itself does not create a host OpenXR instance. -->
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />

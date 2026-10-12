@@ -30,6 +30,8 @@
     <string name="xrgame_screen_preset">%1$d in · %2$s m · about %3$d° wide</string>
     <string name="xrgame_screen_default"> (default)</string>
     <string name="xrgame_screen_custom">Custom (adjusted in game)</string>
+    <string name="xrgame_vst">VST passthrough</string>
+    <string name="xrgame_vst_desc">Show the real surroundings from the headset cameras around the big screen. Can also be switched in the in-game controls.</string>
     <string name="xrgame_openxr_screen_desc">Runs the game inside an OpenXR session on one big virtual screen, sharing the immersive session, quick menu and refresh rate setting of OpenXR VR games. Offered only on headsets.</string>
     <string name="xrgame_theater_desc">A virtual screen for ordinary games, viewed from two fixed eyes. Uses the Vulkan compositor; frame generation is disabled for this session. Gamepad and keyboard work normally; touch acts as a trackpad. Size and distance can be adjusted while playing.</string>
     <string name="xrgame_theater_controls">Cinema</string>

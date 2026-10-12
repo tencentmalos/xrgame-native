@@ -290,6 +290,13 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPerfHudGameFps(JNIEnv *, jcla
     xrimmersive::SetPerfHudGameFps(fps);
 }
 
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPerfHudInput(JNIEnv *env, jclass, jstring label) {
+    const char *chars = label != nullptr ? env->GetStringUTFChars(label, nullptr) : nullptr;
+    xrimmersive::SetPerfHudInput(chars != nullptr ? chars : "");
+    if (chars != nullptr) env->ReleaseStringUTFChars(label, chars);
+}
+
 JNIEXPORT jstring JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativePerfHudStatus(JNIEnv *env, jclass) {
     return env->NewStringUTF(xrimmersive::PerfHudStatusJson().c_str());

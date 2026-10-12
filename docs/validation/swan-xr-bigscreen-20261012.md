@@ -123,6 +123,66 @@
   - 主线程的 89% 里有多少是自旋等待，还没有采样确认。
 - 状态层原来显示的 GPU 30% 或 `--` 来自上面说的 `gpubusy` 问题，不是真实负载。
 
+## VST 透视（run76）
+
+只做 2D 大屏，VR 游戏不处理。实现参考 Azahar 在 Pico 和 Swan 上的做法。
+
+- **原生层**：
+  - 运行时名称含 "pico"，或支持 `XR_BD_controller_interaction` 时，视为 Pico 运行时。Swan 报告 `Pico XRRuntime()`。
+  - Pico 上照常启动 `XR_FB_passthrough`，但不提交透视层，混合模式保持 `OPAQUE`，由运行时在应用的所有层后面画透视。其他运行时仍提交透视层并使用 `ALPHA_BLEND`。
+- **设置**：「2D 大屏（XR）」下新增「VST 透视」开关，默认关。它存为容器变量 `immersivePassthroughEnabled`，与游戏中控制面板的透视开关是同一个状态。
+- **Manifest**：声明 `com.oculus.feature.PASSTHROUGH`（非必需）。没有加相机权限，Azahar 的相机权限是给 3DS 摄像头模拟用的。
+
+| 项目 | 值 |
+|---|---|
+| APK | `c0b4977b32b0420049589da983b5579a9bb7bf3665c837135a899a7262fdc7d7` |
+| `libxrimmersive.so` Build ID | `949fd211f1a006752584f8dd2446d4a28b46c0e6` |
+| 进程 | app 14129 |
+
+- **启用**：Hades II 容器原来已是大屏模式（80 英寸、1.5 m、90 Hz）。这次在容器配置里加上 `immersivePassthroughEnabled=true`，原配置备份在仓库外。
+- **日志**：
+  - `OpenXR runtime "Pico XRRuntime()"; passthrough drawn by the runtime behind the layers`
+  - 运行时 `xsi.is_mrPassthroughEnabled = 1`
+  - `Passthrough started (runtime background)`
+- **画面**：头显截图里，大屏以外是摄像头拍到的真实环境，办公桌和显示器清晰可见；状态层在屏幕左上角外侧。
+- **与 VST 无关的报错**：Pico 主界面进程反复报 `xrSetEnvironmentPassthroughPreferencePICO ... XR_ERROR_VALIDATION_FAILURE`。没开透视的 MHR 会话里同样存在（run74，约 55 分钟共 5.2 万条），只要沉浸式会话在跑就会出现，原因未查。
+
+## 外接手柄（run77、run78）
+
+用户反馈：大屏模式下，外接的 Xbox 手柄与 XR 手柄冲突。
+
+**原因**：
+- **事件没转发**：沉浸式界面没有把实体手柄的事件转给游戏输入，本局里 Xbox 手柄的按键一次都没到达 WinHandler（`Key routed` 为 0）。
+- **槽位被占**：`ControllerManager` 把 1 号玩家分给了 Pico 用 XR 手柄生成的虚拟手柄 `pvr-virtual-input-0`，Xbox 手柄排到 2 号。
+- **状态被覆盖**：`XrGamepadBridge` 每次轮询（约 90 次/秒）都把 XR 手柄的状态写进 1 号玩家，空闲时也会覆盖别的输入。
+
+**改法：哪边按下就切到哪边**：
+- **实体手柄的事件**：沉浸式界面接管 `dispatchKeyEvent` 和 `dispatchGenericMotionEvent`。Pico 的 `pvr-virtual-input`/`pico-virtual-input` 不算，它们与 OpenXR 送来的 XR 手柄是同一份输入。
+  - 菜单或暂停界面打开时，按主界面的方式交给菜单导航。
+  - 游戏中，只更新这个手柄自己的状态。
+- **切换规则**：
+  - 实体手柄按键，或摇杆、扳机、方向键超过 0.35，就成为 1 号玩家的输入。
+  - XR 手柄有按键，或摇杆、扳机超过 0.35，就切回 XR 手柄。
+  - 生效的一方空闲时，另一方不会覆盖它。XR 指针模式下，如果当前是实体手柄生效，它照样驱动游戏。
+- **快捷菜单**：
+  - 实体手柄的 Start 键与 XR 手柄的 Menu 键规则相同：按住 600 ms 开关快捷菜单；短按给游戏发一次 Start。
+  - Xbox 徽标键（`KEYCODE_BUTTON_MODE`）收到时，直接开关快捷菜单。
+- **震动**：实体手柄生效时，1 号玩家的震动改发到这个手柄（`WinHandler.setRumbleDeviceOverride`）；切回 XR 手柄后恢复原来的去向。
+- **状态层**：改成 5 列，新增「INPUT」一栏，显示当前生效的输入（`XR controllers`、`Xbox pad`、`DualSense`），`vr_hud status` 中同样带 `input` 字段。
+
+| 项目 | run77（切换） | run78（菜单、震动） |
+|---|---|---|
+| APK | `49434d4d32ad4b4012ade1a3da21a616bb2736851d32562c58dc21b2c6724c73` | `3559e10a4f468ae119b7e77cd6f77d72dc8efd1211ee795e44c1e773ac1068ff` |
+| `libxrimmersive.so` Build ID | `a13ecc1647f647cc2c060085af56d797243836b9` | 同左 |
+| 进程 | app 16114 | app 16723，被系统界面强制停止后，用户重新打开为 18914 |
+
+- **run77**：19:20:08 记录 `game input switched to Xbox pad`，状态层 INPUT 显示 `Xbox pad`，Hades II 59.9 fps。
+- **run78**：
+  - 日志记录了 19:27:51 切到 DualSense、19:28:30 切到 Xbox pad。同时连着的 PS5 手柄当时显示为截断的 `DualSense Wirele`，之后已改为 `DualSense`，这个改动还没上机。
+  - adb logcat 在 19:31:55 断开，之后的测试没有日志。
+  - 用户在头显里确认：Xbox 和 DualSense 都能正常游戏，长按 Start 能开关快捷菜单，震动也正确。这部分没有日志佐证。
+- **没做**：XR 手柄自身的震动（OpenXR 触觉反馈）。
+
 ## 尚未解决或覆盖
 
 - 72 Hz 节流由 Pico 系统的 BrainCore 决定，触发和解除条件未查明。在它解除之前，所有会话都是 72 Hz。

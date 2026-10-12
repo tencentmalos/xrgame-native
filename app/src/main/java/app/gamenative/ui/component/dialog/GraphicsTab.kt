@@ -716,6 +716,13 @@ internal fun XrDisplaySection(state: ContainerConfigState, default: Boolean) {
                     presets.getOrNull(idx)?.let { state.config.value = config.copy(xrScreenPreset = it.key) }
                 },
             )
+            SettingsSwitch(
+                colors = settingsTileColorsAlt(),
+                title = { Text(stringResource(R.string.xrgame_vst)) },
+                subtitle = { Text(stringResource(R.string.xrgame_vst_desc)) },
+                state = config.xrPassthrough,
+                onCheckedChange = { checked -> state.config.value = config.copy(xrPassthrough = checked) },
+            )
         }
         if (config.windowsVrEnabled) Text(
             stringResource(R.string.xrgame_vr_mode_desc), Modifier.padding(horizontal = 16.dp),

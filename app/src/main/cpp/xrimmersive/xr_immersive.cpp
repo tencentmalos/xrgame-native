@@ -7,6 +7,7 @@
 #include <android/log.h>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <climits>
 #include <cerrno>
@@ -601,6 +602,18 @@ bool XrImmersiveSession::setupInstanceAndSession() {
     createInfo.enabledExtensionNames = extensions.data();
 
     if (!XrCheck(xrCreateInstance(&createInfo, &instance_), "xrCreateInstance")) return false;
+    XrInstanceProperties instanceProperties{XR_TYPE_INSTANCE_PROPERTIES};
+    std::string runtimeName;
+    if (XR_SUCCEEDED(xrGetInstanceProperties(instance_, &instanceProperties))) {
+        runtimeName = instanceProperties.runtimeName;
+    }
+    std::string lowerRuntimeName = runtimeName;
+    std::transform(lowerRuntimeName.begin(), lowerRuntimeName.end(), lowerRuntimeName.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    runtimeBackgroundPassthrough_ = lowerRuntimeName.find("pico") != std::string::npos ||
+                                    picoControllerExtensionAvailable;
+    LOGI("OpenXR runtime \"%s\"; passthrough %s", runtimeName.c_str(),
+         runtimeBackgroundPassthrough_ ? "drawn by the runtime behind the layers" : "as an FB layer with alpha blend");
 
     XrSystemGetInfo systemGetInfo{XR_TYPE_SYSTEM_GET_INFO};
     systemGetInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
@@ -620,7 +633,7 @@ bool XrImmersiveSession::setupInstanceAndSession() {
             if (mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND) alphaBlendSupported_ = true;
         }
     }
-    if (!alphaBlendSupported_) {
+    if (!alphaBlendSupported_ && !runtimeBackgroundPassthrough_) {
         LOGI("XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND not supported by this runtime — passthrough toggle will no-op");
     }
 
@@ -1707,7 +1720,7 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     passthroughLayer.layerHandle = passthroughLayer_;
     std::array<const XrCompositionLayerBaseHeader *, 4> layers{};
     uint32_t layerCount = 0;
-    if (passthroughActive_ && passthroughLayer_ != XR_NULL_HANDLE) {
+    if (submitsPassthroughLayer()) {
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&passthroughLayer);
     }
     layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&projection);
@@ -1715,8 +1728,8 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     if (overlayRendered) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&overlay);
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = predictedDisplayTime;
-    endInfo.environmentBlendMode = passthroughActive_ ? XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
-                                                       : XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    endInfo.environmentBlendMode = submitsPassthroughLayer() ? XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
+                                                              : XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     endInfo.layerCount = layerCount;
     endInfo.layers = layers.data();
     XrResult ended;
@@ -1809,7 +1822,7 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     passthroughLayer.layerHandle = passthroughLayer_;
 
     std::vector<const XrCompositionLayerBaseHeader *> layers;
-    if (passthroughActive_ && passthroughLayer_ != XR_NULL_HANDLE) {
+    if (submitsPassthroughLayer()) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&passthroughLayer));
     }
     layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
@@ -1822,8 +1835,8 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     // ADDITIVE/ALPHA_BLEND rather than OPAQUE while it's active, or it'll just look black.
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = predictedDisplayTime;
-    endInfo.environmentBlendMode = passthroughActive_ ? XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
-                                                        : XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    endInfo.environmentBlendMode = submitsPassthroughLayer() ? XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
+                                                               : XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     endInfo.layerCount = static_cast<uint32_t>(layers.size());
     endInfo.layers = layers.data();
     XrProfileScope endProfile("host.vr.xr.end_frame");
@@ -1924,7 +1937,7 @@ void XrImmersiveSession::teardownPassthrough() {
 
 void XrImmersiveSession::applyPendingPassthroughState() {
     if (!passthroughExtensionAvailable_) return;
-    if (!alphaBlendSupported_) {
+    if (!alphaBlendSupported_ && !runtimeBackgroundPassthrough_) {
         passthroughRequested_.store(false);
         return;
     }
@@ -1941,12 +1954,15 @@ void XrImmersiveSession::applyPendingPassthroughState() {
         if (!started) {
             LOGE("Passthrough failed to start — leaving environment opaque");
             passthroughRequested_.store(false);
+        } else {
+            LOGI("Passthrough started (%s)", runtimeBackgroundPassthrough_ ? "runtime background" : "FB layer");
         }
         passthroughActive_ = started;
     } else {
         XrCheck(xrPassthroughLayerPauseFB_(passthroughLayer_), "xrPassthroughLayerPauseFB");
         XrCheck(xrPassthroughPauseFB_(passthrough_), "xrPassthroughPauseFB");
         passthroughActive_ = false;
+        LOGI("Passthrough paused");
     }
 }
 

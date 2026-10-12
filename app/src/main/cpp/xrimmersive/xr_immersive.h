@@ -389,6 +389,13 @@ private:
     // validation error (observed: xrEndFrame failing with -1 on every frame once passthrough
     // was toggled), so passthrough is refused entirely if this is false.
     bool alphaBlendSupported_ = false;
+    // Pico draws its passthrough behind the app's layers once XR_FB_passthrough is started, so no
+    // passthrough layer is submitted and the blend mode stays OPAQUE (Azahar does the same on Pico
+    // and Swan). Other runtimes get the FB passthrough layer under ALPHA_BLEND.
+    bool runtimeBackgroundPassthrough_ = false;
+    bool submitsPassthroughLayer() const {
+        return passthroughActive_ && passthroughLayer_ != XR_NULL_HANDLE && !runtimeBackgroundPassthrough_;
+    }
 
     // Perf/scheduling extensions — see setupInstanceAndSession()'s comment for why these were
     // missing entirely before (this is the same architecture GameNativeXR's libxr.so uses, per

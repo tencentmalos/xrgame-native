@@ -32,17 +32,17 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-// 4 x 2 cells of 384 x 96 px on a 1.6 x 0.2 m quad. In stereo its centre sits 2.5 m ahead, 0.9 m
+// 5 x 2 cells of 384 x 96 px on a 2.0 x 0.2 m quad. In stereo its centre sits 2.5 m ahead, 0.9 m
 // left and 1.0 m up from the head (the top-left corner where shadPS4's head-locked panel has it),
 // measured in the head's yaw frame. The panel stays upright and parallel to that frame's frontal
 // plane rather than turning towards the eye, so pitch and roll at placement do not tilt it. On the
 // 2D big screen it sits just above the screen's top-left corner, parallel to the screen.
-constexpr int kColumns = 4;
+constexpr int kColumns = 5;
 constexpr int kCellWidth = 384;
 constexpr int kCellHeight = 96;
 constexpr int kCanvasWidth = kColumns * kCellWidth;
 constexpr int kCanvasHeight = 2 * kCellHeight;
-constexpr float kWidthMeters = 1.6f;
+constexpr float kWidthMeters = 2.0f;
 constexpr float kHeightMeters = kWidthMeters * kCanvasHeight / kCanvasWidth;
 constexpr float kLabelSize = 26.0f;
 constexpr float kValueSize = 36.0f;
@@ -60,6 +60,7 @@ struct ExternalFps {
 };
 std::mutex gExternalFpsMutex;
 ExternalFps gExternalFps;
+std::string gInputLabel;
 
 struct Status {
     bool created = false;
@@ -71,6 +72,7 @@ struct Status {
     std::optional<double> gameFps;
     std::optional<double> xrFps;
     std::optional<XrVector3f> anchor;
+    std::string input;
 };
 std::mutex gStatusMutex;
 Status gStatus;
@@ -234,6 +236,19 @@ void SetPerfHudGameFps(float fps) {
     gExternalFps = {fps, Clock::now()};
 }
 
+void SetPerfHudInput(const std::string &label) {
+    std::string clean;
+    for (const char c : label) {
+        if (c >= 32 && c < 127 && c != '"' && c != '\\') clean += c;
+    }
+    {
+        std::lock_guard<std::mutex> lock(gExternalFpsMutex);
+        gInputLabel = clean;
+    }
+    std::lock_guard<std::mutex> lock(gStatusMutex);
+    gStatus.input = clean;
+}
+
 std::string PerfHudStatusJson() {
     std::lock_guard<std::mutex> lock(gStatusMutex);
     auto number = [](const std::optional<double> &value) {
@@ -245,12 +260,12 @@ std::string PerfHudStatusJson() {
     char text[640];
     std::snprintf(text, sizeof(text),
                   "{\"visible\":%s,\"created\":%s,\"updates\":%llu,\"reused\":%llu,\"lastUpdateUs\":%lld,"
-                  "\"maxUpdateUs\":%lld,\"gameFps\":%s,\"xrFps\":%s,\"anchorLocal\":%s,\"error\":\"%s\"}",
+                  "\"maxUpdateUs\":%lld,\"gameFps\":%s,\"xrFps\":%s,\"anchorLocal\":%s,\"input\":\"%s\",\"error\":\"%s\"}",
                   gVisible.load() ? "true" : "false", gStatus.created ? "true" : "false",
                   static_cast<unsigned long long>(gStatus.updates), static_cast<unsigned long long>(gStatus.reused),
                   static_cast<long long>(gStatus.lastUpdateUs), static_cast<long long>(gStatus.maxUpdateUs),
                   number(gStatus.gameFps).c_str(), number(gStatus.xrFps).c_str(), anchor.c_str(),
-                  gStatus.error.c_str());
+                  gStatus.input.c_str(), gStatus.error.c_str());
     return text;
 }
 
@@ -338,9 +353,11 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
     const auto device_sample = device ? device->latest() : std::nullopt;
     const bool deviceFresh = device_sample && now - device_sample->sampled_at < kStaleAfter;
     auto game = Fresh(gameFps, now);
-    if (!game) {
+    std::string input;
+    {
         std::lock_guard<std::mutex> lock(gExternalFpsMutex);
-        if (gExternalFps.at != Clock::time_point{} && now - gExternalFps.at < kStaleAfter) game = gExternalFps.fps;
+        if (!game && gExternalFps.at != Clock::time_point{} && now - gExternalFps.at < kStaleAfter) game = gExternalFps.fps;
+        input = gInputLabel;
     }
     const auto xr = Fresh(xrFps, now);
     {
@@ -350,11 +367,12 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
     }
 
     const char *dash = "--";
-    std::array<std::string, 8> values;
+    std::array<std::string, 9> values;
     // In stereo a game that stopped presenting is at 0 fps, not unknown.
     values[0] = game ? Format("%.1f", *game) : frame.sourceWidth > 0 ? std::string("0.0") : dash;
     values[1] = xr ? (frame.displayHz > 0.0f ? Format("%.1f / %.0f", *xr, frame.displayHz) : Format("%.1f", *xr)) : dash;
     values[2] = values[3] = values[4] = values[5] = values[6] = dash;
+    values[8] = input.empty() ? std::string(dash) : input;
     if (deviceFresh) {
         const spatial::perf::DeviceMetrics &m = *device_sample;
         if (m.cpu.usage_percent) {
@@ -384,17 +402,20 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
     values[7] = frame.sourceWidth == 0 ? std::string(dash)
                 : Format("%.0fx%.0f", frame.sourceWidth, frame.sourceHeight) +
                       (frame.reconstructing ? kFilters[std::min<uint32_t>(frame.filter, 2)] : "");
-    std::array<const char *, 8> kLabels{"GAME FPS", "XR FPS / HZ", "CPU", "GPU",
-                                        "MEMORY", "BATTERY", "TEMP CPU / GPU", "GAME EYE"};
+    std::array<const char *, 9> kLabels{"GAME FPS", "XR FPS / HZ", "CPU", "GPU",
+                                        "MEMORY", "BATTERY", "TEMP CPU / GPU", "GAME EYE", "INPUT"};
+    // Row one ends with the input driving the game; row two keeps the system readings and the image.
+    static constexpr std::array<int, 9> kCellOrder{0, 1, 2, 3, 8, 4, 5, 6, 7};
     if (frame.flat) kLabels[7] = "GAME SCREEN";
 
     const ImU32 accent = IM_COL32(107, 200, 255, 255);
     ImDrawList *drawList = ImGui::GetBackgroundDrawList();
     drawList->AddRectFilled({0.0f, 0.0f}, io.DisplaySize, IM_COL32(10, 17, 28, 235), 14.0f);
     drawList->AddRect({1.0f, 1.0f}, {io.DisplaySize.x - 1.0f, io.DisplaySize.y - 1.0f}, accent, 14.0f, 0, 2.0f);
-    for (int i = 0; i < 8; ++i) {
-        const float x = 20.0f + static_cast<float>((i % kColumns) * kCellWidth);
-        const float y = 8.0f + static_cast<float>((i / kColumns) * kCellHeight);
+    for (int cell = 0; cell < 9; ++cell) {
+        const int i = kCellOrder[cell];
+        const float x = 20.0f + static_cast<float>((cell % kColumns) * kCellWidth);
+        const float y = 8.0f + static_cast<float>((cell / kColumns) * kCellHeight);
         drawList->PushClipRect({x, y}, {x + kCellWidth - 28.0f, y + kCellHeight}, true);
         drawList->AddText(font, kLabelSize, {x, y}, accent, kLabels[i]);
         drawList->AddText(font, kValueSize, {x, y + 36.0f}, IM_COL32(235, 242, 250, 255), values[i].c_str());

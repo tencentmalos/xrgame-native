@@ -119,6 +119,8 @@ data class ContainerData(
     val launchImmersiveMode: Boolean = app.gamenative.BuildConfig.XR_BUILD,
     /** XRGame 2D big screen preset ([app.gamenative.ui.screen.xr.XrScreenPresets]); empty when resized by hand. */
     val xrScreenPreset: String = "",
+    /** XRGame 2D big screen: the headset cameras' view (VST passthrough) around the screen. */
+    val xrPassthrough: Boolean = false,
     val openCompositeEnabled: Boolean = false,
     /** XRGame: use XrResolutionRecommendation instead of [xrRenderScale]. */
     val xrRenderScaleRecommended: Boolean = true,
@@ -202,6 +204,7 @@ data class ContainerData(
                     "xrPresentationMode" to state.xrPresentationMode,
                     "launchImmersiveMode" to state.launchImmersiveMode,
                     "xrScreenPreset" to state.xrScreenPreset,
+                    "xrPassthrough" to state.xrPassthrough,
                     "openCompositeEnabled" to state.openCompositeEnabled,
                     "xrRenderScaleRecommended" to state.xrRenderScaleRecommended,
                 )
@@ -283,6 +286,7 @@ data class ContainerData(
                     xrPresentationMode = (savedMap["xrPresentationMode"] as? String) ?: "sbs",
                     launchImmersiveMode = (savedMap["launchImmersiveMode"] as? Boolean) ?: app.gamenative.BuildConfig.XR_BUILD,
                     xrScreenPreset = (savedMap["xrScreenPreset"] as? String) ?: "",
+                    xrPassthrough = (savedMap["xrPassthrough"] as? Boolean) ?: false,
                     openCompositeEnabled = (savedMap["openCompositeEnabled"] as? Boolean) ?: false,
                     xrRenderScaleRecommended = (savedMap["xrRenderScaleRecommended"] as? Boolean) ?: true,
                 )
