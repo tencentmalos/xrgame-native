@@ -2,7 +2,7 @@
   "schema": 1,
   "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll",
   "sha256": "f5a979e0194eb567410587e3d05400f298ac6a54bc2223f8d26dcb0a995eb31d",
-  "status": "internal local-container candidate; same source/patches, Clang MSVC ABI cross-build; VR device validation pending",
+  "status": "internal-device-candidate; Clang MSVC ABI cross-build of the same source/patches; Swan Alyx VR check passed 2026-10-12",
   "recipeRepository": "https://github.com/tencentmalos/opencomposite",
   "recipeBase": "7fd3276ac0ffda518a7f5a9157620f292e2032e6",
   "recipeCommit": "fffe8b08cd081d077b56da9b9c8a4a97295202e0",
@@ -41,7 +41,7 @@
     "target": "OCOVR",
     "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
     "vulkanImportLibrary": "llvm-dlltool from pinned Vulkan-Loader definition; runtime uses Wine Vulkan",
-    "evidence": "docs/validation/mhr-odin3-container-20261011.md",
+    "evidence": "docs/validation/swan-oc-clang-vr-20261012.md",
     "previousValidatedBuild": {
       "sha256": "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d",
       "status": "internal-device-candidate (D3D11 copies only the displayed bounds; Swan Alyx in-scene A/B recorded)",
@@ -57,6 +57,7 @@
         "imports": "Same DLL set as the 2c3f368b build",
         "previousSha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66"
       }
-    }
+    },
+    "buildEvidence": "docs/validation/mhr-odin3-container-20261011.md"
   }
 }
