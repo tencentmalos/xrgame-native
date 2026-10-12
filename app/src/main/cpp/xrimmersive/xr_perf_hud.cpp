@@ -32,9 +32,11 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-// 4 x 2 cells of 384 x 96 px on a 1.6 x 0.2 m quad. Its centre sits 2.5 m ahead, 0.9 m left and
-// 1.0 m up from the head (the top-left corner where shadPS4's head-locked panel has it), measured
-// in the head's yaw frame, so pitch and roll at placement do not tilt the panel away.
+// 4 x 2 cells of 384 x 96 px on a 1.6 x 0.2 m quad. In stereo its centre sits 2.5 m ahead, 0.9 m
+// left and 1.0 m up from the head (the top-left corner where shadPS4's head-locked panel has it),
+// measured in the head's yaw frame. The panel stays upright and parallel to that frame's frontal
+// plane rather than turning towards the eye, so pitch and roll at placement do not tilt it. On the
+// 2D big screen it sits just above the screen's top-left corner, parallel to the screen.
 constexpr int kColumns = 4;
 constexpr int kCellWidth = 384;
 constexpr int kCellHeight = 96;
@@ -45,6 +47,8 @@ constexpr float kHeightMeters = kWidthMeters * kCanvasHeight / kCanvasWidth;
 constexpr float kLabelSize = 26.0f;
 constexpr float kValueSize = 36.0f;
 constexpr XrVector3f kAnchorOffset{-0.9f, 1.0f, -2.5f};
+// Gap between the big screen's top edge and the panel, as a fraction of the panel height.
+constexpr float kScreenGap = 0.25f;
 constexpr auto kUpdateInterval = std::chrono::milliseconds(250);
 constexpr auto kStaleAfter = std::chrono::seconds(2);
 
@@ -89,6 +93,7 @@ class HudFileSource final : public spatial::perf::FileSource {
 public:
     std::optional<std::string> read(const std::string &path) const override {
         if (refused(path)) return std::nullopt;
+        if (path.ends_with("/gpubusy")) return std::nullopt;
         auto text = local_->read(path);
         if (!text) {
             refuse(path);
@@ -173,7 +178,7 @@ std::string Format(const char *format, double a, double b = 0.0) {
 }
 
 // Panel pose in the space `head` is located in: kAnchorOffset in the head's yaw frame, the quad's
-// front (+Z) turned towards the head.
+// front (+Z) facing back along the head's forward direction, upright.
 XrPosef PlacePanel(const XrPosef &head) {
     const XrQuaternionf &q = head.orientation;
     // Head forward is the rotated -Z axis.
@@ -186,21 +191,33 @@ XrPosef PlacePanel(const XrPosef &head) {
     XrPosef pose{};
     pose.position = {head.position.x + c * o.x + s * o.z, head.position.y + o.y,
                      head.position.z - s * o.x + c * o.z};
-    float dx = head.position.x - pose.position.x;
-    float dy = head.position.y - pose.position.y;
-    float dz = head.position.z - pose.position.z;
-    const float length = std::sqrt(dx * dx + dy * dy + dz * dz);
-    dx /= length;
-    dy /= length;
-    dz /= length;
-    // Yaw a about +Y, then pitch b about +X: +Z maps to (sin a cos b, -sin b, cos a cos b).
-    const float a = std::atan2(dx, dz);
-    const float b = -std::asin(std::clamp(dy, -1.0f, 1.0f));
-    const float ca = std::cos(a * 0.5f);
-    const float sa = std::sin(a * 0.5f);
-    const float cb = std::cos(b * 0.5f);
-    const float sb = std::sin(b * 0.5f);
-    pose.orientation = {ca * sb, sa * cb, -sa * sb, ca * cb};
+    // The head's yaw about +Y alone: -Z maps to the head's forward (-sin yaw, 0, -cos yaw).
+    pose.orientation = {0.0f, std::sin(yaw * 0.5f), 0.0f, std::cos(yaw * 0.5f)};
+    return pose;
+}
+
+XrVector3f Rotate(const XrQuaternionf &q, const XrVector3f &v) {
+    // v + 2w (u x v) + 2 u x (u x v), with u the quaternion's vector part.
+    const XrVector3f t{2.0f * (q.y * v.z - q.z * v.y), 2.0f * (q.z * v.x - q.x * v.z),
+                       2.0f * (q.x * v.y - q.y * v.x)};
+    return {v.x + q.w * t.x + (q.y * t.z - q.z * t.y), v.y + q.w * t.y + (q.z * t.x - q.x * t.z),
+            v.z + q.w * t.z + (q.x * t.y - q.y * t.x)};
+}
+
+// The panel on the 2D big screen: parallel to `screen`, left-aligned just above its top edge, at
+// the stereo panel's angular size for the screen's distance and never wider than the screen.
+XrPosef PlaceOnScreen(const XrCompositionLayerQuad &screen, XrExtent2Df *size) {
+    const XrVector3f &c = screen.pose.position;
+    const float distance = std::sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
+    const float width = std::min(kWidthMeters * distance / -kAnchorOffset.z, screen.size.width);
+    const float height = width * kCanvasHeight / kCanvasWidth;
+    *size = {width, height};
+    const XrVector3f offset = Rotate(screen.pose.orientation,
+                                     {(width - screen.size.width) * 0.5f,
+                                      (screen.size.height + height) * 0.5f + kScreenGap * height, 0.0f});
+    XrPosef pose{};
+    pose.orientation = screen.pose.orientation;
+    pose.position = {c.x + offset.x, c.y + offset.y, c.z + offset.z};
     return pose;
 }
 
@@ -458,8 +475,19 @@ bool PerfHud::update(XrSession session, vulkan::Context &context, const PerfHudF
     return hud.layer.HasReleasedImage();
 }
 
-bool PerfHud::fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrCompositionLayerQuad *quad) {
+bool PerfHud::fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrCompositionLayerQuad *quad,
+                   const XrCompositionLayerQuad *screen) {
     Impl &hud = *impl_;
+    if (screen != nullptr) {
+        // Follows the screen every frame, so moving or resizing it carries the panel along. The
+        // stereo anchor is dropped so a later stereo session places the panel in front of the head.
+        hud.anchor.reset();
+        hud.layer.FillQuadLayer(localSpace, false, *quad);
+        quad->pose = PlaceOnScreen(*screen, &quad->size);
+        std::lock_guard<std::mutex> lock(gStatusMutex);
+        gStatus.anchor = quad->pose.position;
+        return true;
+    }
     if (!hud.anchor) {
         // Once per placement, not per frame; xrLocateSpace does not wait for the GPU.
         XrSpaceLocation head{XR_TYPE_SPACE_LOCATION};

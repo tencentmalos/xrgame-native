@@ -181,7 +181,8 @@ private:
                           int32_t width, int32_t height, bool sessionActive);
     bool submitWindowsProjection(XrTime predictedDisplayTime, uint64_t xrSerial);
     // The performance HUD quad for this frame, when shown (Vulkan composite only).
-    bool submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime);
+    bool submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime,
+                       const XrCompositionLayerQuad *screen = nullptr);
     // The projection presenter of the active backend.
     bool renderWindowsProjection(XrCompositionLayerProjection *layer);
     bool renderQuadImage(uint32_t imageIndex);

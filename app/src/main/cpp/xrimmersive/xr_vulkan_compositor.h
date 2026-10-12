@@ -50,6 +50,8 @@ public:
     bool drawQuad(uint32_t imageIndex, AHardwareBuffer *sharedGame, const uint8_t *overlayPixels,
                   uint32_t overlayWidth, uint32_t overlayHeight, float contentScaleX, float contentScaleY);
     bool drawInterstitial(uint32_t imageIndex, const uint8_t *pixels, uint32_t width, uint32_t height);
+    // The game frame the last quad showed: the shared game buffer, else the captured frame.
+    VkExtent2D quadSourceExtent() const { return quadSource_; }
 
 private:
     struct SwapchainTarget {
@@ -71,6 +73,7 @@ private:
     Image interstitial_{};
     Image sharedGame_{};
     AHardwareBuffer *sharedGameBuffer_ = nullptr;
+    VkExtent2D quadSource_{};
 };
 
 }  // namespace xrimmersive::vulkan

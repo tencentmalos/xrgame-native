@@ -176,8 +176,10 @@ bool Compositor::drawQuad(uint32_t imageIndex, AHardwareBuffer *sharedGame, cons
         params.contentScale[1] = contentScaleY;
         source = sharedGame_.view;
         overlay = overlay_.view;
+        quadSource_ = {sharedGame_.width, sharedGame_.height};
     } else if (overlay_.image != VK_NULL_HANDLE) {
         source = overlay_.view;
+        quadSource_ = {overlay_.width, overlay_.height};
     }
     context_.blit(submission->command, target.views[imageIndex], {target.width, target.height}, target.format,
                   source, overlay, params);

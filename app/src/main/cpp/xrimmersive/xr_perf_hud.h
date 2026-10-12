@@ -58,10 +58,12 @@ public:
     // XR thread, after the eye layers were recorded: redraws the panel when due, creating its layer
     // the first time it is shown. True when a released panel image can be composited.
     bool update(XrSession session, vulkan::Context &context, const PerfHudFrame &frame);
-    // The quad of the last released panel image, world-locked in `localSpace`. Places the panel
-    // from the head pose (`viewSpace` located at `time`) when it has no position yet; false while
-    // that pose is not tracked.
-    bool fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrCompositionLayerQuad *quad);
+    // The quad of the last released panel image, world-locked in `localSpace`. With `screen` (the
+    // 2D big screen's quad in the same space) it sits above the screen's top-left corner, parallel
+    // to it. Otherwise it is placed from the head pose (`viewSpace` located at `time`) when it has
+    // no position yet; false while that pose is not tracked.
+    bool fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrCompositionLayerQuad *quad,
+              const XrCompositionLayerQuad *screen = nullptr);
     // Places the panel again in front of the head on the next fill (LOCAL was recentred).
     void reanchor();
     // Before the Vulkan device and the session go away.

@@ -16,6 +16,7 @@
 #include <dlfcn.h>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unistd.h>
 #include <vector>
 
@@ -765,18 +766,18 @@ bool XrImmersiveSession::setupInstanceAndSession() {
             uint32_t count = 0;
             enumerateRates(session_, 0, &count, nullptr);
             std::vector<float> rates(count);
-            if (count > 0 && XR_SUCCEEDED(enumerateRates(session_, count, &count, rates.data()))) {
-                bool supported = false;
-                for (float r : rates) {
-                    if (std::fabs(r - requestedRefreshRate_) < 0.5f) { supported = true; break; }
-                }
-                if (supported) {
-                    XrCheck(requestRate(session_, requestedRefreshRate_), "xrRequestDisplayRefreshRateFB");
-                    LOGI("Requested %.0f Hz display refresh rate", requestedRefreshRate_);
-                } else {
-                    LOGI("Refresh rate %.0f Hz not offered by the runtime — keeping the system default",
-                         requestedRefreshRate_);
-                }
+            if (count > 0 && !XR_SUCCEEDED(enumerateRates(session_, count, &count, rates.data()))) count = 0;
+            std::string offered;
+            for (uint32_t i = 0; i < count; ++i) offered += (i ? " " : "") + std::to_string(std::lround(rates[i]));
+            // Pico lists only the rate the display runs at now (72 Hz after some apps exit), so the
+            // list cannot gate the request; the runtime itself rejects a rate it cannot drive.
+            const XrResult result = requestRate(session_, requestedRefreshRate_);
+            if (XR_SUCCEEDED(result)) {
+                LOGI("Requested %.0f Hz display refresh rate (runtime lists: %s)", requestedRefreshRate_,
+                     offered.c_str());
+            } else {
+                LOGI("Refresh rate %.0f Hz rejected by the runtime (%d, lists: %s) — keeping the system default",
+                     requestedRefreshRate_, static_cast<int>(result), offered.c_str());
             }
         }
     }
@@ -1813,7 +1814,9 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     }
     layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
     XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
-    if (submitPerfHud(&hud, false, predictedDisplayTime)) layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud));
+    if (submitPerfHud(&hud, false, predictedDisplayTime, &quad)) {
+        layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud));
+    }
 
     // Passthrough shows the real world through gaps, so the "background" must be
     // ADDITIVE/ALPHA_BLEND rather than OPAQUE while it's active, or it'll just look black.
@@ -1827,7 +1830,8 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     XrCheck(xrEndFrame(session_, &endInfo), "xrEndFrame");
 }
 
-bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime) {
+bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime,
+                                        const XrCompositionLayerQuad *screen) {
     if (!perfHud_ || !vulkan_ || viewSpace_ == XR_NULL_HANDLE || localSpace_ == XR_NULL_HANDLE) return false;
     PerfHudFrame frame;
     if (stereo) {
@@ -1838,15 +1842,16 @@ bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo
         frame.outputHeight = projection.outputExtent().height;
         frame.reconstructing = projection.reconstructing();
         frame.filter = vulkan::GetUpscaleSettings().filter;
-    } else if (pendingFrameWidth_ > 0 && pendingFrameHeight_ > 0) {
-        frame.sourceWidth = static_cast<uint32_t>(pendingFrameWidth_);
-        frame.sourceHeight = static_cast<uint32_t>(pendingFrameHeight_);
+    } else if (const VkExtent2D source = vulkan_->quadSourceExtent(); source.width > 0 && source.height > 0) {
+        // With direct render the captured frame is only the overlay; the game is the shared buffer.
+        frame.sourceWidth = source.width;
+        frame.sourceHeight = source.height;
         frame.flat = true;
     }
     if (displayPeriod_ > 0) frame.displayHz = 1e9f / static_cast<float>(displayPeriod_);
     XrProfileScope profile("host.vr.hud.update");
     if (!perfHud_->update(session_, vulkan_->context(), frame)) return false;
-    return perfHud_->fill(localSpace_, viewSpace_, displayTime, quad);
+    return perfHud_->fill(localSpace_, viewSpace_, displayTime, quad, screen);
 }
 
 void XrImmersiveSession::setQuadTransform(float x, float y, float z, float width, float height,

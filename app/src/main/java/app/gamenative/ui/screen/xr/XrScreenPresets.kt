@@ -9,7 +9,7 @@ import kotlin.math.sqrt
  * Screen presets for the 2D big screen (XR): a 16:9 screen of a given diagonal at a given
  * distance, stored as the container's `immersiveQuadScale` / `immersiveQuadDistance` (a scale of
  * [ImmersiveControls]' 1.6 x 0.9 m base screen). Swan's optics focus at 1.5 m, so every preset
- * sits on that plane and only the size changes; 100 inches (about 73 degrees wide) is the default.
+ * sits on that plane and only the size changes; 80 inches (about 61 degrees wide) is the default.
  */
 object XrScreenPresets {
     data class Preset(val key: String, val diagonalInches: Int, val distanceMeters: Float) {
@@ -29,7 +29,7 @@ object XrScreenPresets {
     private const val FOCAL_DISTANCE_METERS = 1.5f
 
     val PRESETS = listOf(65, 80, 100, 120).map { Preset(it.toString(), it, FOCAL_DISTANCE_METERS) }
-    val DEFAULT = PRESETS[2]
+    val DEFAULT = PRESETS[1]
 
     fun byKey(key: String): Preset? = PRESETS.firstOrNull { it.key == key }
 

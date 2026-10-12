@@ -6,13 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class XrScreenPresetsTest {
-    @Test fun defaultIsOneHundredInchesOnTheFocalPlane() {
+    @Test fun defaultIsEightyInchesOnTheFocalPlane() {
         val preset = XrScreenPresets.DEFAULT
-        assertEquals(100, preset.diagonalInches)
+        assertEquals(80, preset.diagonalInches)
         assertEquals(1.5f, preset.distanceMeters, 0f)
-        // A 16:9 100-inch screen is 2.214 m wide; the base screen is 1.6 m.
-        assertEquals(2.2139f / ImmersiveControls.BASE_WIDTH_METERS, preset.scale, 0.001f)
-        assertEquals(73, preset.horizontalDegrees)
+        // A 16:9 80-inch screen is 1.771 m wide; the base screen is 1.6 m.
+        assertEquals(1.7711f / ImmersiveControls.BASE_WIDTH_METERS, preset.scale, 0.001f)
+        assertEquals(61, preset.horizontalDegrees)
     }
 
     @Test fun everyPresetIsLargerThanTheOldSeventyTwoInchesAtTwoMeters() {

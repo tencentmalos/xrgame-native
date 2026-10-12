@@ -159,9 +159,11 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
         }
     }
 
-    /** See VulkanXrFrameBridge's kdoc — null except for the Meta Quest immersive path. */
+    /**
+     * See VulkanXrFrameBridge's kdoc — null except while ImmersiveXrActivity shows the game on a
+     * headset (Meta Quest XR builds, or XRGame's 2D big screen on Pico); set only by that activity.
+     */
     public void setVulkanXrFrameBridge(VulkanXrFrameBridge xrFrameBridge) {
-        if (!app.gamenative.BuildConfig.XR_BUILD) return;
         this.xrFrameBridge = xrFrameBridge;
         synchronized (lock) {
             if (xrFrameBridge == null) {
