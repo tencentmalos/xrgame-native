@@ -452,9 +452,6 @@ fun XServerScreen(
     val context = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
-    val imm = remember(context) {
-        context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-    }
 
     // PluviaApp.events.emit(AndroidEvent.SetAppBarVisibility(false))
     PluviaApp.events.emit(AndroidEvent.SetSystemUIVisibility(false))
@@ -1055,8 +1052,10 @@ fun XServerScreen(
             PluviaApp.touchpadView?.postDelayed({
                 val view = PluviaApp.touchpadView
                 if (view != null) {
-                    view.requestFocus()
-                    view.requestPointerCapture()
+                    if (imeInputReceiver?.isKeyboardRequested != true) {
+                        view.requestFocus()
+                        view.requestPointerCapture()
+                    }
                 }
             }, 100)
             true
@@ -1199,27 +1198,13 @@ fun XServerScreen(
         }
     }
 
-    // Shows the soft keyboard, anchored to [anchor]. Handles the Android 12+
-    // post-delay quirk and routes input to the external display IME when needed.
+    // Every display needs a focused text editor, including the handheld screen.
+    // The receiver waits for window focus when this request closes an overlay.
     val showSoftKeyboard: (View, String) -> Unit = { anchor, analyticsEvent ->
         anchor.post {
             if (anchor.windowToken != null) {
-                val show = {
-                    if (PrefManager.usageAnalyticsEnabled) PostHog.capture(event = analyticsEvent)
-                    val isExternalDisplaySession =
-                        (anchor.display?.displayId ?: Display.DEFAULT_DISPLAY) != Display.DEFAULT_DISPLAY
-
-                    if (isExternalDisplaySession) {
-                        imeInputReceiver?.showKeyboard() ?: imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                    } else {
-                        imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                    }
-                }
-                if (Build.VERSION.SDK_INT > 29) {
-                    anchor.postDelayed({ show() }, 500)  // Pixel/Android-12+ quirk
-                } else {
-                    show()
-                }
+                if (PrefManager.usageAnalyticsEnabled) PostHog.capture(event = analyticsEvent)
+                imeInputReceiver?.showKeyboard()
             }
         }
     }
@@ -2076,23 +2061,12 @@ fun XServerScreen(
                 PluviaApp.touchpadView = TouchpadView(context, getxServer(), PrefManager.getBoolean("capture_pointer_on_external_mouse", true))
                 PluviaApp.touchpadView?.setMoveCursorToTouchpoint(!SbsTheaterSettings.isEnabled(container) && PrefManager.getBoolean("move_cursor_to_touchpoint", false))
 
-                // Wire keyboard toggle callback for gesture "Show Keyboard" action.
-                // Mirrors the QuickMenuAction.KEYBOARD external-display routing
-                // (uses imeInputReceiver on external displays) but skips the
-                // 500ms post-delay used by the menu path — a gesture is already
-                // a direct touch interaction and should respond immediately.
+                // Gestures and the quick menu use the same focused IME editor.
                 PluviaApp.touchpadView?.setShowKeyboardCallback {
                     val anchor = PluviaApp.touchpadView ?: return@setShowKeyboardCallback
                     anchor.post {
                         if (anchor.windowToken == null) return@post
-                        val isExternalDisplaySession =
-                            (anchor.display?.displayId ?: android.view.Display.DEFAULT_DISPLAY) != android.view.Display.DEFAULT_DISPLAY
-                        if (isExternalDisplaySession) {
-                            imeInputReceiver?.showKeyboard()
-                                ?: imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                        } else {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                        }
+                        imeInputReceiver?.showKeyboard()
                     }
                 }
 
@@ -2120,7 +2094,7 @@ fun XServerScreen(
                     }
                 })
 
-                // Add invisible IME receiver to capture system keyboard input when keyboard is on external display
+                // The invisible editor bridges Android IME text to the guest on every display.
                 val imeDisplayContext = context.display?.let { display ->
                     context.createDisplayContext(display)
                 } ?: context

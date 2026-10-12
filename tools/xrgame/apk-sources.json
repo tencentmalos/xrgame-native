@@ -866,7 +866,7 @@
       "kind": "repository-build",
       "license": "GPL-3.0-only",
       "source": "references/opencomposite: pinned OpenOVR + background-support.patch + openvr-system-026.patch + mailbox-forward.patch + displayed-bounds-copy.patch; source/build hashes in tools/xrgame/opencomposite-pin.json",
-      "sha256": "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d",
+      "sha256": "f5a979e0194eb567410587e3d05400f298ac6a54bc2223f8d26dcb0a995eb31d",
       "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll"
     }
   ]

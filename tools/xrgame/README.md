@@ -4,6 +4,21 @@ This pipeline builds the pinned Proton 11 ARM64EC, FEX, DXVK, VKD3D-Proton,
 Turnip, XCB, PulseAudio and base imagefs used by picoXr. It creates draft evidence;
 it does not publish a Release, upload an APK or change the production catalog.
 
+## Local Mac development (default since 2026-10-08)
+
+Use Apple Container for local APK builds:
+
+```bash
+tools/xrgame/apple-container.sh setup # once; pinned Linux SDK/NDK/Rust
+tools/xrgame/apple-container.sh build # snapshot, source build, APK audit, export
+```
+
+The native build remains `RelWithDebInfo`. The Mac checkout is read-only inside
+the container; a persistent ext4 mirror owns Linux build outputs and caches.
+See [the local build guide](../../docs/building/apple-container.md) for paths,
+signing, runtime prerequisites, DNS and recovery. This entry point reuses the
+validated embedded runtime; it does not replace the full fresh-runtime recipe below.
+
 ## Fresh Linux build
 
 Use Linux x86_64 with Docker and enough data-disk space. On the configured Linux
