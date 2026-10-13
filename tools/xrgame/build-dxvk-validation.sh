@@ -8,13 +8,14 @@ reference="$base/src/dxvk"
 patch="$project/tools/xrgame/patches/dxvk-present-deferred-clears.patch"
 latency_patch="$project/tools/xrgame/patches/dxvk-waitable-frame-latency.patch"
 completion_patch="$project/tools/xrgame/patches/dxvk-present-gpu-completion.patch"
+quality_patch="$project/tools/xrgame/patches/dxvk-xrgame-resource-scale.patch"
 latency_probe=${XRGAME_DXVK_LATENCY_PROBE:-1}
 [[ "$latency_probe" == 0 || "$latency_probe" == 1 ]]
 cross="$base/build/arm64ec.ini"
 out=${XRGAME_DXVK_OUTPUT:-"$base/output/dxvk-clear-validation"}
 test "$(git -C "$reference" rev-parse HEAD)" = "$pin"
 test -f "$cross"
-inputs=$( { printf '%s\n' "$pin" "$latency_probe"; cat "$patch" "$cross" "$0";
+inputs=$( { printf '%s\n' "$pin" "$latency_probe"; cat "$patch" "$quality_patch" "$cross" "$0";
     if [[ "$latency_probe" == 1 ]]; then cat "$latency_patch" "$completion_patch"; fi;
 } | sha256sum | cut -c1-16)
 work="$base/build/dxvk-clear/$inputs"
@@ -44,6 +45,8 @@ for index, (repo, rel, commit) in enumerate(entries):
 PY
     git -C "$src" apply --check "$patch"
     git -C "$src" apply "$patch"
+    git -C "$src" apply --check "$quality_patch"
+    git -C "$src" apply "$quality_patch"
     if [[ "$latency_probe" == 1 ]]; then
         git -C "$src" apply --check "$latency_patch"
         git -C "$src" apply "$latency_patch"
@@ -58,11 +61,12 @@ if [[ ! -f "$work/native/build.ninja" ]]; then
 fi
 meson compile -C "$work/native" -j "${XRGAME_JOBS:-12}"
 meson install -C "$work/native"
-python3 - "$out" "$work" "$patch" "$0" "$cross" "$latency_probe" "$latency_patch" "$completion_patch" <<'PY'
+python3 - "$out" "$work" "$patch" "$0" "$cross" "$latency_probe" "$latency_patch" "$completion_patch" "$quality_patch" <<'PY'
 import hashlib, json, pathlib, sys
 out, work, patch, recipe, cross = map(pathlib.Path, sys.argv[1:6])
 latency_probe, latency_patch = sys.argv[6], pathlib.Path(sys.argv[7])
 completion_patch = pathlib.Path(sys.argv[8])
+quality_patch = pathlib.Path(sys.argv[9])
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 binaries = {str(p.relative_to(out)): sha(p) for p in sorted((out / 'arm64ec').glob('*.dll'))}
 if not binaries:
@@ -73,6 +77,7 @@ if not binaries:
     'patchSha256': sha(patch), 'recipeSha256': sha(recipe), 'crossFileSha256': sha(cross),
     'latencyProbePatchSha256': sha(latency_patch) if latency_probe == '1' else None,
     'gpuCompletionPatchSha256': sha(completion_patch) if latency_probe == '1' else None,
+    'qualityPatchSha256': sha(quality_patch),
     'architecture': 'arm64ec-windows', 'purpose': 'private-validation', 'releaseReady': False,
     'binaries': binaries,
 }, indent=2) + '\n')

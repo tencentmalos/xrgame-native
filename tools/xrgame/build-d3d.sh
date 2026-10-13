@@ -32,10 +32,21 @@ for component in dxvk vkd3d-proton; do
     esac
     test "$(git -C "$base/src/$component" rev-parse HEAD)" = "$pin"
     git -C "$base/src/$component" submodule update --init --recursive --depth 1
-    if [[ ! -f "$base/build/$component/build.ninja" ]]; then
-        meson setup "$base/build/$component" "$base/src/$component" --cross-file "$cross" \
+    # XRGame texture quality and shadow render scale, applied to a copy of the pinned tree.
+    patch="$project/tools/xrgame/patches/vkd3d-xrgame-resource-scale.patch"
+    work="$base/build/$component-xrgame/$(sha256sum "$patch" | cut -c1-16)"
+    if [[ ! -f "$work/source-ready" ]]; then
+        rm -rf "$work/source"
+        mkdir -p "$work"
+        cp -a "$base/src/$component" "$work/source"
+        git -C "$work/source" -c safe.directory='*' apply --check "$patch"
+        git -C "$work/source" -c safe.directory='*' apply "$patch"
+        touch "$work/source-ready"
+    fi
+    if [[ ! -f "$work/native/build.ninja" ]]; then
+        meson setup "$work/native" "$work/source" --cross-file "$cross" \
             --buildtype release --prefix "$base/output/$component" --bindir arm64ec
     fi
-    meson compile -C "$base/build/$component" -j "${XRGAME_JOBS:-12}"
-    meson install -C "$base/build/$component"
+    meson compile -C "$work/native" -j "${XRGAME_JOBS:-12}"
+    meson install -C "$work/native"
 done

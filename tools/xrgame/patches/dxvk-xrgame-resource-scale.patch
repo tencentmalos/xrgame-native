@@ -1,0 +1,601 @@
+diff --git a/src/d3d11/d3d11_context.cpp b/src/d3d11/d3d11_context.cpp
+index 6f1f22bd..5190b441 100644
+--- a/src/d3d11/d3d11_context.cpp
++++ b/src/d3d11/d3d11_context.cpp
+@@ -836,6 +836,14 @@ namespace dxvk {
+     D3D11CommonTexture* dstTextureInfo = GetCommonTexture(pDstResource);
+     D3D11CommonTexture* srcTextureInfo = GetCommonTexture(pSrcResource);
+ 
++    if (unlikely(dstTextureInfo->XrGameReduced() || srcTextureInfo->XrGameReduced())) {
++      static std::atomic<bool> s_logged = { false };
++
++      if (!s_logged.exchange(true))
++        Logger::warn("XRGame: resolve with an image reduced by the quality settings is skipped");
++      return;
++    }
++
+     const DXGI_VK_FORMAT_INFO dstFormatInfo = m_parent->LookupFormat(dstDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
+     const DXGI_VK_FORMAT_INFO srcFormatInfo = m_parent->LookupFormat(srcDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
+ 
+@@ -3493,6 +3501,32 @@ namespace dxvk {
+             uint32_t(std::max(sr.left, sr.right) - sr.left),
+             uint32_t(std::max(sr.top, sr.bottom) - sr.top) };
+         }
++
++        // XRGame: the bound depth target is scaled, so the application's
++        // coordinates are scaled with it.
++        if (unlikely(m_state.om.xrgameScale)) {
++          uint32_t percent = m_state.om.xrgameScale;
++          float scale = float(percent) / 100.0f;
++
++          dst->viewport.x      *= scale;
++          dst->viewport.y      *= scale;
++          dst->viewport.width  *= scale;
++          dst->viewport.height *= scale;
++
++          if (enableScissorTest && i < m_state.rs.numScissors) {
++            const auto& sr = m_state.rs.scissors[i];
++
++            int32_t x0 = int32_t((int64_t(sr.left) * percent) / 100);
++            int32_t y0 = int32_t((int64_t(sr.top)  * percent) / 100);
++            int32_t x1 = int32_t((int64_t(std::max(sr.left, sr.right))  * percent + 99) / 100);
++            int32_t y1 = int32_t((int64_t(std::max(sr.top,  sr.bottom)) * percent + 99) / 100);
++
++            dst->scissor.offset = VkOffset2D { x0, y0 };
++            dst->scissor.extent = VkExtent2D {
++              uint32_t(std::max(x0, x1) - x0),
++              uint32_t(std::max(y0, y1) - y0) };
++          }
++        }
+       }
+     } else {
+       // The backend can't handle a viewport count of zero,
+@@ -3696,6 +3730,32 @@ namespace dxvk {
+       m_state.om.sampleCount = sampleCount;
+       ApplyRasterizerSampleCount();
+     }
++
++    // XRGame: rendering into a scaled depth target scales viewports and scissors
++    uint32_t xrgameScale = m_state.om.dsv != nullptr ? m_state.om.dsv->XrGameScalePercent() : 0u;
++
++    if (unlikely(xrgameScale)) {
++      static std::atomic<bool> s_logged = { false };
++
++      for (UINT i = 0; i < m_state.om.rtvs.size(); i++) {
++        if (m_state.om.rtvs[i] != nullptr) {
++          if (!s_logged.exchange(true)) {
++            VkExtent3D dsvExtent = m_state.om.dsv->GetImageView()->mipLevelExtent(0);
++            VkExtent3D rtvExtent = m_state.om.rtvs[i]->GetImageView()->mipLevelExtent(0);
++
++            Logger::warn(str::format("XRGame: a depth target scaled by the render scale setting (",
++              dsvExtent.width, "x", dsvExtent.height, ") is bound with a ",
++              rtvExtent.width, "x", rtvExtent.height, " render target"));
++          }
++          break;
++        }
++      }
++    }
++
++    if (unlikely(m_state.om.xrgameScale != xrgameScale)) {
++      m_state.om.xrgameScale = xrgameScale;
++      ApplyViewportState();
++    }
+   }
+ 
+ 
+@@ -4279,6 +4339,55 @@ namespace dxvk {
+     VkExtent3D dstExtent = util::computeBlockExtent(blockCount, dstFormatInfo->blockSize);
+     dstExtent = util::snapExtent3D(DstOffset, dstExtent, dstMipExtent);
+ 
++    // XRGame: the images may leave out top mip levels (texture quality) or be
++    // scaled (shadow render scale). Everything above is in D3D11 terms, which
++    // stays valid for kept levels since those have the same sizes. Only the
++    // image side of the copy changes; staging buffers keep D3D11 indices.
++    VkImageSubresourceLayers dstImageLayers = *pDstLayers;
++    VkImageSubresourceLayers srcImageLayers = *pSrcLayers;
++    VkOffset3D dstImageOffset = DstOffset;
++    VkOffset3D srcImageOffset = SrcOffset;
++    VkExtent3D dstImageExtent = dstExtent;
++    VkExtent3D srcImageExtent = SrcExtent;
++
++    if (unlikely(pDstTexture->XrGameReduced() || pSrcTexture->XrGameReduced())) {
++      static std::atomic<bool> s_loggedScale = { false };
++      static std::atomic<bool> s_loggedLevel = { false };
++
++      uint32_t scale = pDstTexture->XrGameScalePercent();
++
++      if (scale || pSrcTexture->XrGameScalePercent()) {
++        if (scale != pSrcTexture->XrGameScalePercent()) {
++          if (!s_loggedScale.exchange(true))
++            Logger::warn("XRGame: copy between scaled and unscaled depth images is skipped");
++          return;
++        }
++
++        srcImageOffset.x = XrGameScaleStart(SrcOffset.x, scale);
++        srcImageOffset.y = XrGameScaleStart(SrcOffset.y, scale);
++        dstImageOffset.x = XrGameScaleStart(DstOffset.x, scale);
++        dstImageOffset.y = XrGameScaleStart(DstOffset.y, scale);
++
++        srcImageExtent.width = std::min(
++          XrGameScaleEnd(SrcOffset.x + SrcExtent.width, scale) - srcImageOffset.x,
++          XrGameScaleEnd(DstOffset.x + SrcExtent.width, scale) - dstImageOffset.x);
++        srcImageExtent.height = std::min(
++          XrGameScaleEnd(SrcOffset.y + SrcExtent.height, scale) - srcImageOffset.y,
++          XrGameScaleEnd(DstOffset.y + SrcExtent.height, scale) - dstImageOffset.y);
++        dstImageExtent = srcImageExtent;
++      }
++
++      // Nothing to write if the destination level does not exist
++      if (!pDstTexture->XrGameMapMip(dstImageLayers.mipLevel))
++        return;
++
++      if (!pSrcTexture->XrGameMapMip(srcImageLayers.mipLevel)) {
++        if (!s_loggedLevel.exchange(true))
++          Logger::warn("XRGame: copy from a mip level left out by the texture quality setting is skipped");
++        return;
++      }
++    }
++
+     // It is possible for any of the given images to be a staging image with
+     // no actual image, so we need to account for all possibilities here.
+     bool dstIsImage = pDstTexture->HasImage();
+@@ -4288,11 +4397,11 @@ namespace dxvk {
+       EmitCs([
+         cDstImage  = pDstTexture->GetImage(),
+         cSrcImage  = pSrcTexture->GetImage(),
+-        cDstLayers = *pDstLayers,
+-        cSrcLayers = *pSrcLayers,
+-        cDstOffset = DstOffset,
+-        cSrcOffset = SrcOffset,
+-        cExtent    = SrcExtent
++        cDstLayers = dstImageLayers,
++        cSrcLayers = srcImageLayers,
++        cDstOffset = dstImageOffset,
++        cSrcOffset = srcImageOffset,
++        cExtent    = srcImageExtent
+       ] (DxvkContext* ctx) {
+         // CopyResource can only copy between different images, and
+         // CopySubresourceRegion can only copy data from one single
+@@ -4343,13 +4452,13 @@ namespace dxvk {
+ 
+           if (dstIsImage) {
+             VkImageSubresourceLayers dstLayer = { dstAspectMask,
+-              pDstLayers->mipLevel, pDstLayers->baseArrayLayer + i, 1 };
++              dstImageLayers.mipLevel, pDstLayers->baseArrayLayer + i, 1 };
+ 
+             EmitCs([
+               cDstImage   = pDstTexture->GetImage(),
+               cDstLayers  = dstLayer,
+-              cDstOffset  = DstOffset,
+-              cDstExtent  = dstExtent,
++              cDstOffset  = dstImageOffset,
++              cDstExtent  = dstImageExtent,
+               cDstFormat  = pDstTexture->GetPackedFormat(),
+               cSrcBuffer  = pSrcTexture->GetMappedBuffer(srcSubresource),
+               cSrcLayout  = pSrcTexture->GetSubresourceLayout(srcAspectMask, srcSubresource),
+@@ -4363,14 +4472,14 @@ namespace dxvk {
+             });
+           } else if (srcIsImage) {
+             VkImageSubresourceLayers srcLayer = { srcAspectMask,
+-              pSrcLayers->mipLevel, pSrcLayers->baseArrayLayer + i, 1 };
++              srcImageLayers.mipLevel, pSrcLayers->baseArrayLayer + i, 1 };
+ 
+             EmitCs([
+               cSrcImage   = pSrcTexture->GetImage(),
+               cSrcFormat  = pSrcTexture->GetPackedFormat(),
+               cSrcLayers  = srcLayer,
+-              cSrcOffset  = SrcOffset,
+-              cSrcExtent  = SrcExtent,
++              cSrcOffset  = srcImageOffset,
++              cSrcExtent  = srcImageExtent,
+               cDstBuffer  = pDstTexture->GetMappedBuffer(dstSubresource),
+               cDstLayout  = pDstTexture->GetSubresourceLayout(dstAspectMask, dstSubresource),
+               cDstOffset  = pDstTexture->ComputeMappedOffset(dstSubresource, j, DstOffset),
+@@ -5675,9 +5784,18 @@ namespace dxvk {
+       pDstSubresource->arrayLayer, pDstTexture->Desc()->MipLevels);
+ 
+     if (dstIsImage) {
++      VkImageSubresourceLayers dstLayers = vk::makeSubresourceLayers(*pDstSubresource);
++
++      // XRGame: levels the image leaves out take no data, and scaled depth
++      // images cannot take the application's full-size data.
++      if (unlikely(pDstTexture->XrGameReduced())) {
++        if (pDstTexture->XrGameScalePercent() || !pDstTexture->XrGameMapMip(dstLayers.mipLevel))
++          return;
++      }
++
+       EmitCs([
+         cDstImage         = pDstTexture->GetImage(),
+-        cDstLayers        = vk::makeSubresourceLayers(*pDstSubresource),
++        cDstLayers        = dstLayers,
+         cDstOffset        = DstOffset,
+         cDstExtent        = DstExtent,
+         cStagingSlice     = std::move(StagingBuffer),
+@@ -5840,6 +5958,14 @@ namespace dxvk {
+       refView = static_cast<D3D11DepthStencilView*>(
+         pDepthStencilView)->GetImageView();
+       dsvExtent = refView->mipLevelExtent(0);
++
++      // XRGame: compare the size the application created, not the scaled image
++      uint32_t xrgameScale = static_cast<D3D11DepthStencilView*>(pDepthStencilView)->XrGameScalePercent();
++
++      if (unlikely(xrgameScale)) {
++        dsvExtent.width  = uint32_t((uint64_t(dsvExtent.width)  * 100u) / xrgameScale);
++        dsvExtent.height = uint32_t((uint64_t(dsvExtent.height) * 100u) / xrgameScale);
++      }
+     }
+ 
+     for (uint32_t i = 0; i < NumViews; i++) {
+diff --git a/src/d3d11/d3d11_context_state.h b/src/d3d11/d3d11_context_state.h
+index b2f7a47e..1b04fe51 100644
+--- a/src/d3d11/d3d11_context_state.h
++++ b/src/d3d11/d3d11_context_state.h
+@@ -205,6 +205,9 @@ namespace dxvk {
+     UINT  minUav         = D3D11_1_UAV_SLOT_COUNT;
+     UINT  maxUav         = 0u;
+ 
++    /// XRGame render scale of the bound depth target, 0 if not scaled
++    UINT  xrgameScale    = 0u;
++
+     void reset() {
+       for (uint32_t i = minUav; i < maxUav; i++)
+         uavs[i] = nullptr;
+@@ -227,6 +230,8 @@ namespace dxvk {
+       maxRtv = 0u;
+       minUav = D3D11_1_UAV_SLOT_COUNT;
+       maxUav = 0u;
++
++      xrgameScale = 0u;
+     }
+   };
+   
+diff --git a/src/d3d11/d3d11_initializer.cpp b/src/d3d11/d3d11_initializer.cpp
+index 902b9695..ac034dfe 100644
+--- a/src/d3d11/d3d11_initializer.cpp
++++ b/src/d3d11/d3d11_initializer.cpp
+@@ -164,6 +164,12 @@ namespace dxvk {
+     VkFormat packedFormat = m_parent->LookupPackedFormat(desc->Format, pTexture->GetFormatMode()).Format;
+     auto formatInfo = lookupFormatInfo(packedFormat);
+ 
++    // XRGame: a scaled depth image cannot take the application's full-size data.
++    if (pTexture->XrGameScalePercent() && pInitialData != nullptr && pInitialData->pSysMem != nullptr) {
++      Logger::warn("XRGame: initial data of a scaled depth image is dropped");
++      pInitialData = nullptr;
++    }
++
+     if (pInitialData != nullptr && pInitialData->pSysMem != nullptr) {
+       // Compute data size for all subresources and allocate staging buffer memory
+       DxvkBufferSlice stagingSlice;
+@@ -188,9 +194,12 @@ namespace dxvk {
+           uint32_t index = D3D11CalcSubresource(mip, layer, desc->MipLevels);
+           VkExtent3D mipLevelExtent = pTexture->MipLevelExtent(mip);
+ 
+-          if (pTexture->HasImage()) {
++          // XRGame texture quality: levels the image leaves out are not uploaded.
++          uint32_t imageMip = mip;
++
++          if (pTexture->HasImage() && pTexture->XrGameMapMip(imageMip)) {
+             VkDeviceSize mipSizePerLayer = util::computeImageDataSize(
+-              packedFormat, image->mipLevelExtent(mip), formatInfo->aspectMask);
++              packedFormat, image->mipLevelExtent(imageMip), formatInfo->aspectMask);
+ 
+             m_transferCommands += 1;
+ 
+diff --git a/src/d3d11/d3d11_texture.cpp b/src/d3d11/d3d11_texture.cpp
+index 19dd03fc..3820a4f5 100644
+--- a/src/d3d11/d3d11_texture.cpp
++++ b/src/d3d11/d3d11_texture.cpp
+@@ -3,10 +3,71 @@
+ #include "d3d11_gdi.h"
+ #include "d3d11_texture.h"
+ 
++#include "../util/util_env.h"
+ #include "../util/util_shared_res.h"
+ #include "../util/util_win32_compat.h"
+ 
+ namespace dxvk {
++
++  namespace {
++
++    /**
++     * \brief XRGame memory reductions
++     *
++     * Read once from XRGAME_TEXTURE_QUALITY and XRGAME_RENDER_SCALE. The
++     * mip cap is the largest level, by its longer side, that images keep.
++     * A fixed cap rather than a per-texture drop keeps equal-sized levels
++     * of different textures in step, so copies between them (texture
++     * streaming) find both levels or neither.
++     */
++    struct XrGameQualityConfig {
++      uint32_t mipCap      = 0u;
++      uint32_t renderScale = 100u;
++    };
++
++    const XrGameQualityConfig& GetXrGameQualityConfig() {
++      static const XrGameQualityConfig s_config = [] {
++        XrGameQualityConfig config;
++        std::string quality = env::getEnvVar("XRGAME_TEXTURE_QUALITY");
++        std::string scale = env::getEnvVar("XRGAME_RENDER_SCALE");
++
++        if (quality == "medium")
++          config.mipCap = 1024u;
++        else if (quality == "low")
++          config.mipCap = 512u;
++        else
++          quality = "high";
++
++        if (scale == "75")
++          config.renderScale = 75u;
++        else if (scale == "50")
++          config.renderScale = 50u;
++
++        Logger::info(str::format("XRGame texture quality ", quality,
++          ", shadow render scale ", config.renderScale, "%"));
++        return config;
++      }();
++
++      return s_config;
++    }
++
++
++    VkDeviceSize XrGameImageSize(
++            VkFormat              Format,
++            VkImageAspectFlags    Aspects,
++            VkExtent3D            Extent,
++            uint32_t              Levels,
++            uint32_t              Layers) {
++      VkDeviceSize size = 0u;
++
++      for (uint32_t i = 0; i < Levels; i++)
++        size += util::computeImageDataSize(Format, util::computeMipLevelExtent(Extent, i), Aspects);
++
++      return size * Layers;
++    }
++
++  }
++
+   
+   D3D11CommonTexture::D3D11CommonTexture(
+           ID3D11Resource*             pInterface,
+@@ -211,6 +272,18 @@ namespace dxvk {
+       }
+     }
+ 
++    // XRGame memory reductions. Only device-local images that the application
++    // can neither map nor share, and whose tiling it cannot query, qualify.
++    if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_NONE
++     && Dimension == D3D11_RESOURCE_DIMENSION_TEXTURE2D
++     && !vkImage && !m_11on12.Resource && !DxgiUsage
++     && hSharedHandle == INVALID_HANDLE_VALUE
++     && !(m_desc.MiscFlags & (sharingFlags | D3D11_RESOURCE_MISC_TILED
++                            | D3D11_RESOURCE_MISC_GDI_COMPATIBLE | D3D11_RESOURCE_MISC_GENERATE_MIPS))
++     && m_desc.SampleDesc.Count == 1 && !m_desc.CPUAccessFlags && !isMultiPlane
++     && m_desc.TextureLayout == D3D11_TEXTURE_LAYOUT_UNDEFINED)
++      XrGameReduce(imageInfo, formatProperties->aspectMask);
++
+     // Skip image creation if possible
+     if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_STAGING)
+       return;
+@@ -514,6 +587,71 @@ namespace dxvk {
+   }
+ 
+ 
++  void D3D11CommonTexture::XrGameReduce(
++          DxvkImageCreateInfo&  ImageInfo,
++          VkImageAspectFlags    Aspects) {
++    static std::atomic<uint32_t> s_count[2] = { };
++    static std::atomic<uint64_t> s_saved[2] = { };
++
++    const auto& config = GetXrGameQualityConfig();
++    uint32_t levels = m_desc.MipLevels;
++    uint32_t bind = m_desc.BindFlags;
++
++    // Texture quality: sampled-only textures with mipmaps.
++    if (config.mipCap && Aspects == VK_IMAGE_ASPECT_COLOR_BIT && levels >= 2
++     && (bind & D3D11_BIND_SHADER_RESOURCE)
++     && !(bind & (D3D11_BIND_RENDER_TARGET | D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_UNORDERED_ACCESS))) {
++      uint32_t size = std::max(m_desc.Width, m_desc.Height);
++
++      while (m_xrgameMipDrop + 1u < levels && (size >> m_xrgameMipDrop) > config.mipCap)
++        m_xrgameMipDrop += 1u;
++
++      if (m_xrgameMipDrop) {
++        ImageInfo.extent.width  = std::max(1u, m_desc.Width  >> m_xrgameMipDrop);
++        ImageInfo.extent.height = std::max(1u, m_desc.Height >> m_xrgameMipDrop);
++        ImageInfo.mipLevels    -= m_xrgameMipDrop;
++      }
++    }
++
++    // Shadow render scale: large depth arrays. Single large square maps are
++    // left alone; in Half-Life: Alyx they were also bound with full-size render
++    // targets. The main depth buffer matches the swapchain and is not an array.
++    if (config.renderScale < 100u && levels == 1u
++     && (bind & D3D11_BIND_DEPTH_STENCIL)
++     && !(bind & (D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS))) {
++      uint32_t shortSide = std::min(m_desc.Width, m_desc.Height);
++
++      if (m_desc.ArraySize > 1u && shortSide >= 1024u) {
++        m_xrgameScale = config.renderScale;
++        ImageInfo.extent.width  = XrGameScaleEnd(m_desc.Width,  m_xrgameScale);
++        ImageInfo.extent.height = XrGameScaleEnd(m_desc.Height, m_xrgameScale);
++      }
++    }
++
++    if (!m_xrgameMipDrop && !m_xrgameScale)
++      return;
++
++    VkDeviceSize full = XrGameImageSize(ImageInfo.format, Aspects,
++      VkExtent3D { m_desc.Width, m_desc.Height, 1u }, levels, m_desc.ArraySize);
++    VkDeviceSize reduced = XrGameImageSize(ImageInfo.format, Aspects,
++      ImageInfo.extent, ImageInfo.mipLevels, m_desc.ArraySize);
++    uint32_t kind = m_xrgameScale ? 1u : 0u;
++    uint32_t count = ++s_count[kind];
++    uint64_t saved = (s_saved[kind] += full - reduced);
++
++    if (kind) {
++      Logger::info(str::format("XRGame render scale ", m_xrgameScale, "%: depth image ",
++        m_desc.Width, "x", m_desc.Height, "x", m_desc.ArraySize, " -> ",
++        ImageInfo.extent.width, "x", ImageInfo.extent.height, ", ", count, " images, ",
++        saved >> 20, " MiB saved"));
++    } else if (count == 1u || !(count % 64u)) {
++      Logger::info(str::format("XRGame texture quality: ", count, " textures reduced, ",
++        saved >> 20, " MiB saved (latest ", m_desc.Width, "x", m_desc.Height, ", ",
++        ImageInfo.mipLevels, " of ", levels, " levels kept)"));
++    }
++  }
++
++
+   BOOL D3D11CommonTexture::CheckImageSupport(
+     const DxvkImageCreateInfo*  pImageInfo,
+           VkImageTiling         Tiling) const {
+diff --git a/src/d3d11/d3d11_texture.h b/src/d3d11/d3d11_texture.h
+index 589603cf..7a56ecae 100644
+--- a/src/d3d11/d3d11_texture.h
++++ b/src/d3d11/d3d11_texture.h
+@@ -54,6 +54,21 @@ namespace dxvk {
+   };
+ 
+ 
++  /**
++   * \brief XRGame render scale helpers
++   *
++   * Start coordinates round down and end coordinates round up, so a
++   * full-size region covers the whole scaled image.
++   */
++  inline uint32_t XrGameScaleStart(uint32_t Value, uint32_t Percent) {
++    return uint32_t((uint64_t(Value) * Percent) / 100u);
++  }
++
++  inline uint32_t XrGameScaleEnd(uint32_t Value, uint32_t Percent) {
++    return uint32_t((uint64_t(Value) * Percent + 99u) / 100u);
++  }
++
++
+   /**
+    * \brief Packed subresource layout
+    */
+@@ -148,6 +163,40 @@ namespace dxvk {
+         VkExtent3D { m_desc.Width, m_desc.Height, m_desc.Depth }, Level);
+     }
+ 
++    /**
++     * \brief XRGame texture quality: top mip levels the image leaves out
++     *
++     * D3D11 mip N is image mip N - XrGameMipDrop(). The application keeps
++     * seeing its own description; only the image is smaller.
++     */
++    uint32_t XrGameMipDrop() const {
++      return m_xrgameMipDrop;
++    }
++
++    /**
++     * \brief XRGame render scale of shadow-like depth images
++     * \returns The scale in percent, or 0 if the image is not scaled
++     */
++    uint32_t XrGameScalePercent() const {
++      return m_xrgameScale;
++    }
++
++    bool XrGameReduced() const {
++      return m_xrgameMipDrop || m_xrgameScale;
++    }
++
++    /**
++     * \brief Maps a D3D11 mip level to the image
++     * \returns \c false if the image leaves the level out
++     */
++    bool XrGameMapMip(uint32_t& Level) const {
++      if (Level < m_xrgameMipDrop)
++        return false;
++
++      Level -= m_xrgameMipDrop;
++      return true;
++    }
++
+     /**
+      * \brief Special DXGI usage flags
+      *
+@@ -588,6 +637,13 @@ namespace dxvk {
+ 
+     void*                         m_mapPtr = nullptr;
+ 
++    uint32_t                      m_xrgameMipDrop = 0u;
++    uint32_t                      m_xrgameScale = 0u;
++
++    void XrGameReduce(
++            DxvkImageCreateInfo&  ImageInfo,
++            VkImageAspectFlags    Aspects);
++
+     void CreateMappedBuffer(
+             UINT                  Subresource);
+     
+diff --git a/src/d3d11/d3d11_view_dsv.cpp b/src/d3d11/d3d11_view_dsv.cpp
+index ba6523ed..9a4db50e 100644
+--- a/src/d3d11/d3d11_view_dsv.cpp
++++ b/src/d3d11/d3d11_view_dsv.cpp
+@@ -104,6 +104,7 @@ namespace dxvk {
+ 
+     // Create the underlying image view object
+     m_view = GetCommonTexture(pResource)->GetImage()->createView(viewInfo);
++    m_xrgameScale = GetCommonTexture(pResource)->XrGameScalePercent();
+   }
+   
+   
+diff --git a/src/d3d11/d3d11_view_dsv.h b/src/d3d11/d3d11_view_dsv.h
+index 1b4c71e0..4b3c78f2 100644
+--- a/src/d3d11/d3d11_view_dsv.h
++++ b/src/d3d11/d3d11_view_dsv.h
+@@ -64,6 +64,14 @@ namespace dxvk {
+       return m_desc.Format;
+     }
+ 
++    /**
++     * \brief XRGame render scale of the depth image in percent
++     * \returns The scale, or 0 if the image is not scaled
++     */
++    uint32_t XrGameScalePercent() const {
++      return m_xrgameScale;
++    }
++
+     D3D10DepthStencilView* GetD3D10Iface() {
+       return &m_d3d10;
+     }
+@@ -84,6 +92,8 @@ namespace dxvk {
+     Rc<DxvkImageView>                 m_view;
+     D3D10DepthStencilView             m_d3d10;
+ 
++    uint32_t                          m_xrgameScale = 0u;
++
+     D3DDestructionNotifier            m_destructionNotifier;
+ 
+     VkImageLayout GetViewLayout() const;
+diff --git a/src/d3d11/d3d11_view_srv.cpp b/src/d3d11/d3d11_view_srv.cpp
+index 78f4830a..20cbb86d 100644
+--- a/src/d3d11/d3d11_view_srv.cpp
++++ b/src/d3d11/d3d11_view_srv.cpp
+@@ -176,6 +176,25 @@ namespace dxvk {
+       m_info.Image.NumLevels = viewInfo.mipCount;
+       m_info.Image.NumLayers = viewInfo.layerCount;
+ 
++      // XRGame texture quality: the image may leave out the top mip levels.
++      // A view of left-out levels only reads the largest level the image keeps.
++      if (texture->XrGameMipDrop()) {
++        uint32_t drop  = texture->XrGameMipDrop();
++        uint32_t first = viewInfo.mipIndex;
++        uint32_t end   = first + viewInfo.mipCount;
++
++        first = first > drop ? first - drop : 0u;
++        end   = end   > drop ? end   - drop : 0u;
++
++        if (end <= first) {
++          first = 0u;
++          end   = 1u;
++        }
++
++        viewInfo.mipIndex = first;
++        viewInfo.mipCount = end - first;
++      }
++
+       // Create the underlying image view object
+       m_imageView = texture->GetImage()->createView(viewInfo);
+     }

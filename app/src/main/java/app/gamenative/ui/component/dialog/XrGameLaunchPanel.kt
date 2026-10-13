@@ -69,6 +69,7 @@ import app.gamenative.xrgame.XrGameLaunchMode
 import app.gamenative.xrgame.XrGameLaunchMode.Mode
 import app.gamenative.xrgame.XrGameMemoryBudget
 import app.gamenative.xrgame.XrGamePresentSettings
+import app.gamenative.xrgame.XrGameQualitySettings
 import app.gamenative.xrgame.XrGameResolution
 import com.winlator.container.ContainerData
 import kotlinx.coroutines.Dispatchers
@@ -518,6 +519,22 @@ private fun LaunchOptions(
         // The world-locked panel of XR sessions; one switch for every game.
         main += toggle(R.string.xrgame_launch_status_layer, statusLayer, onStatusLayer)
     }
+    main += {
+        // Done in the D3D translation layers; the game keeps its own texture sizes.
+        val qualities = XrGameQualitySettings.TEXTURE_QUALITIES
+        val quality = XrGameQualitySettings.textureQuality(data.envVars)
+        ChoiceRow(
+            label = stringResource(R.string.xrgame_launch_texture_quality),
+            choices = listOf(
+                stringResource(R.string.xrgame_launch_texture_quality_high),
+                stringResource(R.string.xrgame_launch_texture_quality_medium),
+                stringResource(R.string.xrgame_launch_texture_quality_low),
+            ),
+            selected = qualities.indexOf(quality),
+            note = if (quality != qualities[0]) stringResource(R.string.xrgame_launch_texture_quality_note) else null,
+            onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withTextureQuality(data.envVars, qualities[it]))) },
+        )
+    }
 
     val extra = mutableListOf<OptionItem>()
     if (mode == Mode.XR && vrGame) {
@@ -565,6 +582,17 @@ private fun LaunchOptions(
             selected = steps.indices.minBy { kotlin.math.abs(steps[it] - budget) },
             note = stringResource(R.string.xrgame_launch_memory_budget_note),
             onSelect = { onData(data.copy(dxwrapperConfig = XrGameMemoryBudget.withBudget(data.dxwrapperConfig, steps[it]))) },
+        )
+    }
+    extra += {
+        val scales = XrGameQualitySettings.RENDER_SCALES
+        val scale = XrGameQualitySettings.renderScale(data.envVars)
+        ChoiceRow(
+            label = stringResource(R.string.xrgame_launch_shadow_scale),
+            choices = scales.map { "$it%" },
+            selected = scales.indexOf(scale),
+            note = if (scale != scales[0]) stringResource(R.string.xrgame_launch_shadow_scale_note) else null,
+            onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withRenderScale(data.envVars, scales[it]))) },
         )
     }
     extra += toggle(R.string.xrgame_async_present, XrGamePresentSettings.asyncCopyEnabled(data.envVars)) {

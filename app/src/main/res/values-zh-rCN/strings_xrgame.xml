@@ -62,6 +62,13 @@
     <string name="xrgame_launch_frame_gen_flow">插帧光流分辨率</string>
     <string name="xrgame_launch_memory_budget">显存预算</string>
     <string name="xrgame_launch_memory_budget_note">报给 D3D 游戏的显存大小，游戏据此分配纹理和缓存。不读这个值的游戏仍按自身设置。</string>
+    <string name="xrgame_launch_texture_quality">纹理质量</string>
+    <string name="xrgame_launch_texture_quality_high">高</string>
+    <string name="xrgame_launch_texture_quality_medium">中</string>
+    <string name="xrgame_launch_texture_quality_low">低</string>
+    <string name="xrgame_launch_texture_quality_note">去掉大于 1024（中）或 512（低）像素的纹理层级以节省内存，游戏启动时生效。</string>
+    <string name="xrgame_launch_shadow_scale">阴影渲染缩放</string>
+    <string name="xrgame_launch_shadow_scale_note">以较低分辨率渲染大尺寸阴影图以节省内存。阴影会变软，个别游戏可能出现阴影错位。游戏启动时生效。</string>
     <string name="xrgame_launch_eye_buffer">XR 输出分辨率</string>
     <string name="xrgame_launch_eye_buffer_high">高</string>
     <string name="xrgame_launch_eye_buffer_max">极高</string>

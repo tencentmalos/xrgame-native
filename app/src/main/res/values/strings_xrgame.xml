@@ -62,6 +62,13 @@
     <string name="xrgame_launch_frame_gen_flow">Frame generation flow</string>
     <string name="xrgame_launch_memory_budget">Video memory budget</string>
     <string name="xrgame_launch_memory_budget_note">The video memory D3D games are told they have; they size textures and caches from it. Games that ignore it keep their own settings.</string>
+    <string name="xrgame_launch_texture_quality">Texture quality</string>
+    <string name="xrgame_launch_texture_quality_high">High</string>
+    <string name="xrgame_launch_texture_quality_medium">Medium</string>
+    <string name="xrgame_launch_texture_quality_low">Low</string>
+    <string name="xrgame_launch_texture_quality_note">Leaves out texture levels larger than 1024 (medium) or 512 (low) pixels to save memory. Takes effect when the game starts.</string>
+    <string name="xrgame_launch_shadow_scale">Shadow render scale</string>
+    <string name="xrgame_launch_shadow_scale_note">Renders large shadow maps at a lower resolution to save memory. Shadows get softer, and a few games may show shifted shadows. Takes effect when the game starts.</string>
     <string name="xrgame_launch_eye_buffer">XR output resolution</string>
     <string name="xrgame_launch_eye_buffer_high">High</string>
     <string name="xrgame_launch_eye_buffer_max">Ultra</string>

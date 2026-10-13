@@ -197,8 +197,8 @@ def main():
         finish(fex, 'fexcore-' + version + '.wcp', 'fexcore', version, 'MIT', ['FEX'])
 
         for name, kind, version, license_id in [
-            ('dxvk', 'DXVK', '11.0-a676404-arm64ec-xrg4', 'Zlib'),
-            ('vkd3d-proton', 'VKD3D', '11.0-212991f-arm64ec-xrg1', 'LGPL-2.1-or-later'),
+            ('dxvk', 'DXVK', '11.0-a676404-arm64ec-xrg5', 'Zlib'),
+            ('vkd3d-proton', 'VKD3D', '11.0-212991f-arm64ec-xrg2', 'LGPL-2.1-or-later'),
         ]:
             tree = work / name
             tree.mkdir()
@@ -222,6 +222,9 @@ def main():
                 completion_patch = project / 'tools/xrgame/patches/dxvk-present-gpu-completion.patch'
                 if build.get('gpuCompletionPatchSha256') != digest(completion_patch):
                     raise RuntimeError('DXVK completion patch does not match the packaged recipe')
+                quality_patch = project / 'tools/xrgame/patches/dxvk-xrgame-resource-scale.patch'
+                if build.get('qualityPatchSha256') != digest(quality_patch):
+                    raise RuntimeError('DXVK quality patch does not match the packaged recipe')
                 for entry in files:
                     if build['binaries'].get('arm64ec/' + entry['source']) != digest(tree / entry['source']):
                         raise RuntimeError('DXVK binary does not match its build record')
@@ -229,6 +232,11 @@ def main():
                 shutil.copy2(patch, tree / patch.name)
                 shutil.copy2(latency_patch, tree / latency_patch.name)
                 shutil.copy2(completion_patch, tree / completion_patch.name)
+                shutil.copy2(quality_patch, tree / quality_patch.name)
+            else:
+                # build-d3d.sh applies this patch to a copy of the pinned vkd3d-proton tree.
+                quality_patch = project / 'tools/xrgame/patches/vkd3d-xrgame-resource-scale.patch'
+                shutil.copy2(quality_patch, tree / quality_patch.name)
             finish(tree, name + '-' + version + '.wcp', name if name == 'dxvk' else 'vkd3d',
                    version, license_id, [name])
 
