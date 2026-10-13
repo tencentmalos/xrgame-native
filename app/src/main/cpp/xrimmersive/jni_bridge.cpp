@@ -291,6 +291,27 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPerfHudGameFps(JNIEnv *, jcla
 }
 
 JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetXrKeyboardVisible(JNIEnv *, jclass, jboolean visible) {
+    xrimmersive::SetXrKeyboardRequested(visible == JNI_TRUE);
+}
+
+JNIEXPORT jstring JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeDrainXrKeyboard(JNIEnv *env, jclass) {
+    const std::string out = xrimmersive::DrainXrKeyboardOutput();
+    return out.empty() ? nullptr : env->NewStringUTF(out.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeXrKeyboardPad(JNIEnv *, jclass, jint action) {
+    xrimmersive::QueueXrKeyboardPad(action);
+}
+
+JNIEXPORT jstring JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeXrKeyboardStatus(JNIEnv *env, jclass) {
+    return env->NewStringUTF(xrimmersive::XrKeyboardStatusJson().c_str());
+}
+
+JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPerfHudInput(JNIEnv *env, jclass, jstring label) {
     const char *chars = label != nullptr ? env->GetStringUTFChars(label, nullptr) : nullptr;
     xrimmersive::SetPerfHudInput(chars != nullptr ? chars : "");
@@ -336,6 +357,7 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetComposite(JNIEnv *env, jclass
 JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetUpscale(JNIEnv *, jclass, jint filter, jint sharpness,
                                                          jint foveation, jint level, jint outputPercent,
+                                                         jint eyeBuffer, jint frameGeneration, jint flowPercent,
                                                          jboolean debug) {
     xrimmersive::vulkan::UpscaleSettings settings;
     settings.filter = static_cast<uint32_t>(filter < 0 ? 0 : filter);
@@ -343,8 +365,25 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetUpscale(JNIEnv *, jclass, jin
     settings.foveation = static_cast<uint32_t>(foveation < 0 ? 0 : foveation);
     settings.level = static_cast<uint32_t>(level < 0 ? 0 : level);
     settings.outputPercent = static_cast<uint32_t>(outputPercent < 0 ? 0 : outputPercent);
+    settings.eyeBuffer = static_cast<uint32_t>(eyeBuffer < 0 ? 0 : eyeBuffer);
+    settings.frameGeneration = static_cast<uint32_t>(std::clamp<jint>(frameGeneration, 1, 4));
+    settings.flowPercent = static_cast<uint32_t>(std::clamp<jint>(flowPercent, 25, 100));
     settings.debug = debug == JNI_TRUE;
     xrimmersive::vulkan::SetUpscaleSettings(settings);
+}
+
+// [recommended w, h, limit w, h, tan left, right, up, down] of the headset's eye views, or null
+// before a session located them.
+JNIEXPORT jfloatArray JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeXrDisplayInfo(JNIEnv *env, jclass) {
+    const xrimmersive::XrDisplayInfo info = xrimmersive::GetXrDisplayInfo();
+    if (!info.valid) return nullptr;
+    const jfloat values[8] = {static_cast<jfloat>(info.recommendedWidth), static_cast<jfloat>(info.recommendedHeight),
+                              static_cast<jfloat>(info.maxWidth), static_cast<jfloat>(info.maxHeight),
+                              info.tanLeft, info.tanRight, info.tanUp, info.tanDown};
+    jfloatArray array = env->NewFloatArray(8);
+    if (array != nullptr) env->SetFloatArrayRegion(array, 0, 8, values);
+    return array;
 }
 
 JNIEXPORT void JNICALL
@@ -423,6 +462,14 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPassthroughEnabled(JNIEnv *, 
     handle->session->setPassthroughEnabled(enabled == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetCurvedScreen(JNIEnv *, jclass, jlong handlePtr, jboolean curved) {
+    std::lock_guard<std::mutex> lock(gHandleMutex);
+    auto *handle = LiveHandle(handlePtr);
+    if (handle == nullptr) return;
+    handle->session->setCurvedScreen(curved == JNI_TRUE);
+}
+
 // See DirectGLBridge.kt / GLRenderer.XrFrameBridge — hardwareBuffer is the same
 // android.hardware.HardwareBuffer GLRenderer is writing into on its own thread/context.
 JNIEXPORT void JNICALL
@@ -453,6 +500,17 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetSharedGameBufferPtr(JNIEnv *,
     auto *handle = LiveHandle(handlePtr);
     if (handle == nullptr) return;
     handle->session->setSharedGameBuffer(reinterpret_cast<AHardwareBuffer *>(ahbPtr));
+}
+
+// VulkanRenderer's scene target ring (xr_frame_exchange.h) as a raw pointer; the session takes
+// its own reference. 0 drops it.
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetSharedGameExchange(JNIEnv *, jclass, jlong handlePtr,
+                                                                       jlong exchangePtr) {
+    std::lock_guard<std::mutex> lock(gHandleMutex);
+    auto *handle = LiveHandle(handlePtr);
+    if (handle == nullptr) return;
+    handle->session->setSharedGameExchange(reinterpret_cast<xrgame::XrFrameExchange *>(exchangePtr));
 }
 
 // GLRenderer's direct-render path (DirectGLBridge.kt) needs to import the same HardwareBuffer as

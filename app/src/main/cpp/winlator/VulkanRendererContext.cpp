@@ -4,6 +4,7 @@
 #include "VulkanRendererContext.h"
 #include "../lsfg/vk_dispatch.h"
 #include <chrono>
+#include <ctime>
 #include <stdexcept>
 #include <cstdlib>
 #include <cstring>
@@ -907,11 +908,11 @@ void VulkanRendererContext::recordCmdBuf(VkCommandBuffer cb, VkFramebuffer targe
         vk_.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, (uint32_t)postUpload.size(), postUpload.data());
 
-    bool toXr = xrTargetActive.load() && xrFb!=VK_NULL_HANDLE;
+    bool toXr = xrTargetActive.load() && xrExchange!=nullptr;
     VkExtent2D tgtExt = toXr ? xrExt : swapchainExt;
     VkRenderPassBeginInfo rpi{}; rpi.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     rpi.renderPass = toXr ? xrRp : targetRp;
-    rpi.framebuffer = toXr ? xrFb : targetFb;
+    rpi.framebuffer = toXr ? xrSlots[xrSlot].fb : targetFb;
     rpi.renderArea={{0,0},tgtExt};
     VkClearValue clr={{{0.f,0.f,0.f,1.f}}}; rpi.clearValueCount=1; rpi.pClearValues=&clr;
 
@@ -990,51 +991,28 @@ void VulkanRendererContext::recordCmdBuf(VkCommandBuffer cb, VkFramebuffer targe
 }
 
 
+namespace {
+
+void DestroyXrFrameExchange(xrgame::XrFrameExchange* exchange) {
+    for (AHardwareBuffer* buffer : exchange->buffers) {
+        if (buffer) AHardwareBuffer_release(buffer);
+    }
+    delete exchange;
+}
+
+int64_t MonotonicNs() {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+
+}  // namespace
+
 bool VulkanRendererContext::createXrTargetResources(uint32_t w, uint32_t h) {
-    AHardwareBuffer_Desc d{};
-    d.width=w; d.height=h; d.layers=1;
-    d.format=AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
-    d.usage=AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE|AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER;
-    if (AHardwareBuffer_allocate(&d,&xrAhb)!=0||!xrAhb) { RLOG_E("xrTarget: AHB alloc %ux%u failed",w,h); return false; }
-
-    VkAndroidHardwareBufferPropertiesANDROID props{};
-    props.sType=VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
-    if (!vk_.GetAndroidHardwareBufferPropertiesANDROID ||
-        vk_.GetAndroidHardwareBufferPropertiesANDROID(device,xrAhb,&props)!=VK_SUCCESS) {
-        RLOG_E("xrTarget: AHB props failed"); destroyXrTargetResources(); return false;
-    }
-
-    VkExternalMemoryImageCreateInfo emi{};
-    emi.sType=VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-    emi.handleTypes=VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
-    VkImageCreateInfo ii{};
-    ii.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; ii.pNext=&emi;
-    ii.imageType=VK_IMAGE_TYPE_2D; ii.format=VK_FORMAT_R8G8B8A8_UNORM;
-    ii.extent={w,h,1}; ii.mipLevels=1; ii.arrayLayers=1; ii.samples=VK_SAMPLE_COUNT_1_BIT;
-    ii.tiling=VK_IMAGE_TILING_OPTIMAL;
-    ii.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
-    ii.sharingMode=VK_SHARING_MODE_EXCLUSIVE; ii.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
-    if (vk_.CreateImage(device,&ii,nullptr,&xrImg)!=VK_SUCCESS) { RLOG_E("xrTarget: image"); destroyXrTargetResources(); return false; }
-
-    VkImportAndroidHardwareBufferInfoANDROID imp{};
-    imp.sType=VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID; imp.buffer=xrAhb;
-    VkMemoryDedicatedAllocateInfo ded{};
-    ded.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO; ded.pNext=&imp; ded.image=xrImg;
-    uint32_t idx=0; while (idx<32 && !(props.memoryTypeBits&(1u<<idx))) idx++;
-    if (idx>=32) { RLOG_E("xrTarget: no compatible memory type (bits=0x%x)", props.memoryTypeBits); destroyXrTargetResources(); return false; }
-    VkMemoryAllocateInfo mai{};
-    mai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; mai.pNext=&ded;
-    mai.allocationSize=props.allocationSize; mai.memoryTypeIndex=idx;
-    if (vk_.AllocateMemory(device,&mai,nullptr,&xrMem)!=VK_SUCCESS ||
-        vk_.BindImageMemory(device,xrImg,xrMem,0)!=VK_SUCCESS) {
-        RLOG_E("xrTarget: memory"); destroyXrTargetResources(); return false;
-    }
-
-    VkImageViewCreateInfo vi{};
-    vi.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    vi.image=xrImg; vi.viewType=VK_IMAGE_VIEW_TYPE_2D; vi.format=VK_FORMAT_R8G8B8A8_UNORM;
-    vi.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
-    if (vk_.CreateImageView(device,&vi,nullptr,&xrView)!=VK_SUCCESS) { RLOG_E("xrTarget: view"); destroyXrTargetResources(); return false; }
+    xrExchange = new xrgame::XrFrameExchange();
+    xrExchange->width = w;
+    xrExchange->height = h;
+    xrExchange->destroy = DestroyXrFrameExchange;
 
     VkAttachmentDescription att{};
     att.format=VK_FORMAT_R8G8B8A8_UNORM; att.samples=VK_SAMPLE_COUNT_1_BIT;
@@ -1053,25 +1031,104 @@ bool VulkanRendererContext::createXrTargetResources(uint32_t w, uint32_t h) {
     rci.dependencyCount=1; rci.pDependencies=&dep;
     if (vk_.CreateRenderPass(device,&rci,nullptr,&xrRp)!=VK_SUCCESS) { RLOG_E("xrTarget: renderpass"); destroyXrTargetResources(); return false; }
 
-    VkFramebufferCreateInfo fi{};
-    fi.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    fi.renderPass=xrRp; fi.attachmentCount=1; fi.pAttachments=&xrView;
-    fi.width=w; fi.height=h; fi.layers=1;
-    if (vk_.CreateFramebuffer(device,&fi,nullptr,&xrFb)!=VK_SUCCESS) { RLOG_E("xrTarget: framebuffer"); destroyXrTargetResources(); return false; }
+    for (uint32_t slot=0; slot<xrgame::XrFrameExchange::kSlots; slot++) {
+        AHardwareBuffer_Desc d{};
+        d.width=w; d.height=h; d.layers=1;
+        d.format=AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
+        d.usage=AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE|AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER;
+        AHardwareBuffer* ahb=nullptr;
+        if (AHardwareBuffer_allocate(&d,&ahb)!=0||!ahb) { RLOG_E("xrTarget: AHB alloc %ux%u failed",w,h); destroyXrTargetResources(); return false; }
+        xrExchange->buffers[slot]=ahb;
+        XrSlot& target=xrSlots[slot];
+
+        VkAndroidHardwareBufferPropertiesANDROID props{};
+        props.sType=VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
+        if (!vk_.GetAndroidHardwareBufferPropertiesANDROID ||
+            vk_.GetAndroidHardwareBufferPropertiesANDROID(device,ahb,&props)!=VK_SUCCESS) {
+            RLOG_E("xrTarget: AHB props failed"); destroyXrTargetResources(); return false;
+        }
+
+        VkExternalMemoryImageCreateInfo emi{};
+        emi.sType=VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        emi.handleTypes=VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+        VkImageCreateInfo ii{};
+        ii.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; ii.pNext=&emi;
+        ii.imageType=VK_IMAGE_TYPE_2D; ii.format=VK_FORMAT_R8G8B8A8_UNORM;
+        ii.extent={w,h,1}; ii.mipLevels=1; ii.arrayLayers=1; ii.samples=VK_SAMPLE_COUNT_1_BIT;
+        ii.tiling=VK_IMAGE_TILING_OPTIMAL;
+        ii.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+        ii.sharingMode=VK_SHARING_MODE_EXCLUSIVE; ii.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+        if (vk_.CreateImage(device,&ii,nullptr,&target.img)!=VK_SUCCESS) { RLOG_E("xrTarget: image"); destroyXrTargetResources(); return false; }
+
+        VkImportAndroidHardwareBufferInfoANDROID imp{};
+        imp.sType=VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID; imp.buffer=ahb;
+        VkMemoryDedicatedAllocateInfo ded{};
+        ded.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO; ded.pNext=&imp; ded.image=target.img;
+        uint32_t idx=0; while (idx<32 && !(props.memoryTypeBits&(1u<<idx))) idx++;
+        if (idx>=32) { RLOG_E("xrTarget: no compatible memory type (bits=0x%x)", props.memoryTypeBits); destroyXrTargetResources(); return false; }
+        VkMemoryAllocateInfo mai{};
+        mai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; mai.pNext=&ded;
+        mai.allocationSize=props.allocationSize; mai.memoryTypeIndex=idx;
+        if (vk_.AllocateMemory(device,&mai,nullptr,&target.mem)!=VK_SUCCESS ||
+            vk_.BindImageMemory(device,target.img,target.mem,0)!=VK_SUCCESS) {
+            RLOG_E("xrTarget: memory"); destroyXrTargetResources(); return false;
+        }
+
+        VkImageViewCreateInfo vi{};
+        vi.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vi.image=target.img; vi.viewType=VK_IMAGE_VIEW_TYPE_2D; vi.format=VK_FORMAT_R8G8B8A8_UNORM;
+        vi.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+        if (vk_.CreateImageView(device,&vi,nullptr,&target.view)!=VK_SUCCESS) { RLOG_E("xrTarget: view"); destroyXrTargetResources(); return false; }
+
+        VkFramebufferCreateInfo fi{};
+        fi.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fi.renderPass=xrRp; fi.attachmentCount=1; fi.pAttachments=&target.view;
+        fi.width=w; fi.height=h; fi.layers=1;
+        if (vk_.CreateFramebuffer(device,&fi,nullptr,&target.fb)!=VK_SUCCESS) { RLOG_E("xrTarget: framebuffer"); destroyXrTargetResources(); return false; }
+    }
 
     xrExt={w,h};
-    RLOG("xrTarget: created %ux%u ahb=%p", w, h, (void*)xrAhb);
+    xrSlot=0;
+    xrSerial=0;
+    RLOG("xrTarget: created %u x %ux%u exchange=%p", xrgame::XrFrameExchange::kSlots, w, h, (void*)xrExchange);
     return true;
 }
 
 void VulkanRendererContext::destroyXrTargetResources() {
-    if (xrFb  !=VK_NULL_HANDLE){vk_.DestroyFramebuffer(device,xrFb,nullptr); xrFb=VK_NULL_HANDLE;}
-    if (xrRp  !=VK_NULL_HANDLE){vk_.DestroyRenderPass(device,xrRp,nullptr);  xrRp=VK_NULL_HANDLE;}
-    if (xrView!=VK_NULL_HANDLE){vk_.DestroyImageView(device,xrView,nullptr); xrView=VK_NULL_HANDLE;}
-    if (xrImg !=VK_NULL_HANDLE){vk_.DestroyImage(device,xrImg,nullptr);      xrImg=VK_NULL_HANDLE;}
-    if (xrMem !=VK_NULL_HANDLE){vk_.FreeMemory(device,xrMem,nullptr);        xrMem=VK_NULL_HANDLE;}
-    if (xrAhb){AHardwareBuffer_release(xrAhb); xrAhb=nullptr;}
+    for (XrSlot& target : xrSlots) {
+        if (target.fb  !=VK_NULL_HANDLE) vk_.DestroyFramebuffer(device,target.fb,nullptr);
+        if (target.view!=VK_NULL_HANDLE) vk_.DestroyImageView(device,target.view,nullptr);
+        if (target.img !=VK_NULL_HANDLE) vk_.DestroyImage(device,target.img,nullptr);
+        if (target.mem !=VK_NULL_HANDLE) vk_.FreeMemory(device,target.mem,nullptr);
+        target = {};
+    }
+    if (xrRp!=VK_NULL_HANDLE){vk_.DestroyRenderPass(device,xrRp,nullptr); xrRp=VK_NULL_HANDLE;}
+    // The session may still hold the buffers; the last reference frees them.
+    if (xrExchange){xrgame::Release(xrExchange); xrExchange=nullptr;}
     xrExt={0,0};
+}
+
+// A slot the session does not hold and that is not the latest frame, oldest write first.
+uint32_t VulkanRendererContext::chooseXrSlot() {
+    constexpr uint32_t kSlots = xrgame::XrFrameExchange::kSlots;
+    // Sequentially consistent with the session's hold-then-recheck, so either it sees a newer
+    // frame and lets the slot go, or this sees its hold.
+    const uint32_t held = xrExchange->held.load(std::memory_order_seq_cst);
+    const uint64_t latest = xrExchange->latest.load(std::memory_order_seq_cst);
+    const uint32_t latestSlot = latest != 0 ? xrgame::XrFrameExchange::Slot(latest) : kSlots;
+    for (uint32_t step=1; step<=kSlots; step++) {
+        const uint32_t slot=(xrSlot+step)%kSlots;
+        if (slot!=latestSlot && !(held & (1u<<slot))) return slot;
+    }
+    if (xrSlotStarves++ % 300 == 0) RLOG("xrTarget: every slot held (held=0x%x), retrying (%" PRIu64 " times)", held, xrSlotStarves);
+    return kSlots;
+}
+
+// After the frame's fence: the slot is complete, so the session may read it from now on.
+void VulkanRendererContext::publishXrFrame() {
+    xrExchange->content[xrSlot].store(xrFrameContent, std::memory_order_relaxed);
+    xrExchange->completedNs[xrSlot].store(MonotonicNs(), std::memory_order_relaxed);
+    xrExchange->latest.store(xrgame::XrFrameExchange::Pack(++xrSerial, xrSlot), std::memory_order_seq_cst);
 }
 
 int64_t VulkanRendererContext::enableXrTarget() {
@@ -1079,8 +1136,10 @@ int64_t VulkanRendererContext::enableXrTarget() {
     std::lock_guard<std::mutex> lk(renderMutex);
     if (device==VK_NULL_HANDLE) return 0;
     // A surface resize may still be queued for the render loop; process it here so the
-    // target is sized from the current swapchain extent, not the stale one.
-    if (fbResized.load()) {
+    // target is sized from the current swapchain extent, not the stale one. Not while the
+    // surface is detached: surfaceChanged arrives before the asynchronous reattach, and a
+    // swapchain on the released surface crashes the loader; reattach recreates it instead.
+    if (fbResized.load() && !surfaceDetached.load() && surface != VK_NULL_HANDLE) {
         for (auto& f:inFlightFences) xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&f,VK_TRUE,UINT64_MAX); });
         cleanupSwapchain();
         try {
@@ -1100,14 +1159,14 @@ int64_t VulkanRendererContext::enableXrTarget() {
     float fit = std::min({qw/(float)w, qh/(float)h, 1.f});
     w = std::max(16u, (uint32_t)((float)w*fit) & ~1u);
     h = std::max(16u, (uint32_t)((float)h*fit) & ~1u);
-    if (xrTargetActive.load() && xrAhb!=nullptr && xrExt.width==w && xrExt.height==h)
-        return (int64_t)(intptr_t)xrAhb;
+    if (xrTargetActive.load() && xrExchange!=nullptr && xrExt.width==w && xrExt.height==h)
+        return (int64_t)(intptr_t)xrExchange;
     xrProfileCall("host.vulkan.device_idle", [&] { return vk_.DeviceWaitIdle(device); });
-    if (xrAhb!=nullptr) { xrTargetActive.store(false); destroyXrTargetResources(); }
+    if (xrExchange!=nullptr) { xrTargetActive.store(false); destroyXrTargetResources(); }
     if (!createXrTargetResources(w,h)) return 0;
     xrTargetActive.store(true);
     needsRender.store(true); dirtyCV.notify_one();
-    return (int64_t)(intptr_t)xrAhb;
+    return (int64_t)(intptr_t)xrExchange;
 }
 
 int64_t VulkanRendererContext::xrTargetExtentPacked() {
@@ -1118,7 +1177,7 @@ int64_t VulkanRendererContext::xrTargetExtentPacked() {
 void VulkanRendererContext::disableXrTarget() {
     std::unique_lock<std::shared_mutex> fl(frameMutex);
     std::lock_guard<std::mutex> lk(renderMutex);
-    if (!xrTargetActive.load() && xrAhb==nullptr) return;
+    if (!xrTargetActive.load() && xrExchange==nullptr) return;
     if (device!=VK_NULL_HANDLE) xrProfileCall("host.vulkan.device_idle", [&] { return vk_.DeviceWaitIdle(device); });
     xrTargetActive.store(false);
     destroyXrTargetResources();
@@ -1129,9 +1188,12 @@ void VulkanRendererContext::renderLoop() {
 
     while (isRunning) {
         { std::unique_lock<std::mutex> lk(dirtyMutex);
-          dirtyCV.wait(lk,[this]{
+          const auto ready = [this]{
               return !isRunning || presentCopies.hasWork() ||
-                  (!surfaceDetached.load() && (needsRender.load() || fbResized.load() || cursorMoved.load())); }); }
+                  (!surfaceDetached.load() && (needsRender.load() || fbResized.load() || cursorMoved.load())); };
+          // The immersive session held every XR slot: try the frame again shortly.
+          if (xrSlotStarved) { if (!dirtyCV.wait_for(lk, std::chrono::milliseconds(2), ready)) needsRender.store(true); }
+          else dirtyCV.wait(lk, ready); }
         if (!isRunning) break;
 
         // Only this thread frees command buffers; the fence waiter has no pool access.
@@ -1198,7 +1260,14 @@ ok=true;}catch(...){}
     }
 
     if (currentFrame >= cmdBufs.size() || cmdBufs[currentFrame] == VK_NULL_HANDLE) return;
-    bool toXr = xrTargetActive.load() && xrFb!=VK_NULL_HANDLE;
+    bool toXr = xrTargetActive.load() && xrExchange!=nullptr;
+    xrSlotStarved = false;
+    if (toXr) {
+        // Never overwrite a slot the session reads and never wait for it: skip and retry instead.
+        const uint32_t slot = chooseXrSlot();
+        if (slot >= xrgame::XrFrameExchange::kSlots) { xrSlotStarved = true; return; }
+        xrSlot = slot;
+    }
     bool currentFenceWaited = false;
     if (toXr) {
         for (auto& f:inFlightFences) {
@@ -1334,6 +1403,7 @@ ok=true;}catch(...){}
     vk_.ResetCommandBuffer(cmdBufs[currentFrame],0);
 
     float ox,oy,sx,sy,cw,ch;
+    uint64_t frameContent=0;
     short ptrX,ptrY,curHotX,curHotY,curW,curH; bool curVis;
     VkBuffer curUpload=VK_NULL_HANDLE; bool hasCurUpload=false;
 
@@ -1353,6 +1423,7 @@ ok=true;}catch(...){}
 
         ox=sceneOffsetX; oy=sceneOffsetY; sx=sceneScaleX; sy=sceneScaleY;
         cw=(float)containerWidth; ch=(float)containerHeight;
+        frameContent=xrContentUpdates.load(std::memory_order_relaxed);
         ptrX=(short)pointerX.load(); ptrY=(short)pointerY.load();
         curHotX=cursorHotX; curHotY=cursorHotY; curW=cursorTexW; curH=cursorTexH;
         curVis=cursorVisible.load();
@@ -1391,6 +1462,7 @@ ok=true;}catch(...){}
 
     VkRenderPass finalPass = compositeTarget ? compositePass : renderPass;
     VkFramebuffer finalFb = compositeTarget ? compositeTarget->framebuffer : swapchainFBs[imgIdx];
+    if (toXr) xrFrameContent = frameContent;
 
     recordCmdBuf(cmdBufs[currentFrame], finalFb, finalPass, frameDraws,
         frameAhbTransitions, framePreUpload, framePostUpload,
@@ -1506,10 +1578,9 @@ ok=true;}catch(...){}
             res=xrProfileCall("host.render.queue_present", [&] { return vk_.QueuePresentKHR(graphicsQueue,&pi); });
             if (res==VK_ERROR_OUT_OF_DATE_KHR||res==VK_ERROR_SURFACE_LOST_KHR) fbResized.store(true);
         } else {
-            // The XR session samples xrAhb from its own GL context with no fence handoff;
-            // blocking here means the buffer is fully written whenever this thread is idle,
-            // leaving only the active write window unsynchronized (a tear, not stale data).
-            xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&inFlightFences[currentFrame],VK_TRUE,UINT64_MAX); });
+            // The slot is complete once this fence signals; only then does the session see it.
+            if (xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&inFlightFences[currentFrame],VK_TRUE,UINT64_MAX); })==VK_SUCCESS)
+                publishXrFrame();
         }
         currentFrame=(currentFrame+1)%MAX_FRAMES_IN_FLIGHT;
         return;
@@ -1594,7 +1665,8 @@ ok=true;}catch(...){}
             fbResized.store(true);
         }
     } else {
-        xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX); });
+        if (xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX); }) == VK_SUCCESS)
+            publishXrFrame();
     }
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -1713,6 +1785,7 @@ void VulkanRendererContext::updateWindowContent(int64_t id, void* px, short w, s
         auto it=texMap.find(id);
         if (it!=texMap.end()) it->second.dirty=true;
     }
+    xrContentUpdates.fetch_add(1, std::memory_order_relaxed);
     needsRender.store(true); dirtyCV.notify_one();
 }
 
@@ -1867,6 +1940,7 @@ bool VulkanRendererContext::submitWindowCopy(int64_t id, AHardwareBuffer* ahb,
         if (traceFrame) __android_log_print(ANDROID_LOG_DEBUG, "XRGamePresentTrace",
             "event=copy_submitted frame=%" PRIu64 " mono_ns=%" PRIu64 " drawable=%" PRId64,
             traceFrame, waitStartedNs, id);
+        xrContentUpdates.fetch_add(1, std::memory_order_relaxed);
         needsRender.store(true);
         dirtyCV.notify_one();
         return true;
@@ -1918,6 +1992,7 @@ bool VulkanRendererContext::submitWindowCopy(int64_t id, AHardwareBuffer* ahb,
         timing = {};
         timing.lastNs = endedNs;
     }
+    xrContentUpdates.fetch_add(1, std::memory_order_relaxed);
     needsRender.store(true);
     dirtyCV.notify_one();
     return true;
@@ -2007,6 +2082,7 @@ bool VulkanRendererContext::sampleWindowContentAHB(int64_t id, AHardwareBuffer* 
             "event=sample_ready frame=%" PRIu64 " mono_ns=%" PRIu64 " drawable=%" PRId64
             " ahb=%p width=%d height=%d", traceFrame, (uint64_t)ns, id, (void*)ahb, dst.w, dst.h);
     }
+    xrContentUpdates.fetch_add(1, std::memory_order_relaxed);
     needsRender.store(true); dirtyCV.notify_one();
     return true;
 }
@@ -2064,6 +2140,7 @@ void VulkanRendererContext::updateWindowContentAHB(int64_t id, AHardwareBuffer* 
         wt.needsTransition  = true;
         src.needsTransition = false;
     }
+    xrContentUpdates.fetch_add(1, std::memory_order_relaxed);
     needsRender.store(true); dirtyCV.notify_one();
 }
 

@@ -399,12 +399,19 @@ object ContainerUtils {
             xrPassthrough = container.getExtra(
                 app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_PASSTHROUGH_ENABLED, "false",
             ).toBoolean(),
+            xrCurvedScreen = container.getExtra(
+                app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_CURVED_SCREEN, "false",
+            ).toBoolean(),
+            xrDisplayMode = container.getExtra(XR_DISPLAY_MODE_EXTRA, ""),
             openCompositeEnabled = container.getExtra("windowsVrOpenCompositeEnabled", "false").toBoolean(),
             xrRenderScaleRecommended = container.getExtra(
                 XrResolutionRecommendation.EXTRA_MODE, XrResolutionRecommendation.MODE_RECOMMENDED,
             ) == XrResolutionRecommendation.MODE_RECOMMENDED,
         )
     }
+
+    /** XRGame launch panel display mode, see [app.gamenative.xrgame.XrGameLaunchMode]. */
+    private const val XR_DISPLAY_MODE_EXTRA = "xrDisplayMode"
 
     fun applyToContainer(context: Context, appId: String, containerData: ContainerData) {
         val container = getContainer(context, appId)
@@ -606,7 +613,12 @@ object ContainerUtils {
                 app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_PASSTHROUGH_ENABLED,
                 containerData.xrPassthrough.toString(),
             )
+            container.putExtra(
+                app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_CURVED_SCREEN,
+                containerData.xrCurvedScreen.toString(),
+            )
         }
+        if (containerData.xrDisplayMode.isNotEmpty()) container.putExtra(XR_DISPLAY_MODE_EXTRA, containerData.xrDisplayMode)
         // XRGame's display modes are exclusive; the upstream XR builds keep their own toggle.
         container.setLaunchImmersiveMode(
             containerData.launchImmersiveMode && !(app.gamenative.BuildConfig.XRGAME &&

@@ -528,7 +528,12 @@ fun XServerScreen(
                 audioDriver = container.audioDriver,
                 dxwrapper = container.dxWrapper,
                 dxwrapperConfig = DXVKHelper.parseConfig(container.dxWrapperConfig),
-                screenSize = container.screenSize,
+                // XR sessions cap the game at 1920x1080 (the launch panel saves it capped too).
+                screenSize = if (immersiveHooks != null) {
+                    app.gamenative.xrgame.XrGameResolution.capped(container.screenSize)
+                } else {
+                    container.screenSize
+                },
             ),
         )
     }
@@ -607,6 +612,8 @@ fun XServerScreen(
         mutableStateOf(ShooterModeConfig.fromJson(container.getShooterConfig()))
     }
     fun shouldShowMouseCursor(): Boolean {
+        // XRGame shows the pointer only while a real mouse is connected (hot-plug updates it below).
+        if (BuildConfig.XRGAME) return !container.isDisableMouseInput && app.gamenative.xrgame.XrGamePhysicalMouse.connected()
         return !container.isDisableMouseInput &&
             (!container.isTouchscreenMode || currentGestureConfig.showCursorInTouchscreenMode)
     }
@@ -1201,7 +1208,8 @@ fun XServerScreen(
     // Every display needs a focused text editor, including the handheld screen.
     // The receiver waits for window focus when this request closes an overlay.
     val showSoftKeyboard: (View, String) -> Unit = { anchor, analyticsEvent ->
-        anchor.post {
+        val xrKeyboard = immersiveHooks?.showKeyboard
+        if (xrKeyboard != null) xrKeyboard() else anchor.post {
             if (anchor.windowToken != null) {
                 if (PrefManager.usageAnalyticsEnabled) PostHog.capture(event = analyticsEvent)
                 imeInputReceiver?.showKeyboard()
@@ -1509,6 +1517,7 @@ fun XServerScreen(
             override fun onInputDeviceAdded(deviceId: Int) {
                 ControllerManager.getInstance().onDeviceConnected(deviceId)
                 scanForExternalDevices()
+                if (BuildConfig.XRGAME) applyMouseCursorVisibility()
                 val device = InputDevice.getDevice(deviceId) ?: return
                 evaluateDevice(device)
             }
@@ -1517,6 +1526,7 @@ fun XServerScreen(
                 physicalControllerHandler?.onInputDeviceRemoved(deviceId)
                 ControllerManager.getInstance().onDeviceDisconnected(deviceId)
                 scanForExternalDevices()
+                if (BuildConfig.XRGAME) applyMouseCursorVisibility()
             }
 
             override fun onInputDeviceChanged(deviceId: Int) {

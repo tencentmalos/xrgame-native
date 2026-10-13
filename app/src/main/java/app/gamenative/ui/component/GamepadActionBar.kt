@@ -13,6 +13,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -74,7 +75,8 @@ private fun GamepadButtonHint(
     modifier: Modifier = Modifier,
 ) {
     val clickableModifier = if (action.onClick != null) {
-        modifier.clickable(onClick = action.onClick)
+        // Tappable, but never a D-pad stop: focus stays on the content above.
+        modifier.focusProperties { canFocus = false }.clickable(onClick = action.onClick)
     } else {
         modifier
     }

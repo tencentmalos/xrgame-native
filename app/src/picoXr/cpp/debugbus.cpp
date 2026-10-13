@@ -125,7 +125,8 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
             {"api_capture", "GFXReconstruct capture; api_capture [status|start|stop] [container]"},
             {"vr_tuning", "Windows VR pacing; vr_tuning [pacing=off|auto|half] [start=<us>] [predict=0|1]"},
             {"vr_upscale", "Windows VR reconstruction; vr_upscale [filter=off|fsr1|sgsr] [sharp=0..100] "
-                           "[fov=off|fixed|eye] [level=low|balanced|high] [out=50..100] [debug=0|1]"},
+                           "[fov=off|fixed|eye] [level=low|balanced|high] [out=50..100] "
+                           "[eye=recommended|high|maximum] [fg=off|2x|3x|4x] [flow=25..100] [debug=0|1]"},
             {"vr_grip", "Windows VR controller grip correction; vr_grip [pitch=<deg>] [yaw=<deg>] [roll=<deg>] "
                         "[x=<mm>] [y=<mm>] [z=<mm>] [reset=1]"},
             {"launch", "Start a Steam game like its Play button; launch <steamAppId> [load=<save>]|status"},
@@ -136,6 +137,7 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
             {"vr_hud", "Immersive performance HUD (Vulkan composite); vr_hud [status|on|off]"},
             {"game_state", "Scene readiness from the running game's Source 2 console log (-condebug)"},
             {"vr_oc", "OpenComposite full-texture copy A/B switch; vr_oc [full_copy=0|1]"},
+            {"vr_keyboard", "XR on-screen keyboard; vr_keyboard [status|show|hide]"},
         };
         for (const auto& provided : providers) {
             const char* command = provided.first;

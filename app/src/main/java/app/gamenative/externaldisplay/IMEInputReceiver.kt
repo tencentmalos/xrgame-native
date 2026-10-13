@@ -30,6 +30,83 @@ class IMEInputReceiver(
             ')', '!', '@', '#', '$', '%', '^', '&', '*', '(',
             '_', '+', '{', '}', '|', ':', '"', '<', '>', '?', '~',
         )
+
+        /** Presses and releases one key in the guest. */
+        fun pressKey(xServer: XServer, keyCode: XKeycode) {
+            xServer.injectKeyPress(keyCode, 0)
+            xServer.injectKeyRelease(keyCode)
+        }
+
+        /** Types [char] as the US key that produces it; false when none does. */
+        fun typeCharacter(xServer: XServer, char: Char): Boolean {
+            val keyDispatch = charToKeyDispatch(char) ?: return false
+            val metaState = if (keyDispatch.requiresShift) KeyEvent.META_SHIFT_ON else 0
+            xServer.keyboard.onVirtualKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, keyDispatch.keyCode, 0, metaState))
+            xServer.keyboard.onVirtualKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_UP, keyDispatch.keyCode, 0, metaState))
+            return true
+        }
+
+        private fun charToKeyDispatch(char: Char): KeyDispatch? {
+            val isUppercaseLetter = char in 'A'..'Z'
+            val normalizedChar = if (isUppercaseLetter) char.lowercaseChar() else char
+
+            val keyCode = when (normalizedChar) {
+                'a' -> KeyEvent.KEYCODE_A
+                'b' -> KeyEvent.KEYCODE_B
+                'c' -> KeyEvent.KEYCODE_C
+                'd' -> KeyEvent.KEYCODE_D
+                'e' -> KeyEvent.KEYCODE_E
+                'f' -> KeyEvent.KEYCODE_F
+                'g' -> KeyEvent.KEYCODE_G
+                'h' -> KeyEvent.KEYCODE_H
+                'i' -> KeyEvent.KEYCODE_I
+                'j' -> KeyEvent.KEYCODE_J
+                'k' -> KeyEvent.KEYCODE_K
+                'l' -> KeyEvent.KEYCODE_L
+                'm' -> KeyEvent.KEYCODE_M
+                'n' -> KeyEvent.KEYCODE_N
+                'o' -> KeyEvent.KEYCODE_O
+                'p' -> KeyEvent.KEYCODE_P
+                'q' -> KeyEvent.KEYCODE_Q
+                'r' -> KeyEvent.KEYCODE_R
+                's' -> KeyEvent.KEYCODE_S
+                't' -> KeyEvent.KEYCODE_T
+                'u' -> KeyEvent.KEYCODE_U
+                'v' -> KeyEvent.KEYCODE_V
+                'w' -> KeyEvent.KEYCODE_W
+                'x' -> KeyEvent.KEYCODE_X
+                'y' -> KeyEvent.KEYCODE_Y
+                'z' -> KeyEvent.KEYCODE_Z
+                '0', ')' -> KeyEvent.KEYCODE_0
+                '1', '!' -> KeyEvent.KEYCODE_1
+                '2', '@' -> KeyEvent.KEYCODE_2
+                '3', '#' -> KeyEvent.KEYCODE_3
+                '4', '$' -> KeyEvent.KEYCODE_4
+                '5', '%' -> KeyEvent.KEYCODE_5
+                '6', '^' -> KeyEvent.KEYCODE_6
+                '7', '&' -> KeyEvent.KEYCODE_7
+                '8', '*' -> KeyEvent.KEYCODE_8
+                '9', '(' -> KeyEvent.KEYCODE_9
+                ' ' -> KeyEvent.KEYCODE_SPACE
+                '\n' -> KeyEvent.KEYCODE_ENTER
+                '-', '_' -> KeyEvent.KEYCODE_MINUS
+                '=', '+' -> KeyEvent.KEYCODE_EQUALS
+                '[', '{' -> KeyEvent.KEYCODE_LEFT_BRACKET
+                ']', '}' -> KeyEvent.KEYCODE_RIGHT_BRACKET
+                '\\', '|' -> KeyEvent.KEYCODE_BACKSLASH
+                ';', ':' -> KeyEvent.KEYCODE_SEMICOLON
+                '\'', '"' -> KeyEvent.KEYCODE_APOSTROPHE
+                ',', '<' -> KeyEvent.KEYCODE_COMMA
+                '.', '>' -> KeyEvent.KEYCODE_PERIOD
+                '/', '?' -> KeyEvent.KEYCODE_SLASH
+                '`', '~' -> KeyEvent.KEYCODE_GRAVE
+                else -> null
+            } ?: return null
+
+            val requiresShift = isUppercaseLetter || char in SHIFTED_SYMBOLS
+
+            return KeyDispatch(keyCode = keyCode, requiresShift = requiresShift)
+        }
     }
 
     var isKeyboardRequested = false
@@ -141,10 +218,7 @@ class IMEInputReceiver(
         super.onDetachedFromWindow()
     }
 
-    private fun sendKey(keyCode: XKeycode) {
-        xServer.injectKeyPress(keyCode, 0)
-        xServer.injectKeyRelease(keyCode)
-    }
+    private fun sendKey(keyCode: XKeycode) = pressKey(xServer, keyCode)
 
     private data class KeyDispatch(
         val keyCode: Int,
@@ -152,95 +226,10 @@ class IMEInputReceiver(
     )
 
     private fun sendCharacterToGame(char: Char) {
-        val keyDispatch = charToKeyDispatch(char)
-        if (keyDispatch != null) {
-            val metaState = if (keyDispatch.requiresShift) KeyEvent.META_SHIFT_ON else 0
-            val downEvent = KeyEvent(
-                0L,
-                0L,
-                KeyEvent.ACTION_DOWN,
-                keyDispatch.keyCode,
-                0,
-                metaState,
-            )
-            xServer.keyboard.onVirtualKeyEvent(downEvent)
-
-            val upEvent = KeyEvent(
-                0L,
-                0L,
-                KeyEvent.ACTION_UP,
-                keyDispatch.keyCode,
-                0,
-                metaState,
-            )
-            xServer.keyboard.onVirtualKeyEvent(upEvent)
-
-        } else {
+        if (!typeCharacter(xServer, char)) {
             // Do not put user-entered text in logcat.
             Timber.w("IMEInputReceiver: Character is outside the guest keyboard mapping")
         }
-    }
-
-    private fun charToKeyDispatch(char: Char): KeyDispatch? {
-        val isUppercaseLetter = char in 'A'..'Z'
-        val normalizedChar = if (isUppercaseLetter) char.lowercaseChar() else char
-
-        val keyCode = when (normalizedChar) {
-            'a' -> KeyEvent.KEYCODE_A
-            'b' -> KeyEvent.KEYCODE_B
-            'c' -> KeyEvent.KEYCODE_C
-            'd' -> KeyEvent.KEYCODE_D
-            'e' -> KeyEvent.KEYCODE_E
-            'f' -> KeyEvent.KEYCODE_F
-            'g' -> KeyEvent.KEYCODE_G
-            'h' -> KeyEvent.KEYCODE_H
-            'i' -> KeyEvent.KEYCODE_I
-            'j' -> KeyEvent.KEYCODE_J
-            'k' -> KeyEvent.KEYCODE_K
-            'l' -> KeyEvent.KEYCODE_L
-            'm' -> KeyEvent.KEYCODE_M
-            'n' -> KeyEvent.KEYCODE_N
-            'o' -> KeyEvent.KEYCODE_O
-            'p' -> KeyEvent.KEYCODE_P
-            'q' -> KeyEvent.KEYCODE_Q
-            'r' -> KeyEvent.KEYCODE_R
-            's' -> KeyEvent.KEYCODE_S
-            't' -> KeyEvent.KEYCODE_T
-            'u' -> KeyEvent.KEYCODE_U
-            'v' -> KeyEvent.KEYCODE_V
-            'w' -> KeyEvent.KEYCODE_W
-            'x' -> KeyEvent.KEYCODE_X
-            'y' -> KeyEvent.KEYCODE_Y
-            'z' -> KeyEvent.KEYCODE_Z
-            '0', ')' -> KeyEvent.KEYCODE_0
-            '1', '!' -> KeyEvent.KEYCODE_1
-            '2', '@' -> KeyEvent.KEYCODE_2
-            '3', '#' -> KeyEvent.KEYCODE_3
-            '4', '$' -> KeyEvent.KEYCODE_4
-            '5', '%' -> KeyEvent.KEYCODE_5
-            '6', '^' -> KeyEvent.KEYCODE_6
-            '7', '&' -> KeyEvent.KEYCODE_7
-            '8', '*' -> KeyEvent.KEYCODE_8
-            '9', '(' -> KeyEvent.KEYCODE_9
-            ' ' -> KeyEvent.KEYCODE_SPACE
-            '\n' -> KeyEvent.KEYCODE_ENTER
-            '-', '_' -> KeyEvent.KEYCODE_MINUS
-            '=', '+' -> KeyEvent.KEYCODE_EQUALS
-            '[', '{' -> KeyEvent.KEYCODE_LEFT_BRACKET
-            ']', '}' -> KeyEvent.KEYCODE_RIGHT_BRACKET
-            '\\', '|' -> KeyEvent.KEYCODE_BACKSLASH
-            ';', ':' -> KeyEvent.KEYCODE_SEMICOLON
-            '\'', '"' -> KeyEvent.KEYCODE_APOSTROPHE
-            ',', '<' -> KeyEvent.KEYCODE_COMMA
-            '.', '>' -> KeyEvent.KEYCODE_PERIOD
-            '/', '?' -> KeyEvent.KEYCODE_SLASH
-            '`', '~' -> KeyEvent.KEYCODE_GRAVE
-            else -> null
-        } ?: return null
-
-        val requiresShift = isUppercaseLetter || char in SHIFTED_SYMBOLS
-
-        return KeyDispatch(keyCode = keyCode, requiresShift = requiresShift)
     }
 
     private fun scheduleShow() {

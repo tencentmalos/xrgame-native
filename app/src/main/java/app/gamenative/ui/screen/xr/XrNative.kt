@@ -102,6 +102,21 @@ object XrNative {
     /** The input driving the game's pad (XR controllers or a physical gamepad), shown as INPUT. */
     external fun nativeSetPerfHudInput(label: String)
 
+    /** Shows or hides the XR keyboard (xr_keyboard.cpp); the panel can also close itself. */
+    external fun nativeSetXrKeyboardVisible(visible: Boolean)
+
+    /**
+     * Text typed on the XR keyboard since the last call, or null. U+E000 is Backspace, U+E001
+     * Enter and U+E002 means the keyboard closed.
+     */
+    external fun nativeDrainXrKeyboard(): String?
+
+    /** A physical gamepad's input for the open XR keyboard (XrKeyboardPad in xr_keyboard.h). */
+    external fun nativeXrKeyboardPad(action: Int)
+
+    /** DebugBus vr_keyboard status JSON; never contains typed text. */
+    external fun nativeXrKeyboardStatus(): String
+
     /** One-line JSON state of the performance HUD (DebugBus vr_hud). */
     external fun nativePerfHudStatus(): String
 
@@ -123,10 +138,28 @@ object XrNative {
     /**
      * Windows VR reconstruction on the Vulkan composite, applied from the next frame:
      * [filter] 0 off / 1 FSR1 / 2 SGSR1, [sharpness] 0..100, [foveation] 0 off / 1 fixed /
-     * 2 eye tracked, [level] 0 low / 1 balanced / 2 high, [outputPercent] 50..100 of the runtime's
-     * recommended eye size, [debug] tints by fragment density.
+     * 2 eye tracked, [level] 0 low / 1 balanced / 2 high, [outputPercent] 50..100 of the eye size of
+     * [eyeBuffer] (0 recommended / 1 halfway to the limit / 2 the limit), [debug] tints by
+     * fragment density. [frameGeneration] is the big screen's largest output multiple of the game
+     * frame rate (1 off, 2..4), [flowPercent] the optical flow resolution (25..100).
      */
-    external fun nativeSetUpscale(filter: Int, sharpness: Int, foveation: Int, level: Int, outputPercent: Int, debug: Boolean)
+    external fun nativeSetUpscale(
+        filter: Int,
+        sharpness: Int,
+        foveation: Int,
+        level: Int,
+        outputPercent: Int,
+        eyeBuffer: Int,
+        frameGeneration: Int,
+        flowPercent: Int,
+        debug: Boolean,
+    )
+
+    /**
+     * The headset's eye views once a session located them: recommended width/height, largest
+     * width/height, left eye FOV tangents left/right/up/down; null before that.
+     */
+    external fun nativeXrDisplayInfo(): FloatArray?
 
     /**
      * Hands off one PixelCopy'd frame of the game's actual rendered output (ARGB_8888) to be
@@ -160,6 +193,9 @@ object XrNative {
      */
     external fun nativeSetPassthroughEnabled(handle: Long, enabled: Boolean)
 
+    /** The 2D big screen as a cylinder around the player; flat when the runtime lacks the layer. */
+    external fun nativeSetCurvedScreen(handle: Long, curved: Boolean)
+
     /**
      * Direct-render path (see DirectGLBridge) — hands the native session the same
      * [HardwareBuffer] GLRenderer is writing the game's frame into on its own thread, so it can
@@ -174,4 +210,11 @@ object XrNative {
      * involved at all. See DirectVulkanBridge/VulkanXrFrameBridge. 0 drops the shared frame.
      */
     external fun nativeSetSharedGameBufferPtr(handle: Long, ahbPtr: Long)
+
+    /**
+     * VulkanRenderer's scene target for the big screen: exchangePtr is its native
+     * xrgame::XrFrameExchange* (a ring of AHardwareBuffers with the latest completed frame, see
+     * xr_frame_exchange.h); the session keeps its own reference. 0 drops it.
+     */
+    external fun nativeSetSharedGameExchange(handle: Long, exchangePtr: Long)
 }

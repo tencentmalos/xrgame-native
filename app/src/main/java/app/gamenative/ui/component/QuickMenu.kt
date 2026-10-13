@@ -947,7 +947,35 @@ fun QuickMenu(
                                 modifier = Modifier.weight(1f),
                             ) {
                                 when (selectedTab) {
-                                    QuickMenuTab.HUD -> {
+                                    QuickMenuTab.HUD -> if (immersiveHooks != null) {
+                                        // XR sessions: the keyboard heads the tab the menu opens on, and takes
+                                        // its first focus, so it is one press away.
+                                        Column(Modifier.fillMaxSize()) {
+                                            QuickMenuItemRow(
+                                                item = controllerItems.first { it.id == QuickMenuAction.KEYBOARD },
+                                                isActive = false,
+                                                onClick = { if (onItemSelected(QuickMenuAction.KEYBOARD)) onDismiss() },
+                                                focusRequester = hudItemFocusRequester,
+                                            )
+                                            PerformanceHudQuickMenuTab(
+                                                isPerformanceHudEnabled = isPerformanceHudEnabled,
+                                                performanceHudConfig = performanceHudConfig,
+                                                fpsLimiterEnabled = fpsLimiterEnabled,
+                                                fpsLimiterTarget = fpsLimiterTarget,
+                                                fpsLimiterMax = fpsLimiterMax,
+                                                lsfgMultiplier = if (isLsfgAvailable) lsfgMultiplier else 0,
+                                                onTogglePerformanceHud = {
+                                                    onItemSelected(QuickMenuAction.PERFORMANCE_HUD)
+                                                },
+                                                onPerformanceHudConfigChanged = onPerformanceHudConfigChanged,
+                                                onFpsLimiterEnabledChanged = onFpsLimiterEnabledChanged,
+                                                onFpsLimiterChanged = onFpsLimiterChanged,
+                                                scrollState = hudScrollState,
+                                                focusRequester = remember { FocusRequester() },
+                                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                            )
+                                        }
+                                    } else {
                                         PerformanceHudQuickMenuTab(
                                             isPerformanceHudEnabled = isPerformanceHudEnabled,
                                             performanceHudConfig = performanceHudConfig,

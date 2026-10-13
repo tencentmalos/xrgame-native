@@ -148,7 +148,8 @@ public class Container {
     // Disable external mouse input
     private boolean disableMouseInput = false;
     // Touchscreen mode (defaults on for XR builds)
-    private boolean touchscreenMode = app.gamenative.BuildConfig.XR_BUILD;
+    // Headsets and XRGame default to direct touch, so a tap lands where it is instead of moving a pointer first.
+    private boolean touchscreenMode = app.gamenative.BuildConfig.XR_BUILD || app.gamenative.BuildConfig.XRGAME;
     // Shooter mode
     private boolean shooterMode = true;
     // Serialised JSON gesture configuration (used when touchscreenMode is true)

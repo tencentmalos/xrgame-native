@@ -699,6 +699,18 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // XRGame: a gamepad's A clicks the focused control (as DPAD_CENTER) without relying on the
+        // device's key character map supplying that fallback.
+        if (!eventDispatched && BuildConfig.XRGAME && event.keyCode == KeyEvent.KEYCODE_BUTTON_A &&
+            com.winlator.inputcontrols.ExternalController.isGameController(event.device)
+        ) {
+            return super.dispatchKeyEvent(
+                KeyEvent(
+                    event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount,
+                    event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
+                ),
+            )
+        }
         return if (!eventDispatched) super.dispatchKeyEvent(event) else true
     }
 

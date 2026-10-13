@@ -25,6 +25,9 @@ public class DXVKHelper {
 
         String content = "\"";
         String maxDeviceMemory = config.get("maxDeviceMemory");
+        // XRGame always bounds the reported video memory (2-8 GiB, 4 GiB when unset).
+        if (app.gamenative.BuildConfig.XRGAME)
+            maxDeviceMemory = String.valueOf(app.gamenative.xrgame.XrGameMemoryBudget.INSTANCE.effectiveMb(maxDeviceMemory));
         if (!maxDeviceMemory.isEmpty() && !maxDeviceMemory.equals("0")) {
             content += "dxgi.maxDeviceMemory = "+maxDeviceMemory+"\n";
             content += "dxgi.maxSharedMemory = "+maxDeviceMemory+"\n";

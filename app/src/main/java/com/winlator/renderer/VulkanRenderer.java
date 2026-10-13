@@ -176,9 +176,10 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     /**
-     * Points the immersive session at a persistent scene-sized AHardwareBuffer that the native
-     * compositor renders into instead of the (hidden) swapchain. Covers every present path,
-     * including SHM/CPU ones that never produce a per-window AHardwareBuffer.
+     * Points the immersive session at the native compositor's scene target, a ring of
+     * scene-sized AHardwareBuffers it renders into instead of the (hidden) swapchain
+     * (xr_frame_exchange.h). Covers every present path, including SHM/CPU ones that never produce
+     * a per-window AHardwareBuffer.
      */
     private void enableXrTargetLocked() {
         VulkanXrFrameBridge bridge = xrFrameBridge;
@@ -186,7 +187,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
         xrTargetAhbPtr = nativeEnableXrTarget(nativeHandle);
         if (xrTargetAhbPtr != 0) {
             long ext = nativeGetXrTargetExtent(nativeHandle);
-            bridge.onScanoutBuffer(xrTargetAhbPtr, (int)(ext >>> 32), (int)(ext & 0xFFFFFFFFL));
+            bridge.onSceneExchange(xrTargetAhbPtr, (int)(ext >>> 32), (int)(ext & 0xFFFFFFFFL));
         } else {
             android.util.Log.w("VulkanRenderer", "XR scene target unavailable, falling back to per-window forwarding");
         }

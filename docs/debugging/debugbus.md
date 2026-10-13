@@ -96,7 +96,7 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 | `quickmenu [status\|open\|close\|toggle]` | 在主线程开关沉浸式快捷菜单（最多等 1 秒），返回菜单、暂停、指针模式、立体（Windows VR）、直通渲染和 overlay 尺寸 |
 | `quickmenu exit` | 打开快捷菜单（如未打开），把焦点放到「退出」并像 A 键一样确认，游戏按菜单退出的原路径结束（退出云同步、OpenComposite DLL 还原）。立即返回 `exitRequested`，约 1 s 后执行；用 `launch status` 确认会话已结束。比连续 `nav down` 再按 A 可靠 |
 | `quickmenu nav <up\|down\|left\|right\|ok\|back\|next\|prev>` | 用 `input` 发一次菜单导航：左摇杆、A、B、RB、LB |
-| `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改快捷菜单的「性能 HUD」开关（`PrefManager.showFps`）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置 |
+| `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改状态层开关（`PrefManager.xrgameStatusLayer`，即启动面板的「状态层」，默认开；游戏画面里的 2D 性能 HUD 仍由 `PrefManager.showFps` 控制）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置 |
 
 `input` 在原生 `syncControllerInputs` 中与真实手柄合并，所以平面游戏的 XInput、快捷菜单导航、
 指针模式双击和 Windows VR（OpenXR action）都会收到。只在沉浸式 XR 会话运行时生效，到期自动释放。
@@ -120,7 +120,23 @@ CPU/GPU 温度、游戏眼图尺寸与重建方式。设备指标来自 Foundati
 只在 Vulkan 合成后端提供；GLES 后端不显示。开关跟随快捷菜单的「性能 HUD」。
 
 Windows VR 调参命令 `vr_tuning`、`vr_upscale`、`vr_grip` 的参数见 `help` 输出，
-验证记录见 [Swan XR 合成](../validation/swan-xr-composite-20261009.md)。
+验证记录见 [Swan XR 合成](../validation/swan-xr-composite-20261009.md)。`vr_upscale` 同样作用于
+2D 大屏的重建（滤镜、锐度、注视点）。`eye=` 是 VR 游戏的 XR 输出分辨率档位（shadPS4 同名设置：
+推荐 / 推荐到上限的中点 / 上限，`XRGAME_XR_EYE_BUFFER`），运行中可改；各档单眼尺寸来自上一次
+XR 会话记录的眼视图，启动面板据此显示。2D 大屏是交给 XR 合成器的 quad 图层，它能显示的上限是
+大屏在眼图上覆盖的像素：推荐眼尺寸约为 1:1，眼尺寸上限为有效上限（1.5 m 处 80 英寸约 1402 到
+2250 像素宽）。大屏图层按同一档位取 Wine 屏幕与该档覆盖宽度中的较大者，且不超过有效上限，在会话
+开始时确定；Wine 屏幕小于图层时才从 Wine 屏幕重建到图层。状态层分两栏显示：游戏图像
+（大屏为 WINE SCREEN，VR 为 GAME EYE）与 XR 输出（大屏为 XR LAYER，VR 为 EYE BUFFER）及滤镜。
+
+`fg=` 是 2D 大屏的插帧（Foundation `lossless_fg`，`XRGAME_XR_FRAMEGEN`），值为输出相对游戏帧率的
+最大倍数，实际倍数按游戏帧间隔与头显刷新周期取整；`flow=` 是光流分辨率百分比
+（`XRGAME_XR_FRAMEGEN_FLOW`，默认 50）。X server 把场景渲染进 4 块 AHB 组成的环
+（`xr_frame_exchange.h`），fence 完成后发布最新帧；渲染器不等会话，会话只读已完成且自己占用的
+slot。插帧在 Wine 屏幕尺寸上直接采样这些 slot（真实帧不拷贝），生成帧与真实帧走同一次重建
+（SGSR/FSR1），所以插帧在超分之前。只在游戏内容更新时推进插帧历史，仅光标变化的帧不算。状态层
+第一栏开启插帧后显示为 `GAME / FG Nx`：游戏帧率 / 大屏每秒显示的图像数；logcat 每 10 秒记一行
+`frame generation Nx, game … fps, shown … fps`。
 
 `async_copy` 首轮只覆盖无 wait/idle X fence、无偏移、未启用 Present 限帧的 AHB copy；
 直接采样及其他路径不纳入这次优化。picoXr 可在游戏详情 → 编辑容器 → 图形中切换

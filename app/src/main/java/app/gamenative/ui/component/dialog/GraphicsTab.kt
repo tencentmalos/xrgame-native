@@ -8,20 +8,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
-import app.gamenative.BuildConfig
-import app.gamenative.xrgame.XrGameApiCapture
-import app.gamenative.xrgame.XrGamePresentSettings
 import app.gamenative.ui.component.settings.SettingsListDropdown
-import app.gamenative.ui.screen.xr.windows.WindowsVrUpscale
-import app.gamenative.ui.screen.xr.windows.XrResolutionRecommendation
 import app.gamenative.ui.component.settings.SettingsListDropdownSearchable
 import app.gamenative.ui.component.settings.SettingsMultiListDropdown
 import app.gamenative.ui.theme.settingsTileColors
@@ -111,7 +104,7 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                     },
                 )
             }
-            DxWrapperSection(state, default)
+            DxWrapperSection(state)
             // Bionic: Exposed Vulkan Extensions (same UI as Vortek)
             SettingsMultiListDropdown(
                 colors = settingsTileColors(),
@@ -179,7 +172,41 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                     state.config.value = config.copy(graphicsDriverConfig = cfg.toString())
                 },
             )
-            XrDisplaySection(state, default)
+            if (app.gamenative.BuildConfig.XR_BUILD && !default) {
+                val xrRates = listOf(72, 90, 120)
+                SettingsListDropdown(
+                    colors = settingsTileColors(),
+                    title = { Text(text = stringResource(R.string.xr_refresh_rate)) },
+                    value = xrRates.indexOf(config.xrRefreshRate).coerceAtLeast(0),
+                    items = xrRates.map { "$it Hz" },
+                    onItemSelected = { idx ->
+                        state.config.value = config.copy(xrRefreshRate = xrRates[idx])
+                    },
+                )
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(text = stringResource(R.string.xr_render_scale))
+                    Slider(
+                        value = config.xrRenderScale.toFloat(),
+                        onValueChange = { newValue ->
+                            val stepped = ((newValue.roundToInt() + 2) / 5 * 5).coerceIn(25, 100)
+                            state.config.value = config.copy(xrRenderScale = stepped)
+                        },
+                        valueRange = 25f..100f,
+                    )
+                    Text(text = "${config.xrRenderScale}%")
+                }
+                if (config.windowsVrEnabled) {
+                    SettingsSwitch(
+                        colors = settingsTileColorsAlt(),
+                        title = { Text(text = stringResource(R.string.xr_open_composite_toggle)) },
+                        subtitle = { Text(text = stringResource(R.string.xr_open_composite_toggle_desc)) },
+                        state = config.openCompositeEnabled,
+                        onCheckedChange = { checked ->
+                            state.config.value = config.copy(openCompositeEnabled = checked)
+                        },
+                    )
+                }
+            }
             SettingsListDropdown(
                 colors = settingsTileColors(),
                 title = { Text(text = stringResource(R.string.renderer_present_modes)) },
@@ -297,7 +324,7 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                     state.config.value = config.copy(graphicsDriverVersion = selectedVersion)
                 },
             )
-            DxWrapperSection(state, default)
+            DxWrapperSection(state)
             // Vortek/Adreno specific settings
             run {
                 val driverType = StringUtils.parseIdentifier(state.graphicsDrivers.value.getOrNull(state.graphicsDriverIndex.value).orEmpty())
@@ -390,7 +417,7 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
     }
 }
 @Composable
-private fun DxWrapperSection(state: ContainerConfigState, default: Boolean) {
+private fun DxWrapperSection(state: ContainerConfigState) {
     val config = state.config.value
     SettingsListDropdown(
         colors = settingsTileColorsAlt(),
@@ -402,7 +429,6 @@ private fun DxWrapperSection(state: ContainerConfigState, default: Boolean) {
             state.config.value = config.copy(displayRenderer = StringUtils.parseIdentifier(state.displayRenderers[it]))
         },
     )
-    if (BuildConfig.XRGAME && !default) XrGamePresentSection(state)
     // Show color correction toggle only for ASurfaceRenderer (SurfaceFlinger)
     if (StringUtils.parseIdentifier(state.displayRenderers.getOrNull(state.displayRendererIndex.value).orEmpty()) == "surfaceflinger") {
         SettingsSwitch(
@@ -587,254 +613,5 @@ private fun LsfgSection(state: ContainerConfigState) {
                 )
             }
         }
-    }
-}
-
-/** Headset composite of Windows VR games: backend, eye-image reconstruction and its foveation. */
-@Composable
-private fun WindowsVrCompositeSection(state: ContainerConfigState) {
-    val config = state.config.value
-    val backend = WindowsVrUpscale.backend(config.envVars)
-    SettingsListDropdown(
-        colors = settingsTileColors(),
-        title = { Text(stringResource(R.string.xrgame_vr_composite)) },
-        subtitle = { Text(stringResource(R.string.xrgame_vr_composite_desc)) },
-        value = WindowsVrUpscale.BACKENDS.indexOf(backend),
-        items = listOf(
-            stringResource(R.string.xrgame_vr_composite_gles),
-            stringResource(R.string.xrgame_vr_composite_vulkan),
-        ),
-        onItemSelected = { idx ->
-            state.config.value = config.copy(
-                envVars = WindowsVrUpscale.withBackend(config.envVars, WindowsVrUpscale.BACKENDS[idx]),
-            )
-        },
-    )
-    if (backend != WindowsVrUpscale.BACKEND_VULKAN) return
-
-    val settings = WindowsVrUpscale.fromEnvVars(config.envVars)
-    val update = { next: WindowsVrUpscale.Settings ->
-        state.config.value = config.copy(envVars = WindowsVrUpscale.withSettings(config.envVars, next))
-    }
-    val nearest = { steps: List<Int>, value: Int -> steps.indices.minBy { kotlin.math.abs(steps[it] - value) } }
-    SettingsListDropdown(
-        colors = settingsTileColors(),
-        title = { Text(stringResource(R.string.xrgame_vr_upscale)) },
-        subtitle = { Text(stringResource(R.string.xrgame_vr_upscale_desc)) },
-        value = settings.filter.ordinal,
-        items = listOf(
-            stringResource(R.string.xrgame_vr_upscale_off),
-            stringResource(R.string.xrgame_vr_upscale_fsr1),
-            stringResource(R.string.xrgame_vr_upscale_sgsr),
-        ),
-        onItemSelected = { idx -> update(settings.copy(filter = WindowsVrUpscale.Filter.entries[idx])) },
-    )
-    if (settings.filter == WindowsVrUpscale.Filter.OFF) return
-
-    SettingsListDropdown(
-        colors = settingsTileColors(),
-        title = { Text(stringResource(R.string.xrgame_vr_sharpness)) },
-        value = nearest(WindowsVrUpscale.SHARPNESS_STEPS, settings.sharpness),
-        items = WindowsVrUpscale.SHARPNESS_STEPS.map { "$it%" },
-        onItemSelected = { idx -> update(settings.copy(sharpness = WindowsVrUpscale.SHARPNESS_STEPS[idx])) },
-    )
-    SettingsListDropdown(
-        colors = settingsTileColors(),
-        title = { Text(stringResource(R.string.xrgame_vr_upscale_output)) },
-        subtitle = { Text(stringResource(R.string.xrgame_vr_upscale_output_desc)) },
-        value = nearest(WindowsVrUpscale.OUTPUT_STEPS, settings.outputPercent),
-        items = WindowsVrUpscale.OUTPUT_STEPS.map { "$it%" },
-        onItemSelected = { idx -> update(settings.copy(outputPercent = WindowsVrUpscale.OUTPUT_STEPS[idx])) },
-    )
-    SettingsListDropdown(
-        colors = settingsTileColors(),
-        title = { Text(stringResource(R.string.xrgame_vr_foveation)) },
-        subtitle = { Text(stringResource(R.string.xrgame_vr_foveation_desc)) },
-        value = settings.foveation.ordinal,
-        items = listOf(
-            stringResource(R.string.xrgame_vr_foveation_off),
-            stringResource(R.string.xrgame_vr_foveation_fixed),
-            stringResource(R.string.xrgame_vr_foveation_eye),
-        ),
-        onItemSelected = { idx -> update(settings.copy(foveation = WindowsVrUpscale.Foveation.entries[idx])) },
-    )
-    if (settings.foveation == WindowsVrUpscale.Foveation.OFF) return
-
-    SettingsListDropdown(
-        colors = settingsTileColors(),
-        title = { Text(stringResource(R.string.xrgame_vr_foveation_level)) },
-        value = settings.level.ordinal,
-        items = listOf(
-            stringResource(R.string.xrgame_vr_foveation_low),
-            stringResource(R.string.xrgame_vr_foveation_balanced),
-            stringResource(R.string.xrgame_vr_foveation_high),
-        ),
-        onItemSelected = { idx -> update(settings.copy(level = WindowsVrUpscale.Level.entries[idx])) },
-    )
-}
-
-/**
- * XRGame display mode plus the XR render options shared with the upstream XR builds. Used by the
- * Graphics tab and by the XRGame settings page.
- */
-@Composable
-internal fun XrDisplaySection(state: ContainerConfigState, default: Boolean) {
-    val config = state.config.value
-    val context = LocalContext.current
-    val headset = remember { app.gamenative.MainActivity.isHeadset(context) }
-    if (BuildConfig.XRGAME && !default) {
-        SettingsListDropdown(
-            colors = settingsTileColors(),
-            title = { Text(stringResource(R.string.xrgame_display_mode)) },
-            value = if (config.sbsTheaterEnabled) 3 else if (!config.windowsVrEnabled) {
-                if (config.launchImmersiveMode && headset) 4 else 0
-            } else if (config.xrPresentationMode == "openxr") 2 else 1,
-            items = listOf(stringResource(R.string.xrgame_display_flat), stringResource(R.string.xrgame_vr_sbs), stringResource(R.string.xrgame_vr_openxr), stringResource(R.string.xrgame_theater_sbs)) +
-                if (headset) listOf(stringResource(R.string.xrgame_openxr_screen)) else emptyList(),
-            onItemSelected = { idx -> state.config.value = config.copy(
-                windowsVrEnabled = idx == 1 || idx == 2, sbsTheaterEnabled = idx == 3, launchImmersiveMode = idx == 4,
-                xrPresentationMode = if (idx == 2) "openxr" else "sbs",
-            ) },
-        )
-        if (config.sbsTheaterEnabled) Text(
-            stringResource(R.string.xrgame_theater_desc), Modifier.padding(horizontal = 16.dp),
-        )
-        if (headset && config.launchImmersiveMode && !config.windowsVrEnabled && !config.sbsTheaterEnabled) {
-            Text(stringResource(R.string.xrgame_openxr_screen_desc), Modifier.padding(horizontal = 16.dp))
-            val presets = app.gamenative.ui.screen.xr.XrScreenPresets.PRESETS
-            val selected = presets.indexOfFirst { it.key == config.xrScreenPreset }
-            val labels = presets.map {
-                stringResource(R.string.xrgame_screen_preset, it.diagonalInches, "%.1f".format(it.distanceMeters), it.horizontalDegrees) +
-                    if (it == app.gamenative.ui.screen.xr.XrScreenPresets.DEFAULT) stringResource(R.string.xrgame_screen_default) else ""
-            }
-            SettingsListDropdown(
-                colors = settingsTileColors(),
-                title = { Text(stringResource(R.string.xrgame_screen_size)) },
-                value = if (selected >= 0) selected else presets.size,
-                items = labels + if (selected < 0) listOf(stringResource(R.string.xrgame_screen_custom)) else emptyList(),
-                onItemSelected = { idx ->
-                    presets.getOrNull(idx)?.let { state.config.value = config.copy(xrScreenPreset = it.key) }
-                },
-            )
-            SettingsSwitch(
-                colors = settingsTileColorsAlt(),
-                title = { Text(stringResource(R.string.xrgame_vst)) },
-                subtitle = { Text(stringResource(R.string.xrgame_vst_desc)) },
-                state = config.xrPassthrough,
-                onCheckedChange = { checked -> state.config.value = config.copy(xrPassthrough = checked) },
-            )
-        }
-        if (config.windowsVrEnabled) Text(
-            stringResource(R.string.xrgame_vr_mode_desc), Modifier.padding(horizontal = 16.dp),
-        )
-    }
-    val openXrScreen = BuildConfig.XRGAME && headset && config.launchImmersiveMode && !config.windowsVrEnabled &&
-        !config.sbsTheaterEnabled
-    if (!default && (BuildConfig.XR_BUILD || BuildConfig.XRGAME && (config.windowsVrEnabled || openXrScreen))) {
-        // SBS follows the Android display clock; only a headset negotiates XR rates.
-        if (!BuildConfig.XRGAME || config.xrPresentationMode == "openxr" || openXrScreen) {
-            val xrRates = listOf(72, 90, 120)
-            SettingsListDropdown(
-                colors = settingsTileColors(),
-                title = { Text(text = stringResource(R.string.xr_refresh_rate)) },
-                value = xrRates.indexOf(config.xrRefreshRate).coerceAtLeast(0),
-                items = xrRates.map { "$it Hz" },
-                onItemSelected = { idx ->
-                    state.config.value = config.copy(xrRefreshRate = xrRates[idx])
-                },
-            )
-        }
-        val recommendedScale = BuildConfig.XRGAME && config.xrRenderScaleRecommended
-        if (BuildConfig.XRGAME) {
-            SettingsSwitch(
-                colors = settingsTileColorsAlt(),
-                title = { Text(text = stringResource(R.string.xrgame_vr_resolution_recommended)) },
-                subtitle = {
-                    Text(
-                        text = stringResource(
-                            R.string.xrgame_vr_resolution_recommended_desc,
-                            XrResolutionRecommendation.RECOMMENDED_PERCENT,
-                        ),
-                    )
-                },
-                state = config.xrRenderScaleRecommended,
-                onCheckedChange = { checked ->
-                    state.config.value = config.copy(xrRenderScaleRecommended = checked)
-                },
-            )
-        }
-        if (!recommendedScale) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(text = stringResource(R.string.xr_render_scale))
-                Slider(
-                    value = config.xrRenderScale.toFloat(),
-                    onValueChange = { newValue ->
-                        val stepped = ((newValue.roundToInt() + 2) / 5 * 5).coerceIn(25, 100)
-                        state.config.value = config.copy(xrRenderScale = stepped)
-                    },
-                    valueRange = 25f..100f,
-                )
-                Text(text = "${config.xrRenderScale}%")
-            }
-        }
-        if (config.windowsVrEnabled) {
-            SettingsSwitch(
-                colors = settingsTileColorsAlt(),
-                title = { Text(text = stringResource(R.string.xr_open_composite_toggle)) },
-                subtitle = { Text(text = stringResource(R.string.xr_open_composite_toggle_desc)) },
-                state = config.openCompositeEnabled,
-                onCheckedChange = { checked ->
-                    state.config.value = config.copy(openCompositeEnabled = checked)
-                },
-            )
-            if (BuildConfig.XRGAME && config.xrPresentationMode == "openxr") WindowsVrCompositeSection(state)
-        }
-    }
-}
-
-/** XRGame presentation and capture options (Graphics tab and XRGame settings page). */
-@Composable
-internal fun XrGamePresentSection(state: ContainerConfigState) {
-    val config = state.config.value
-    SettingsSwitch(
-        colors = settingsTileColorsAlt(),
-        title = { Text(stringResource(R.string.xrgame_async_present)) },
-        subtitle = { Text(stringResource(R.string.xrgame_async_present_description)) },
-        state = XrGamePresentSettings.asyncCopyEnabled(config.envVars),
-        onCheckedChange = { enabled ->
-            state.config.value = config.copy(
-                envVars = XrGamePresentSettings.withAsyncCopy(config.envVars, enabled),
-            )
-        },
-    )
-    SettingsSwitch(
-        colors = settingsTileColorsAlt(),
-        title = { Text(stringResource(R.string.xrgame_render_ahead)) },
-        subtitle = { Text(stringResource(R.string.xrgame_render_ahead_description)) },
-        state = XrGamePresentSettings.renderAheadEnabled(config.envVars),
-        onCheckedChange = { enabled ->
-            state.config.value = config.copy(
-                envVars = XrGamePresentSettings.withRenderAhead(config.envVars, enabled),
-            )
-        },
-    )
-    if (XrGameApiCapture.available(LocalContext.current)) {
-        val captureModes = listOf(
-            stringResource(R.string.xrgame_api_capture_off),
-            stringResource(R.string.xrgame_api_capture_d3d12),
-            stringResource(R.string.xrgame_api_capture_vulkan),
-        )
-        SettingsListDropdown(
-            colors = settingsTileColorsAlt(),
-            title = { Text(stringResource(R.string.xrgame_api_capture)) },
-            subtitle = { Text(stringResource(R.string.xrgame_api_capture_description)) },
-            value = XrGameApiCapture.MODES.indexOf(XrGameApiCapture.mode(config.envVars)),
-            items = captureModes,
-            onItemSelected = {
-                state.config.value = config.copy(
-                    envVars = XrGameApiCapture.withMode(config.envVars, XrGameApiCapture.MODES[it]),
-                )
-            },
-        )
     }
 }

@@ -30,6 +30,8 @@ namespace xrimmersive::vulkan {
     X(vkGetPhysicalDeviceProperties)             \
     X(vkGetPhysicalDeviceMemoryProperties)       \
     X(vkGetPhysicalDeviceQueueFamilyProperties)  \
+    X(vkGetPhysicalDeviceFeatures2)              \
+    X(vkGetPhysicalDeviceFormatProperties)       \
     X(vkEnumerateDeviceExtensionProperties)
 
 #define XRIM_VK_DEVICE_FUNCTIONS(X)                   \
@@ -69,7 +71,15 @@ namespace xrimmersive::vulkan {
     X(vkCreatePipelineLayout)                         \
     X(vkDestroyPipelineLayout)                        \
     X(vkCreateGraphicsPipelines)                      \
+    X(vkCreateComputePipelines)                       \
     X(vkDestroyPipeline)                              \
+    X(vkCreateDescriptorPool)                         \
+    X(vkDestroyDescriptorPool)                        \
+    X(vkResetDescriptorPool)                          \
+    X(vkAllocateDescriptorSets)                       \
+    X(vkUpdateDescriptorSets)                         \
+    X(vkCmdBindDescriptorSets)                        \
+    X(vkCmdDispatch)                                  \
     X(vkCmdPipelineBarrier)                           \
     X(vkCmdCopyBufferToImage)                         \
     X(vkCmdCopyImage)                                 \
@@ -112,6 +122,25 @@ struct BlitParams {
 };
 constexpr uint32_t kBlitDecodeSrgb = 1u;
 constexpr uint32_t kBlitOpaque = 2u;
+constexpr uint32_t kBlitLinearSource = 4u;
+
+// A host-visible, coherent buffer mapped for its lifetime.
+struct HostBuffer {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    void *mapped = nullptr;
+    VkDeviceSize size = 0;
+};
+
+// Compute features the device was created with, for frame generation.
+struct ComputeFeatures {
+    bool storageWriteWithoutFormat = false;
+    bool storageExtendedFormats = false;
+    bool float16 = false;
+    uint32_t maxWorkGroupInvocations = 0;
+    uint32_t maxWorkGroupSize[3] = {};
+    VkDeviceSize uniformAlignment = 256;
+};
 
 // One command buffer per submission, recycled once its fence has signalled. Work that must wait
 // for the GPU (returning game images to the producer) is attached to the submission and runs on
@@ -144,6 +173,7 @@ public:
     std::mutex &queueMutex() { return queueMutex_; }
     // FDM features enabled on the device (empty when the device cannot foveate external targets).
     const spatial::foveation::vulkan::Capabilities &fdm() const { return fdm_; }
+    const ComputeFeatures &compute() const { return compute_; }
     bool lost() const { return lost_.load(); }
 
     // Starts a command buffer, waiting only when every submission in the ring is still in flight.
@@ -151,12 +181,17 @@ public:
     bool submit(Submission *submission);
     // Blocks until the submission that received `serial` has completed (submissions retire in order).
     bool waitSerial(uint64_t serial);
+    // The last submission known to have completed; never blocks.
+    uint64_t completedSerial();
     void waitIdle();
     static constexpr uint32_t kSubmissionCount = 6;
 
     bool importHardwareBuffer(AHardwareBuffer *buffer, bool swapRedBlue, Image *out);
     bool createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, Image *out);
     void destroyImage(Image *image);
+    bool createHostBuffer(VkDeviceSize size, VkBufferUsageFlags usage, HostBuffer *out);
+    void destroyHostBuffer(HostBuffer *buffer);
+    bool formatSupports(VkFormat format, VkFormatFeatureFlags features) const;
     VkImageView createView(VkImage image, VkFormat format, uint32_t layer);
     void destroyView(VkImageView view);
     // Memory the driver expects behind an image it did not allocate (runtime swapchain images).
@@ -197,6 +232,7 @@ private:
     uint32_t next_ = 0;
     std::mutex queueMutex_;
     spatial::foveation::vulkan::Capabilities fdm_{};
+    ComputeFeatures compute_{};
     std::atomic<bool> lost_{false};
 
     std::mutex completionMutex_;

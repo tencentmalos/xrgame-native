@@ -59,6 +59,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -66,6 +67,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -390,6 +392,8 @@ private fun LibraryScreenContent(
     var previousAppCount by remember { mutableIntStateOf(state.appInfoList.size) }
     var controllerBootstrapNeeded by remember { mutableStateOf(true) }
     var rootHasFocus by remember { mutableStateOf(false) }
+    // The root itself (not a child) holds focus: after a tab switch, on an empty tab or a game page.
+    var rootIsFocused by remember { mutableStateOf(false) }
     // True while focus lives in the top tab bar. The delayed focus-restoration effects below must
     // not yank focus back to the grid when the user has moved up into the tab bar (the action
     // buttons would otherwise light up for ~100ms and then lose focus).
@@ -426,6 +430,7 @@ private fun LibraryScreenContent(
         if (currentPaneType == PaneType.CAROUSEL) currentCarouselFocusTargetIndex() else firstVisibleContentIndex()
 
     val inputModeManager = LocalInputModeManager.current
+    val focusManager = LocalFocusManager.current
     fun ensureKeyboardInputMode() {
         if (isGameControllerConnected()) {
             if (inputModeManager.inputMode != InputMode.Keyboard) {
@@ -614,11 +619,11 @@ private fun LibraryScreenContent(
         if (tabBarHasFocus) return@LaunchedEffect
 
         if (isListFocusable()) {
-            // Empty tab - focus root so bumpers still work
-            requestRootFocusSafe()
-        } else {
             // Tab has content - focus the first content item/container
             requestContentFocusOrDefer(targetListIndex = 0)
+        } else {
+            // Empty tab - focus root so bumpers still work
+            requestRootFocusSafe()
         }
     }
 
@@ -838,6 +843,7 @@ private fun LibraryScreenContent(
             .focusable()
             .onFocusChanged { focusState ->
                 rootHasFocus = focusState.hasFocus
+                rootIsFocused = focusState.isFocused
                 if (focusState.hasFocus) {
                     controllerBootstrapNeeded = false
                 } else {
@@ -870,7 +876,19 @@ private fun LibraryScreenContent(
                         KeyEvent.KEYCODE_BUTTON_THUMBL,
                         KeyEvent.KEYCODE_BUTTON_THUMBR,
                         -> {
-                            if (canBootstrapContentFocus) {
+                            val dpad = keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                                keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                            if (dpad && rootIsFocused && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                                // Directional search does not leave a focused root for its children, so a
+                                // D-pad press steps into the content: the grid, else the first control of
+                                // an empty tab or the game page.
+                                if (selectedAppId == null && isListFocusable()) {
+                                    requestContentFocusOrDefer()
+                                } else {
+                                    focusManager.moveFocus(FocusDirection.Enter)
+                                }
+                                true
+                            } else if (canBootstrapContentFocus) {
                                 requestContentFocusOrDefer()
                                 false
                             } else {
@@ -944,7 +962,9 @@ private fun LibraryScreenContent(
                                 !isSystemMenuOpen &&
                                 !tabBarHasFocus
                             ) {
+                                // Consumed even with nothing to favourite, so X never falls back to a click.
                                 toggleFocusedFavorite()
+                                true
                             } else {
                                 false
                             }

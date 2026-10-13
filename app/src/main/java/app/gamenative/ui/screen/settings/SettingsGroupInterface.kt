@@ -294,6 +294,20 @@ fun SettingsGroupInterface(
             colors = settingsTileColorsAlt(),
         )
 
+        if (BuildConfig.XRGAME) {
+            var launchPanel by rememberSaveable { mutableStateOf(PrefManager.xrgameLaunchPanel) }
+            SettingsSwitch(
+                colors = settingsTileColorsAlt(),
+                title = { Text(text = stringResource(R.string.xrgame_launch_panel_setting)) },
+                subtitle = { Text(text = stringResource(R.string.xrgame_launch_panel_setting_desc)) },
+                state = launchPanel,
+                onCheckedChange = {
+                    launchPanel = it
+                    PrefManager.xrgameLaunchPanel = it
+                },
+            )
+        }
+
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
             title = { Text(text = stringResource(R.string.settings_interface_external_links_title)) },

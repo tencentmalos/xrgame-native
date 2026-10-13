@@ -366,6 +366,33 @@ object PrefManager {
             setPref(SHOW_FPS, value)
         }
 
+    private val XRGAME_STATUS_LAYER = booleanPreferencesKey("xrgame_status_layer")
+
+    /** XRGame: the status layer in XR sessions; the 2D Performance HUD keeps [showFps]. */
+    var xrgameStatusLayer: Boolean
+        get() = getPref(XRGAME_STATUS_LAYER, true)
+        set(value) {
+            setPref(XRGAME_STATUS_LAYER, value)
+        }
+
+    private val XRGAME_XR_DISPLAY = stringPreferencesKey("xrgame_xr_display")
+
+    /** XRGame: the headset's eye views as the last XR session reported them (WindowsVrUpscale.Display). */
+    var xrDisplayInfo: String
+        get() = getPref(XRGAME_XR_DISPLAY, "")
+        set(value) {
+            setPref(XRGAME_XR_DISPLAY, value)
+        }
+
+    private val XRGAME_LAUNCH_PANEL = booleanPreferencesKey("xrgame_launch_panel")
+
+    /** XRGame: show the launch panel when a game is started from the library. */
+    var xrgameLaunchPanel: Boolean
+        get() = getPref(XRGAME_LAUNCH_PANEL, true)
+        set(value) {
+            setPref(XRGAME_LAUNCH_PANEL, value)
+        }
+
     private val PERFORMANCE_HUD_COMPACT_MODE = booleanPreferencesKey("performance_hud_compact_mode")
     var performanceHudCompactMode: Boolean
         get() = getPref(PERFORMANCE_HUD_COMPACT_MODE, false)

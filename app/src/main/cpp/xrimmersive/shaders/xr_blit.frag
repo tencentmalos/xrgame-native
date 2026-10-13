@@ -4,7 +4,8 @@
 //   mode 1: 2D quad: the game image inside the content rectangle, the overlay over the whole quad
 //           at its own alpha (kDirectQuadFragmentShader in xr_immersive.cpp).
 // Sources hold sRGB-encoded bytes in UNORM images; with decodeSrgb the shader returns linear
-// values so an sRGB attachment stores the original bytes again.
+// values so an sRGB attachment stores the original bytes again. With linearSource the mode 1
+// game image is an sRGB view that already samples linear (the big screen's reconstruction).
 layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 outColor;
 
@@ -20,6 +21,7 @@ layout(push_constant) uniform Params {
 
 const uint kDecodeSrgb = 1u;
 const uint kOpaque = 2u;
+const uint kLinearSource = 4u;
 
 vec3 srgbToLinear(vec3 c) {
     bvec3 low = lessThanEqual(c, vec3(0.04045));
@@ -28,8 +30,21 @@ vec3 srgbToLinear(vec3 c) {
     return mix(highPart, lowPart, vec3(low));
 }
 
+vec3 linearToSrgb(vec3 c) {
+    bvec3 low = lessThanEqual(c, vec3(0.0031308));
+    vec3 lowPart = c * 12.92;
+    vec3 highPart = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+    return mix(highPart, lowPart, vec3(low));
+}
+
 vec3 decode(vec3 c) {
     return (params.flags & kDecodeSrgb) != 0u ? srgbToLinear(c) : c;
+}
+
+// The game image of mode 1 in the attachment's encoding.
+vec3 gameColor(vec3 c) {
+    if ((params.flags & kLinearSource) == 0u) return decode(c);
+    return (params.flags & kDecodeSrgb) != 0u ? c : linearToSrgb(c);
 }
 
 void main() {
@@ -38,7 +53,7 @@ void main() {
         bool insideGame = all(greaterThanEqual(gameUv, vec2(0.0))) && all(lessThanEqual(gameUv, vec2(1.0)));
         vec4 game = insideGame ? texture(uSource, gameUv) : vec4(0.0);
         vec4 overlay = texture(uOverlay, vUv);
-        vec3 rgb = mix(decode(game.rgb), decode(overlay.rgb), overlay.a);
+        vec3 rgb = mix(gameColor(game.rgb), decode(overlay.rgb), overlay.a);
         outColor = vec4(rgb, insideGame ? 1.0 : overlay.a);
         return;
     }

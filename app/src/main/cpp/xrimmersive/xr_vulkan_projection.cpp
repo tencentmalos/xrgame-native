@@ -77,7 +77,7 @@ UpscaleSettings gSettings;
 
 bool SameSettings(const UpscaleSettings &a, const UpscaleSettings &b) {
     return a.filter == b.filter && a.sharpness == b.sharpness && a.foveation == b.foveation && a.level == b.level &&
-           a.outputPercent == b.outputPercent && a.debug == b.debug;
+           a.outputPercent == b.outputPercent && a.eyeBuffer == b.eyeBuffer && a.debug == b.debug;
 }
 
 // Rotates v by the unit quaternion q.
@@ -101,8 +101,18 @@ bool WaitAcquireFence(int fenceFd) {
 
 }  // namespace
 
+VkExtent2D EyeBufferExtent(VkExtent2D recommended, VkExtent2D limit, uint32_t tier) {
+    const auto axis = [tier](uint32_t suggested, uint32_t maximum) {
+        if (maximum == 0) return suggested;
+        const uint32_t base = std::min(suggested, maximum);
+        return tier >= 2 ? maximum : tier == 1 ? base + (maximum - base) / 2 : base;
+    };
+    return {axis(recommended.width, limit.width), axis(recommended.height, limit.height)};
+}
+
 void SetUpscaleSettings(const UpscaleSettings &settings) {
     UpscaleSettings clamped = settings;
+    clamped.eyeBuffer = std::min(clamped.eyeBuffer, 2u);
     clamped.filter = std::min(clamped.filter, 2u);
     clamped.sharpness = std::min(clamped.sharpness, 100u);
     clamped.foveation = std::min(clamped.foveation, 2u);
@@ -118,14 +128,19 @@ UpscaleSettings GetUpscaleSettings() {
 }
 
 bool ProjectionPresenter::initialize(Context *context, XrSession session, VkFormat format, bool srgb,
-                                     uint32_t recommendedWidth, uint32_t recommendedHeight) {
+                                     uint32_t recommendedWidth, uint32_t recommendedHeight, uint32_t limitWidth,
+                                     uint32_t limitHeight) {
     context_ = context;
     session_ = session;
     format_ = format;
     srgb_ = srgb;
     recommendedWidth_ = recommendedWidth;
     recommendedHeight_ = recommendedHeight;
-    return ensureSwapchain(recommendedWidth, recommendedHeight);
+    limitWidth_ = limitWidth;
+    limitHeight_ = limitHeight;
+    // The swapchain (two eyes at the recommended size, about 150 MB) is created by the first
+    // render() with stereo content, so 2D big-screen sessions never allocate it.
+    return true;
 }
 
 void ProjectionPresenter::destroySwapchain() {
@@ -287,8 +302,10 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
     const EyeFrame &first = frames[0];
     const uint32_t sourceWidth = static_cast<uint32_t>(first.sourceWidth > 0 ? first.sourceWidth : first.width);
     const uint32_t sourceHeight = static_cast<uint32_t>(first.sourceHeight > 0 ? first.sourceHeight : first.height);
-    const uint32_t outputWidth = std::max(16u, recommendedWidth_ * settings.outputPercent / 100u);
-    const uint32_t outputHeight = std::max(16u, recommendedHeight_ * settings.outputPercent / 100u);
+    const VkExtent2D eyeBuffer = EyeBufferExtent({recommendedWidth_, recommendedHeight_},
+                                                 {limitWidth_, limitHeight_}, settings.eyeBuffer);
+    const uint32_t outputWidth = std::max(16u, eyeBuffer.width * settings.outputPercent / 100u);
+    const uint32_t outputHeight = std::max(16u, eyeBuffer.height * settings.outputPercent / 100u);
     const bool reconstruct = settings.filter != 0 && upscaleFailures_ == 0 &&
                              (sourceWidth < outputWidth || sourceHeight < outputHeight);
     // Without reconstruction the swapchain matches the game's eye rect and the runtime's

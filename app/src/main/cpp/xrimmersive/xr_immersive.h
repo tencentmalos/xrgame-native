@@ -17,7 +17,9 @@
 #include <GLES2/gl2ext.h>
 #include <android/hardware_buffer.h>
 
+#include "../winlator/xr_frame_exchange.h"
 #include "xr_perf_hud.h"
+#include "xr_keyboard.h"
 #include "xr_windows_projection.h"
 #include "xr_windows_transport.h"
 
@@ -36,6 +38,22 @@ namespace xrimmersive {
 namespace vulkan {
 class Compositor;
 }
+
+// What the headset reports for its eye views, recorded by the running session for the launch
+// panel's output sizes: the recommended and largest per-eye size and the left eye's FOV
+// tangents. `valid` once a session located its views. Any thread.
+struct XrDisplayInfo {
+    bool valid = false;
+    uint32_t recommendedWidth = 0;
+    uint32_t recommendedHeight = 0;
+    uint32_t maxWidth = 0;
+    uint32_t maxHeight = 0;
+    float tanLeft = 0.0f;
+    float tanRight = 0.0f;
+    float tanUp = 0.0f;
+    float tanDown = 0.0f;
+};
+XrDisplayInfo GetXrDisplayInfo();
 
 // Bit indices match XrGamepadBridge.kt / WinHandler.sendVirtualGamepadState's Xbox layout.
 enum ButtonBit {
@@ -160,14 +178,22 @@ public:
     // Enables/disables the XR_FB_passthrough layer behind the quad. No-op (logged) if the
     // runtime doesn't support the extension.
     void setPassthroughEnabled(bool enabled);
+    // The 2D big screen as a cylinder (XR_KHR_composition_layer_cylinder) around the player; a
+    // flat quad when the runtime lacks the extension. Any thread.
+    void setCurvedScreen(bool curved) { curvedScreen_.store(curved); }
 
     // Direct-render path — see the member comment near sharedBufferMutex_. Safe to call from
     // any thread; the actual EGLImage/texture import happens lazily on the render thread.
     // Pass the SAME AHardwareBuffer every frame (GLRenderer writes into it repeatedly) — this
     // only needs calling again if the buffer identity itself changes (e.g. a resize).
     void setSharedGameBuffer(AHardwareBuffer *buffer);
+    // VulkanRenderer's scene ring (xr_frame_exchange.h), preferred over the shared buffer; the
+    // session keeps its own reference. Null drops it. Any thread.
+    void setSharedGameExchange(xrgame::XrFrameExchange *scene);
 
 private:
+    void takeSceneSlotGl();
+    void releaseSceneGl();
     void runLoop();
     bool setupInstanceAndSession();
     void teardown();
@@ -183,10 +209,14 @@ private:
     // The performance HUD quad for this frame, when shown (Vulkan composite only).
     bool submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime,
                        const XrCompositionLayerQuad *screen = nullptr);
+    // The XR keyboard while Kotlin requests it; under `screen` on the 2D big screen.
+    bool submitKeyboard(XrCompositionLayerQuad *quad, XrTime displayTime, const XrCompositionLayerQuad *screen);
     // The projection presenter of the active backend.
     bool renderWindowsProjection(XrCompositionLayerProjection *layer);
     bool renderQuadImage(uint32_t imageIndex);
     void locateGaze(XrTime predictedDisplayTime);
+    // Where the 2D quad sits in LOCAL space: on a sphere around the player, facing them.
+    XrPosef quadPose() const;
     bool submitWindowsInterstitial(XrTime predictedDisplayTime, const std::array<XrView, 2> &views,
                                    XrViewStateFlags viewStateFlags);
     bool uploadInterstitialLocked();
@@ -221,6 +251,7 @@ private:
     // Vulkan composite (the app-side Turnip through XR_KHR_vulkan_enable2); null keeps GLES.
     std::unique_ptr<vulkan::Compositor> vulkan_;
     std::unique_ptr<PerfHud> perfHud_;
+    std::unique_ptr<XrKeyboard> keyboard_;
     XrDuration displayPeriod_ = 0;
     // XR_EXT_eye_gaze_interaction for eye-tracked foveation of the Vulkan reconstruction.
     std::unique_ptr<spatial::xr::XrEyeGazeTracker> gaze_;
@@ -269,6 +300,13 @@ private:
     // instead of the full composited frame, and the two are blended in directQuadProgram_.
     std::mutex sharedBufferMutex_;
     AHardwareBuffer *pendingSharedBuffer_ = nullptr;
+    xrgame::XrFrameExchange *pendingScene_ = nullptr;
+    // GLES: the scene slot shown through the shared buffer texture, and the one shown before it,
+    // still held until a newer frame replaces it (the runtime has consumed the GL work by then).
+    xrgame::XrFrameExchange *glScene_ = nullptr;
+    uint64_t glSceneSerial_ = 0;
+    int glSceneSlot_ = -1;
+    int glSceneOld_ = -1;
     bool sharedBufferChanged_ = false;
     EGLImageKHR sharedGameImage_ = EGL_NO_IMAGE_KHR;
     GLuint sharedGameTexture_ = 0;
@@ -379,11 +417,17 @@ private:
     std::atomic<float> quadHeight_{0.9f};
     std::atomic<float> quadContentScaleX_{1.0f};
     std::atomic<float> quadContentScaleY_{1.0f};
+    // The eye gaze in LOCAL space for the big screen's foveation (XR thread).
+    bool quadGazeValid_ = false;
+    bool displayInfoPublished_ = false;
+    XrPosef quadGazePose_{};
 
     // Passthrough (XR_FB_passthrough). All the passthrough* function pointers are resolved
     // once in setupInstanceAndSession() and are null if the runtime doesn't support the
     // extension, in which case setPassthroughEnabled() is a no-op.
     bool passthroughExtensionAvailable_ = false;
+    bool cylinderExtensionAvailable_ = false;
+    std::atomic<bool> curvedScreen_{false};
     // Whether this runtime/view-config actually lists ALPHA_BLEND in
     // xrEnumerateEnvironmentBlendModes — requesting an unlisted blend mode in xrEndFrame is a
     // validation error (observed: xrEndFrame failing with -1 on every frame once passthrough

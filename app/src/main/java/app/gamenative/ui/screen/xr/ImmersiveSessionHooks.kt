@@ -23,4 +23,6 @@ class ImmersiveSessionHooks(
     val registerFocusedActivate: ((() -> (() -> Unit)?) -> Unit)? = null,
     val registerToggle: ((() -> Unit) -> Unit)? = null,
     val registerStartHeld: (((Boolean) -> Unit) -> Unit)? = null,
+    /** Opens the XR keyboard in place of the Android IME, which the headset never shows here. */
+    val showKeyboard: (() -> Unit)? = null,
 )

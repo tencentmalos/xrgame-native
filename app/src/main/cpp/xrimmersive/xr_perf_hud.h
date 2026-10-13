@@ -36,8 +36,8 @@ std::string PerfHudStatusJson();
 void InitPerfHudJni(JNIEnv *env, jobject context);
 
 struct PerfHudFrame {
-    // Game eye and projection eye of the last stereo frame, or the game screen on the 2D big
-    // screen (flat); zero when neither is known.
+    // Game eye and projection eye buffer of the last stereo frame, or on the 2D big screen (flat)
+    // the Wine screen and the big screen's layer; zero when unknown.
     uint32_t sourceWidth = 0;
     uint32_t sourceHeight = 0;
     uint32_t outputWidth = 0;
@@ -46,6 +46,9 @@ struct PerfHudFrame {
     bool reconstructing = false;
     bool flat = false;
     float displayHz = 0.0f;
+    // Big-screen frame generation: the output multiple in use (0 off) and the images shown per second.
+    uint32_t frameGenMultiplier = 0;
+    float frameGenOutputFps = 0.0f;
 };
 
 class PerfHud {

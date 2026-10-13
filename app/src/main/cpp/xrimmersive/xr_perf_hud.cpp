@@ -367,7 +367,7 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
     }
 
     const char *dash = "--";
-    std::array<std::string, 9> values;
+    std::array<std::string, 10> values;
     // In stereo a game that stopped presenting is at 0 fps, not unknown.
     values[0] = game ? Format("%.1f", *game) : frame.sourceWidth > 0 ? std::string("0.0") : dash;
     values[1] = xr ? (frame.displayHz > 0.0f ? Format("%.1f / %.0f", *xr, frame.displayHz) : Format("%.1f", *xr)) : dash;
@@ -398,21 +398,34 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
             values[6] = temperature(m.cpu_temperature_celsius) + " / " + temperature(m.gpu_temperature_celsius) + " \xC2\xB0" "C";
         }
     }
-    static constexpr std::array<const char *, 3> kFilters{"", " FSR1", " SGSR"};
-    values[7] = frame.sourceWidth == 0 ? std::string(dash)
-                : Format("%.0fx%.0f", frame.sourceWidth, frame.sourceHeight) +
+    // The game's image (the Wine screen, or a VR game's eye) and what the XR session shows it at
+    // (the big screen's layer, or the projection eye buffer), with the filter between them.
+    static constexpr std::array<const char *, 3> kFilters{"", "  FSR1", "  SGSR"};
+    values[7] = frame.sourceWidth == 0 ? std::string(dash) : Format("%.0fx%.0f", frame.sourceWidth, frame.sourceHeight);
+    values[9] = frame.outputWidth == 0 ? std::string(dash)
+                : Format("%.0fx%.0f", frame.outputWidth, frame.outputHeight) +
                       (frame.reconstructing ? kFilters[std::min<uint32_t>(frame.filter, 2)] : "");
-    std::array<const char *, 9> kLabels{"GAME FPS", "XR FPS / HZ", "CPU", "GPU",
-                                        "MEMORY", "BATTERY", "TEMP CPU / GPU", "GAME EYE", "INPUT"};
-    // Row one ends with the input driving the game; row two keeps the system readings and the image.
-    static constexpr std::array<int, 9> kCellOrder{0, 1, 2, 3, 8, 4, 5, 6, 7};
-    if (frame.flat) kLabels[7] = "GAME SCREEN";
+    std::array<const char *, 10> kLabels{"GAME FPS", "XR FPS / HZ", "CPU", "GPU", "MEMORY",
+                                         "BATTERY", "TEMP CPU / GPU", "GAME EYE", "INPUT", "EYE BUFFER"};
+    // With frame generation the game's rate and the images the big screen shows from it.
+    static constexpr std::array<const char *, 5> kFrameGenLabels{"", "", "GAME / FG 2X", "GAME / FG 3X", "GAME / FG 4X"};
+    if (frame.frameGenMultiplier >= 2 && frame.frameGenMultiplier <= 4) {
+        kLabels[0] = kFrameGenLabels[frame.frameGenMultiplier];
+        values[0] = game ? Format("%.1f / %.1f", *game, frame.frameGenOutputFps) : std::string(dash);
+    }
+    // Row one ends with the input driving the game; row two keeps the system readings, then the
+    // game image and the XR output.
+    static constexpr std::array<int, 10> kCellOrder{0, 1, 2, 3, 8, 4, 5, 6, 7, 9};
+    if (frame.flat) {
+        kLabels[7] = "WINE SCREEN";
+        kLabels[9] = "XR LAYER";
+    }
 
     const ImU32 accent = IM_COL32(107, 200, 255, 255);
     ImDrawList *drawList = ImGui::GetBackgroundDrawList();
     drawList->AddRectFilled({0.0f, 0.0f}, io.DisplaySize, IM_COL32(10, 17, 28, 235), 14.0f);
     drawList->AddRect({1.0f, 1.0f}, {io.DisplaySize.x - 1.0f, io.DisplaySize.y - 1.0f}, accent, 14.0f, 0, 2.0f);
-    for (int cell = 0; cell < 9; ++cell) {
+    for (int cell = 0; cell < static_cast<int>(kCellOrder.size()); ++cell) {
         const int i = kCellOrder[cell];
         const float x = 20.0f + static_cast<float>((cell % kColumns) * kCellWidth);
         const float y = 8.0f + static_cast<float>((cell / kColumns) * kCellHeight);

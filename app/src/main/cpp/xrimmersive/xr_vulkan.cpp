@@ -229,6 +229,25 @@ bool Context::create(XrInstance xrInstance, XrSystemId system, PFN_vkGetInstance
         enabled.pNext = &addressFeatures;
     }
 
+    // Frame generation's compute passes: typeless and R8 storage writes, and float16 arithmetic
+    // for its FP16 shaders; each enabled only where the device has it.
+    VkPhysicalDeviceVulkan12Features supported12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    VkPhysicalDeviceFeatures2 supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    supported.pNext = &supported12;
+    vk_.vkGetPhysicalDeviceFeatures2(physicalDevice_, &supported);
+    enabled.features.shaderStorageImageWriteWithoutFormat = supported.features.shaderStorageImageWriteWithoutFormat;
+    enabled.features.shaderStorageImageExtendedFormats = supported.features.shaderStorageImageExtendedFormats;
+    VkPhysicalDeviceVulkan12Features features12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    features12.shaderFloat16 = supported12.shaderFloat16;
+    features12.pNext = enabled.pNext;
+    enabled.pNext = &features12;
+    compute_.storageWriteWithoutFormat = supported.features.shaderStorageImageWriteWithoutFormat == VK_TRUE;
+    compute_.storageExtendedFormats = supported.features.shaderStorageImageExtendedFormats == VK_TRUE;
+    compute_.float16 = supported12.shaderFloat16 == VK_TRUE;
+    compute_.maxWorkGroupInvocations = properties.limits.maxComputeWorkGroupInvocations;
+    for (uint32_t axis = 0; axis < 3; ++axis) compute_.maxWorkGroupSize[axis] = properties.limits.maxComputeWorkGroupSize[axis];
+    compute_.uniformAlignment = std::max<VkDeviceSize>(properties.limits.minUniformBufferOffsetAlignment, 16);
+
     const float priority = 1.0f;
     VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     queueInfo.queueFamilyIndex = queueFamily_;
@@ -472,6 +491,11 @@ bool Context::waitSerial(uint64_t serial) {
     return false;
 }
 
+uint64_t Context::completedSerial() {
+    std::lock_guard<std::mutex> lock(completionMutex_);
+    return completedSerial_;
+}
+
 void Context::waitIdle() {
     if (device_ == VK_NULL_HANDLE) return;
     {
@@ -590,6 +614,43 @@ void Context::destroyImage(Image *image) {
     if (image->image != VK_NULL_HANDLE) vk_.vkDestroyImage(device_, image->image, nullptr);
     if (image->memory != VK_NULL_HANDLE) vk_.vkFreeMemory(device_, image->memory, nullptr);
     *image = {};
+}
+
+bool Context::createHostBuffer(VkDeviceSize size, VkBufferUsageFlags usage, HostBuffer *out) {
+    HostBuffer buffer{};
+    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    if (vk_.vkCreateBuffer(device_, &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) return false;
+    VkMemoryRequirements requirements{};
+    vk_.vkGetBufferMemoryRequirements(device_, buffer.buffer, &requirements);
+    VkMemoryAllocateInfo allocate{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocate.allocationSize = requirements.size;
+    allocate.memoryTypeIndex = memoryType(requirements.memoryTypeBits,
+                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (allocate.memoryTypeIndex == UINT32_MAX ||
+        vk_.vkAllocateMemory(device_, &allocate, nullptr, &buffer.memory) != VK_SUCCESS ||
+        vk_.vkBindBufferMemory(device_, buffer.buffer, buffer.memory, 0) != VK_SUCCESS ||
+        vk_.vkMapMemory(device_, buffer.memory, 0, VK_WHOLE_SIZE, 0, &buffer.mapped) != VK_SUCCESS) {
+        destroyHostBuffer(&buffer);
+        return false;
+    }
+    buffer.size = size;
+    *out = buffer;
+    return true;
+}
+
+void Context::destroyHostBuffer(HostBuffer *buffer) {
+    if (buffer == nullptr || device_ == VK_NULL_HANDLE) return;
+    if (buffer->buffer != VK_NULL_HANDLE) vk_.vkDestroyBuffer(device_, buffer->buffer, nullptr);
+    if (buffer->memory != VK_NULL_HANDLE) vk_.vkFreeMemory(device_, buffer->memory, nullptr);
+    *buffer = {};
+}
+
+bool Context::formatSupports(VkFormat format, VkFormatFeatureFlags features) const {
+    VkFormatProperties properties{};
+    vk_.vkGetPhysicalDeviceFormatProperties(physicalDevice_, format, &properties);
+    return (properties.optimalTilingFeatures & features) == features;
 }
 
 VkImageView Context::createView(VkImage image, VkFormat format, uint32_t layer) {

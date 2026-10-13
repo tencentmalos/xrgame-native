@@ -1,6 +1,7 @@
 #pragma once
 #include "PresentCopyQueue.h"
 #include "SbsTheater.h"
+#include "xr_frame_exchange.h"
 #include <vulkan/vulkan.h>
 #include <list>
 #include <vulkan/vulkan_android.h>
@@ -361,19 +362,33 @@ private:
     std::vector<VkImageView>   swapchainViews;
     std::vector<VkFramebuffer> swapchainFBs;
 
-    // XR offscreen scene target: when active, renderFrame renders the composited scene into
-    // this AHB-backed image (no surface acquire/present) so the immersive session samples it
-    // directly. Enabled/disabled from JNI; resources recreated on resize.
-    AHardwareBuffer*  xrAhb   = nullptr;
-    VkImage           xrImg   = VK_NULL_HANDLE;
-    VkDeviceMemory    xrMem   = VK_NULL_HANDLE;
-    VkImageView       xrView  = VK_NULL_HANDLE;
-    VkFramebuffer     xrFb    = VK_NULL_HANDLE;
+    // XR offscreen scene target: when active, renderFrame renders the composited scene into a
+    // ring of AHB-backed images (no surface acquire/present) that the immersive session samples
+    // directly; xr_frame_exchange.h describes the handoff. Enabled/disabled from JNI; resources
+    // recreated on resize.
+    struct XrSlot {
+        VkImage        img  = VK_NULL_HANDLE;
+        VkDeviceMemory mem  = VK_NULL_HANDLE;
+        VkImageView    view = VK_NULL_HANDLE;
+        VkFramebuffer  fb   = VK_NULL_HANDLE;
+    };
+    xrgame::XrFrameExchange* xrExchange = nullptr;
+    XrSlot            xrSlots[xrgame::XrFrameExchange::kSlots]{};
     VkRenderPass      xrRp    = VK_NULL_HANDLE;
     VkExtent2D        xrExt   {0,0};
+    uint32_t          xrSlot  = 0;       // the slot the frame being rendered writes
+    uint64_t          xrSerial = 0;      // frames published to the exchange
+    uint64_t          xrFrameContent = 0;
+    // Game content updates (window buffers, copies, samples); cursor-only frames keep the count.
+    std::atomic<uint64_t> xrContentUpdates{0};
     std::atomic<bool> xrTargetActive{false};
     bool createXrTargetResources(uint32_t w, uint32_t h);
     void destroyXrTargetResources();
+    // A slot to render, or kSlots when the session holds every other one.
+    uint32_t chooseXrSlot();
+    void publishXrFrame();
+    bool xrSlotStarved = false;   // retry shortly instead of overwriting a slot the session reads
+    uint64_t xrSlotStarves = 0;
 
     VkRenderPass          renderPass  = VK_NULL_HANDLE;
     VkDescriptorSetLayout dsLayout    = VK_NULL_HANDLE;

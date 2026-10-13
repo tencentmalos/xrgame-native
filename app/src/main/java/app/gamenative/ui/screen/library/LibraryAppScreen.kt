@@ -32,6 +32,7 @@ import app.gamenative.ui.data.Achievement
 import app.gamenative.ui.screen.library.components.ambient.AmbientDownloadOverlay
 import android.content.ActivityNotFoundException
 import android.net.Uri
+import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.*
@@ -128,7 +129,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -607,8 +610,18 @@ internal fun AppScreenContent(
         scrollState.animateScrollTo(0)
     }
 
+    val inputModeManager = LocalInputModeManager.current
     LaunchedEffect(Unit) {
-        playButtonFocusRequester.requestFocus()
+        // With a gamepad connected, focus starts on the play button. Clickables only take focus in
+        // keyboard mode, and the button may not be laid out yet on the first frame.
+        val gamepad = InputDevice.getDeviceIds().any { id ->
+            InputDevice.getDevice(id)?.let { it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD } == true
+        }
+        if (gamepad && inputModeManager.inputMode != InputMode.Keyboard) inputModeManager.requestInputMode(InputMode.Keyboard)
+        repeat(5) {
+            if (runCatching { playButtonFocusRequester.requestFocus() }.isSuccess) return@LaunchedEffect
+            kotlinx.coroutines.delay(80)
+        }
     }
 
     LaunchedEffect(downloadInfo) {

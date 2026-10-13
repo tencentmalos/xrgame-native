@@ -84,7 +84,7 @@ data class ContainerData(
     /** Disable external mouse input **/
     val disableMouseInput: Boolean = false,
     /** Touchscreen mode (defaults on for XR builds) **/
-    val touchscreenMode: Boolean = app.gamenative.BuildConfig.XR_BUILD,
+    val touchscreenMode: Boolean = app.gamenative.BuildConfig.XR_BUILD || app.gamenative.BuildConfig.XRGAME,
     /** Shooter mode (auto-replace sticks with dynamic joysticks) **/
     val shooterMode: Boolean = true,
     /** Serialised JSON gesture configuration (used when touchscreenMode is true) **/
@@ -121,6 +121,10 @@ data class ContainerData(
     val xrScreenPreset: String = "",
     /** XRGame 2D big screen: the headset cameras' view (VST passthrough) around the screen. */
     val xrPassthrough: Boolean = false,
+    /** XRGame 2D big screen: curved around the player (an OpenXR cylinder layer) instead of flat. */
+    val xrCurvedScreen: Boolean = false,
+    /** XRGame launch panel display mode ("2d", "sbs", "xr"); empty until the panel saved one. */
+    val xrDisplayMode: String = "",
     val openCompositeEnabled: Boolean = false,
     /** XRGame: use XrResolutionRecommendation instead of [xrRenderScale]. */
     val xrRenderScaleRecommended: Boolean = true,
@@ -205,6 +209,8 @@ data class ContainerData(
                     "launchImmersiveMode" to state.launchImmersiveMode,
                     "xrScreenPreset" to state.xrScreenPreset,
                     "xrPassthrough" to state.xrPassthrough,
+                    "xrCurvedScreen" to state.xrCurvedScreen,
+                    "xrDisplayMode" to state.xrDisplayMode,
                     "openCompositeEnabled" to state.openCompositeEnabled,
                     "xrRenderScaleRecommended" to state.xrRenderScaleRecommended,
                 )
@@ -287,6 +293,8 @@ data class ContainerData(
                     launchImmersiveMode = (savedMap["launchImmersiveMode"] as? Boolean) ?: app.gamenative.BuildConfig.XR_BUILD,
                     xrScreenPreset = (savedMap["xrScreenPreset"] as? String) ?: "",
                     xrPassthrough = (savedMap["xrPassthrough"] as? Boolean) ?: false,
+                    xrCurvedScreen = (savedMap["xrCurvedScreen"] as? Boolean) ?: false,
+                    xrDisplayMode = (savedMap["xrDisplayMode"] as? String) ?: "",
                     openCompositeEnabled = (savedMap["openCompositeEnabled"] as? Boolean) ?: false,
                     xrRenderScaleRecommended = (savedMap["xrRenderScaleRecommended"] as? Boolean) ?: true,
                 )

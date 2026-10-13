@@ -82,6 +82,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         // toggles the quick menu (see xr_immersive.cpp's menu long-press).
         private const val START_HOLD_MS = 600L
         private const val START_TAP_MS = 100L
+        // XR keyboard output markers (xr_keyboard.h).
+        private const val KEYBOARD_BACKSPACE = '\uE000'
+        private const val KEYBOARD_ENTER = '\uE001'
+        private const val KEYBOARD_CLOSED = '\uE002'
+        private const val KEYBOARD_STICK = 0.6f
+        private const val KEYBOARD_REPEAT_DELAY_MS = 400L
+        private const val KEYBOARD_REPEAT_MS = 90L
+
         private const val CAPTURE_RETRY_DELAY_MS = 200L
         private const val OVERLAY_REFRESH_INTERVAL_MS = 33L // ~30fps — plenty for a menu/HUD,
         private const val OVERLAY_IDLE_REFRESH_INTERVAL_MS = 250L
@@ -111,6 +119,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val EXTRA_QUAD_SCALE = "immersiveQuadScale"
         /** Container extra: passthrough (VST) behind the 2D big screen, also set from the game settings. */
         internal const val EXTRA_PASSTHROUGH_ENABLED = "immersivePassthroughEnabled"
+        internal const val EXTRA_CURVED_SCREEN = "immersiveCurvedScreen"
         private const val EYE_TRACKING_REQUEST = 0x4554
         private const val EXTRA_WINDOWS_VR_ENABLED = "windowsVrEnabled"
         private const val EXTRA_WINDOWS_VR_OPEN_COMPOSITE = "windowsVrOpenCompositeEnabled"
@@ -188,6 +197,25 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     // XR controllers, which arrive through OpenXR instead.
     private val physicalGamepads = HashMap<Int, com.winlator.inputcontrols.ExternalController>()
     private var lastActiveInput = XrGamepadBridge.XR_INPUT
+    // The headset's eye views reach PrefManager once per session, for the launch panel's sizes.
+    private var displayInfoSaved = false
+    // The XR keyboard (xr_keyboard.cpp) is open: the controllers type, not play or navigate menus.
+    @Volatile
+    internal var xrKeyboardOpen = false
+        private set
+    // Both sticks pressed together toggle the keyboard (XR controllers here, physical pads below).
+    private var xrBothSticksHeld = false
+    private var physicalThumbL = false
+    private var physicalThumbR = false
+    // A physical pad's D-pad and left stick arrive as axes; held, they repeat keyboard focus moves.
+    private var keyboardPadDirection = -1
+    private val keyboardPadRepeat = object : Runnable {
+        override fun run() {
+            if (keyboardPadDirection < 0 || !xrKeyboardOpen) return
+            XrNative.nativeXrKeyboardPad(keyboardPadDirection)
+            gamepadHandler.postDelayed(this, KEYBOARD_REPEAT_MS)
+        }
+    }
     private val gamepadHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var physicalStartLongPressed = false
     private val physicalStartLongPress = Runnable {
@@ -264,6 +292,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     private var quadVertical by mutableFloatStateOf(ImmersiveControls.DEFAULT_OFFSET)
     private var quadScale by mutableFloatStateOf(defaultQuadScale())
     private var passthroughEnabled by mutableStateOf(false)
+    private var curvedScreen = false
     private var windowsVrEnabled by mutableStateOf(false)
     @Volatile
     private var immersiveSettingsLoaded = false
@@ -391,6 +420,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                         },
                     registerToggle = { toggle -> quickMenuToggle = toggle },
                     registerStartHeld = { setter -> quickMenuSetStartHeld = setter },
+                    showKeyboard = { showXrKeyboard() },
                     registerFocusManager = { fm -> quickMenuFocusManager = fm },
                     registerCycleTab = { cycle -> quickMenuCycleTab = cycle },
                     registerAdjustmentControl = { control -> quickMenuAdjustmentControl = control },
@@ -491,6 +521,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             quadScale = container.getExtra(EXTRA_QUAD_SCALE, defaultQuadScale().toString())
                 .toFloatOrNull() ?: defaultQuadScale()
             passthroughEnabled = container.getExtra(EXTRA_PASSTHROUGH_ENABLED, "false").toBoolean()
+            curvedScreen = container.getExtra(EXTRA_CURVED_SCREEN, "false").toBoolean()
             windowsVrEnabled = container.getExtra(EXTRA_WINDOWS_VR_ENABLED, "false").toBoolean()
             openCompositeEnabled = container.getExtra(EXTRA_WINDOWS_VR_OPEN_COMPOSITE, "false").toBoolean()
             windowsVrStatus = if (windowsVrEnabled) "Waiting for runtime" else "Disabled"
@@ -498,6 +529,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             applyQuadTransform()
             if (xrSessionHandle != 0L) {
                 XrNative.nativeSetPassthroughEnabled(xrSessionHandle, passthroughEnabled)
+                XrNative.nativeSetCurvedScreen(xrSessionHandle, curvedScreen)
             }
         }
     }
@@ -672,8 +704,66 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         super.onPause()
     }
 
+    /** A physical pad's D-pad (hat axes) or left stick moves the open keyboard's focus, repeating while held. */
+    private fun keyboardMotion(ev: android.view.MotionEvent) {
+        val hatX = ev.getAxisValue(android.view.MotionEvent.AXIS_HAT_X)
+        val hatY = ev.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y)
+        val stickX = ev.getAxisValue(android.view.MotionEvent.AXIS_X)
+        val stickY = ev.getAxisValue(android.view.MotionEvent.AXIS_Y)
+        val direction = when {
+            hatY < -0.5f || stickY < -KEYBOARD_STICK -> 0
+            hatY > 0.5f || stickY > KEYBOARD_STICK -> 1
+            hatX < -0.5f || stickX < -KEYBOARD_STICK -> 2
+            hatX > 0.5f || stickX > KEYBOARD_STICK -> 3
+            else -> -1
+        }
+        if (direction == keyboardPadDirection) return
+        keyboardPadDirection = direction
+        gamepadHandler.removeCallbacks(keyboardPadRepeat)
+        if (direction >= 0) {
+            XrNative.nativeXrKeyboardPad(direction)
+            gamepadHandler.postDelayed(keyboardPadRepeat, KEYBOARD_REPEAT_DELAY_MS)
+        }
+    }
+
+    /** Opens the XR keyboard (quick menu Keyboard, both sticks, DebugBus vr_keyboard show). */
+    internal fun showXrKeyboard() {
+        if (xrKeyboardOpen) return
+        keyboardPadDirection = -1
+        xrKeyboardOpen = true
+        XrNative.nativeSetXrKeyboardVisible(true)
+        Timber.i("Immersive: XR keyboard opened")
+    }
+
+    internal fun hideXrKeyboard() {
+        if (!xrKeyboardOpen) return
+        xrKeyboardOpen = false
+        XrNative.nativeSetXrKeyboardVisible(false)
+        Timber.i("Immersive: XR keyboard hidden")
+    }
+
+    /**
+     * Types what the XR keyboard produced into the game through the same US key map as the
+     * Android IME path; Backspace and Enter arrive as private-use characters. UI thread.
+     */
+    private fun typeIntoGame(typed: String) {
+        val xServer = PluviaApp.xServerView?.getxServer() ?: return
+        var unmapped = 0
+        for (ch in typed) {
+            when (ch) {
+                KEYBOARD_BACKSPACE -> app.gamenative.externaldisplay.IMEInputReceiver.pressKey(xServer, com.winlator.xserver.XKeycode.KEY_BKSP)
+                KEYBOARD_ENTER -> app.gamenative.externaldisplay.IMEInputReceiver.pressKey(xServer, com.winlator.xserver.XKeycode.KEY_ENTER)
+                KEYBOARD_CLOSED -> Unit
+                else -> if (!app.gamenative.externaldisplay.IMEInputReceiver.typeCharacter(xServer, ch)) unmapped++
+            }
+        }
+        // Counts only: typed text never goes to logcat.
+        if (unmapped > 0) Timber.w("Immersive: %d XR keyboard characters are outside the guest key map", unmapped)
+    }
+
     override fun onDestroy() {
         gamepadHandler.removeCallbacksAndMessages(null)
+        if (xrKeyboardOpen) XrNative.nativeSetXrKeyboardVisible(false)
         cachedWinHandler?.setRumbleDeviceOverride(0, -1)
         if (current?.get() === this) current = null
         if (isFinishing) restoreLauncherPanel()
@@ -695,7 +785,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         currentAppId?.let { appId ->
             runCatching { app.gamenative.utils.ContainerUtils.getContainer(this, appId) }.getOrNull()?.let { container ->
                 sessionContainer = container
-                val parts = container.screenSize.split("x")
+                val parts = app.gamenative.xrgame.XrGameResolution.capped(container.screenSize).split("x")
                 val w = parts.getOrNull(0)?.trim()?.toIntOrNull()
                 val h = parts.getOrNull(1)?.trim()?.toIntOrNull()
                 if (w != null && h != null && w > 0 && h > 0) {
@@ -705,13 +795,20 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 refreshRate = container.xrRefreshRate.toFloat()
             }
         }
-        if (quadW < 1280) {
-            quadH = 1280 * quadH / quadW
-            quadW = 1280
-        }
         xrSessionHandle = try {
-            configureComposite(sessionContainer)
-            XrNative.nativeCreate(this, quadW, quadH, refreshRate)
+            val tier = configureComposite(sessionContainer)
+            val display = WindowsVrUpscale.Display.decode(app.gamenative.PrefManager.xrDisplayInfo)
+            val screenWidth = ImmersiveControls.BASE_WIDTH_METERS * quadScale
+            val (swapchainW, swapchainH) = WindowsVrUpscale.screenSwapchain(quadW, quadH, tier, display, screenWidth, quadDistance)
+            if (tier != null) {
+                val range = display?.let {
+                    "${WindowsVrUpscale.screenCoverage(it, WindowsVrUpscale.EyeBuffer.RECOMMENDED, screenWidth, quadDistance)}-" +
+                        "${WindowsVrUpscale.screenCoverage(it, WindowsVrUpscale.EyeBuffer.MAXIMUM, screenWidth, quadDistance)}"
+                } ?: "unknown"
+                Timber.i("Immersive: big screen layer %dx%d for the %dx%d Wine screen (%s, effective width %s)",
+                    swapchainW, swapchainH, quadW, quadH, tier.key, range)
+            }
+            XrNative.nativeCreate(this, swapchainW, swapchainH, refreshRate)
         } catch (t: Throwable) {
             Timber.w(t, "Native OpenXR module unavailable — immersive rendering/controller mapping disabled")
             return
@@ -720,6 +817,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         applyQuadTransform()
         windowsVrRuntimeService?.attachSession(xrSessionHandle)
         XrNative.nativeSetPassthroughEnabled(xrSessionHandle, passthroughEnabled)
+        XrNative.nativeSetCurvedScreen(xrSessionHandle, curvedScreen)
 
         startControllerPollingLoop()
         startFrameCaptureLoop()
@@ -729,26 +827,29 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
      * Composite backend and Windows VR reconstruction for the session about to start. The Vulkan
      * backend loads the bundled Turnip's Android build into this process through adrenotools.
      */
-    private fun configureComposite(container: Container?) {
-        if (!app.gamenative.BuildConfig.XRGAME) return
+    private fun configureComposite(container: Container?): WindowsVrUpscale.EyeBuffer? {
+        if (!app.gamenative.BuildConfig.XRGAME) return null
         // The 2D big screen uses the Vulkan composite like OpenXR VR games, so it gets the same
         // status layer; a backend set in the container's XRGAME_XR_COMPOSITE still wins.
         val windowsVr = container?.getExtra(EXTRA_WINDOWS_VR_ENABLED, "false")?.toBoolean() == true
-        val configured = container?.let { com.winlator.core.envvars.EnvVars(it.envVars).get(WindowsVrUpscale.ENV_BACKEND) }
-            ?.takeIf { it in WindowsVrUpscale.BACKENDS }
-        val backend = configured ?: if (windowsVr) WindowsVrUpscale.DEFAULT_BACKEND else WindowsVrUpscale.BACKEND_VULKAN
+        val envVars = container?.envVars.orEmpty()
+        val backend = WindowsVrUpscale.compositeBackend(envVars, windowsVr)
         val driver = java.io.File(filesDir, "contents/adrenotools/${XrGameRuntimeVersions.TURNIP}")
         XrNative.nativeSetComposite(backend == WindowsVrUpscale.BACKEND_VULKAN, driver.absolutePath,
             WindowsVrUpscale.DRIVER_LIBRARY, applicationInfo.nativeLibraryDir)
-        WindowsVrUpscale.set(container?.let(WindowsVrUpscale::fromContainer) ?: WindowsVrUpscale.Settings())
+        val settings = container?.let(WindowsVrUpscale::fromContainer) ?: WindowsVrUpscale.Settings()
+        WindowsVrUpscale.set(settings)
         WindowsVrGripCorrection.reset(android.os.Build.DEVICE)
+        val reconstructs = backend == WindowsVrUpscale.BACKEND_VULKAN && settings.filter != WindowsVrUpscale.Filter.OFF
         // Eye-tracked foveation needs Pico's eye tracking permission; without it the gaze stays
         // invalid and foveation keeps the fixed centre.
-        if (WindowsVrUpscale.settings.foveation == WindowsVrUpscale.Foveation.EYE &&
+        if (reconstructs && settings.foveation == WindowsVrUpscale.Foveation.EYE &&
             checkSelfPermission(WindowsVrUpscale.EYE_TRACKING_PERMISSION) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(arrayOf(WindowsVrUpscale.EYE_TRACKING_PERMISSION), EYE_TRACKING_REQUEST)
         }
+        // VR games reconstruct into their eye buffers; the big screen sizes its layer by the tier.
+        return if (reconstructs && !windowsVr) settings.eyeBuffer else null
     }
 
     private fun startControllerPollingLoop() {
@@ -793,16 +894,41 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                         }
                     }
                     val inMenuMode = quickMenuVisible || PluviaApp.isOverlayPaused
+                    if (!displayInfoSaved) {
+                        WindowsVrUpscale.Display.fromNative(XrNative.nativeXrDisplayInfo())?.let { display ->
+                            displayInfoSaved = true
+                            if (app.gamenative.PrefManager.xrDisplayInfo != display.encode()) app.gamenative.PrefManager.xrDisplayInfo = display.encode()
+                        }
+                    }
+                    XrNative.nativeDrainXrKeyboard()?.let { typed ->
+                        if (typed.contains(KEYBOARD_CLOSED)) {
+                            xrKeyboardOpen = false
+                            Timber.i("Immersive: XR keyboard closed")
+                        }
+                        runOnUiThread { typeIntoGame(typed) }
+                    }
+                    val sticksMask = (1 shl XrGamepadBridge.BUTTON_L3) or (1 shl XrGamepadBridge.BUTTON_R3)
+                    val bothSticks = (buttons[0] and sticksMask) == sticksMask
+                    if (bothSticks && !xrBothSticksHeld && !inMenuMode) {
+                        runOnUiThread { if (xrKeyboardOpen) hideXrKeyboard() else showXrKeyboard() }
+                        // The game keeps neither stick click from the chord.
+                        buttonSuppressMaskUntilRelease = buttonSuppressMaskUntilRelease or sticksMask
+                    }
+                    xrBothSticksHeld = bothSticks
+                    val keyboardOpen = xrKeyboardOpen
+                    val inputBlocked = inMenuMode || keyboardOpen
                     overlayPausedUi = PluviaApp.isOverlayPaused
-                    if (wasInMenuNavigationMode && !inMenuMode) {
+                    if (wasInMenuNavigationMode && !inputBlocked) {
                         buttonSuppressMaskUntilRelease = buttons[0]
                     }
-                    if (inMenuMode != wasInMenuNavigationMode) XrNative.nativeSetWindowsInputBlocked(xrSessionHandle, inMenuMode)
-                    wasInMenuNavigationMode = inMenuMode
-                    val feedGame = !xrPointerModeActive && !inMenuMode
+                    if (inputBlocked != wasInMenuNavigationMode) XrNative.nativeSetWindowsInputBlocked(xrSessionHandle, inputBlocked)
+                    wasInMenuNavigationMode = inputBlocked
+                    val feedGame = !xrPointerModeActive && !inputBlocked
                     if (!feedGame && lastFedGamepad) cachedBridge?.reset()
                     lastFedGamepad = feedGame
                     when {
+                        // The native keyboard reads the controllers itself.
+                        keyboardOpen -> Unit
                         xrPointerModeActive -> {
                             handlePointerMode(buttons[0], axes, handPoses, flags[0])
                             cachedBridge?.commitPhysicalIfActive()
@@ -1391,6 +1517,15 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                         }
                     }
                 },
+                onExchange = { exchangePtr, _, _ ->
+                    if (xrSessionHandle != 0L) {
+                        XrNative.nativeSetSharedGameExchange(xrSessionHandle, exchangePtr)
+                        if (!directRenderActive) {
+                            directRenderActive = true
+                            applyQuadTransform()
+                        }
+                    }
+                },
             )
             directVulkanBridge = bridge
             bridgedRenderer = vulkanRenderer
@@ -1412,7 +1547,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         (renderer as? com.winlator.renderer.VulkanRenderer)?.setVulkanXrFrameBridge(null)
         // Without this the quad kept compositing the last flat frame (opaque) under the overlay,
         // e.g. behind the quick menu once a Windows VR game went stereo.
-        if (xrSessionHandle != 0L) XrNative.nativeSetSharedGameBufferPtr(xrSessionHandle, 0L)
+        if (xrSessionHandle != 0L) {
+            XrNative.nativeSetSharedGameBufferPtr(xrSessionHandle, 0L)
+            XrNative.nativeSetSharedGameExchange(xrSessionHandle, 0L)
+        }
         val bridge = directGLBridge
         if (bridge != null) {
             directGLBridge = null
@@ -1627,12 +1765,16 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         }
     }
 
-    /** The immersive HUD follows the quick menu's Performance HUD switch (PrefManager.showFps). Capture thread. */
+    /**
+     * The immersive HUD: XRGame's status layer has its own switch (launch panel, DebugBus vr_hud);
+     * other builds follow the quick menu's Performance HUD switch (PrefManager.showFps). Capture thread.
+     */
     private fun syncPerfHud() {
         val now = android.os.SystemClock.uptimeMillis()
         if (now - perfHudCheckedAt < PERF_HUD_POLL_MS) return
         perfHudCheckedAt = now
-        val shown = app.gamenative.PrefManager.showFps
+        val shown = if (app.gamenative.BuildConfig.XRGAME) app.gamenative.PrefManager.xrgameStatusLayer
+        else app.gamenative.PrefManager.showFps
         if (shown != perfHudShown) {
             perfHudShown = shown
             XrNative.nativeSetPerfHudVisible(shown)
@@ -1664,6 +1806,39 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         val gamepad = physicalGamepad(event.device) ?: return super.dispatchKeyEvent(event)
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_THUMBL || event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_THUMBR) {
+            val down = event.action == android.view.KeyEvent.ACTION_DOWN
+            if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_THUMBL) physicalThumbL = down else physicalThumbR = down
+            if (down && event.repeatCount == 0 && physicalThumbL && physicalThumbR && !quickMenuVisible) {
+                if (xrKeyboardOpen) hideXrKeyboard() else showXrKeyboard()
+                gamepad.state.setPressed(XrGamepadBridge.BUTTON_L3, false)
+                gamepad.state.setPressed(XrGamepadBridge.BUTTON_R3, false)
+                return true
+            }
+        }
+        if (xrKeyboardOpen) {
+            // The open XR keyboard takes the pad: D-pad moves focus (with repeat), A presses,
+            // B deletes, Y types a space, X is Shift, Start or the Xbox button closes it.
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                val dpad = when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_DPAD_UP -> 0
+                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                    android.view.KeyEvent.KEYCODE_DPAD_LEFT -> 2
+                    android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 3
+                    else -> -1
+                }
+                val action = if (dpad >= 0) dpad else if (event.repeatCount > 0) -1 else when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_BUTTON_A -> 4
+                    android.view.KeyEvent.KEYCODE_BUTTON_B -> 5
+                    android.view.KeyEvent.KEYCODE_BUTTON_Y -> 6
+                    android.view.KeyEvent.KEYCODE_BUTTON_X -> 7
+                    android.view.KeyEvent.KEYCODE_BUTTON_START, android.view.KeyEvent.KEYCODE_BUTTON_MODE -> 8
+                    else -> -1
+                }
+                if (action >= 0) XrNative.nativeXrKeyboardPad(action)
+            }
+            return true
+        }
         when (event.keyCode) {
             android.view.KeyEvent.KEYCODE_BUTTON_MODE -> {
                 if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) quickMenuToggle?.invoke()
@@ -1710,6 +1885,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
         val gamepad = physicalGamepad(ev.device) ?: return super.dispatchGenericMotionEvent(ev)
+        if (xrKeyboardOpen) {
+            keyboardMotion(ev)
+            return true
+        }
         if (quickMenuVisible || PluviaApp.isOverlayPaused) {
             val consumed = PluviaApp.events.emit(app.gamenative.events.AndroidEvent.MotionEvent(ev)) { results ->
                 results.any { it }

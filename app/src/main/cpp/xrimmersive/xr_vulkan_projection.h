@@ -28,9 +28,16 @@ struct UpscaleSettings {
     uint32_t sharpness = 50;      // 0..100
     uint32_t foveation = 0;       // spatial::foveation::Mode: 0 off, 1 fixed, 2 eye tracked
     uint32_t level = 1;           // spatial::foveation::Level: 0 low, 1 balanced, 2 high
-    uint32_t outputPercent = 100; // output size relative to the runtime recommendation, 50..100
+    uint32_t outputPercent = 100; // output size relative to the eye buffer tier, 50..100
+    uint32_t eyeBuffer = 0;       // 0 the runtime recommendation, 1 halfway to the limit, 2 the limit
+    uint32_t frameGeneration = 1; // big screen: the largest output multiple of the game frame rate, 1 off
+    uint32_t flowPercent = 50;    // frame generation's optical flow resolution, 25..100
     bool debug = false;           // tint by actual fragment density
 };
+
+// Per-eye size of an eye buffer tier: the recommendation, halfway from it to the limit, or the
+// limit (each axis on its own; the FOV, not the buffer, fixes the projection).
+VkExtent2D EyeBufferExtent(VkExtent2D recommended, VkExtent2D limit, uint32_t tier);
 void SetUpscaleSettings(const UpscaleSettings &settings);
 UpscaleSettings GetUpscaleSettings();
 
@@ -43,7 +50,7 @@ struct GazeSample {
 class ProjectionPresenter {
 public:
     bool initialize(Context *context, XrSession session, VkFormat format, bool srgb, uint32_t recommendedWidth,
-                    uint32_t recommendedHeight);
+                    uint32_t recommendedHeight, uint32_t limitWidth, uint32_t limitHeight);
     bool render(windowsvr::WindowsFrameTransport &transport, XrSpace space, XrCompositionLayerProjection *layer);
     void setGaze(const GazeSample &gaze) { gaze_ = gaze; }
     bool lastRenderReused() const { return lastRenderReused_; }
@@ -84,6 +91,8 @@ private:
     uint32_t height_ = 0;
     uint32_t recommendedWidth_ = 0;
     uint32_t recommendedHeight_ = 0;
+    uint32_t limitWidth_ = 0;
+    uint32_t limitHeight_ = 0;
     std::vector<XrSwapchainImageVulkan2KHR> images_;
     std::vector<std::array<VkImageView, 2>> views_;
     std::array<XrCompositionLayerProjectionView, 2> layerViews_{};

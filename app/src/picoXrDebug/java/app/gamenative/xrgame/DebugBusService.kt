@@ -39,7 +39,7 @@ class DebugBusService : Service() {
     companion object {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
-            "launch", "input", "quickmenu", "vr_hud", "vr_oc")
+            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
     }
@@ -100,6 +100,7 @@ class DebugBusService : Service() {
             "input" -> input(args)
             "quickmenu" -> quickMenu(args)
             "vr_hud" -> vrHud(args)
+            "vr_keyboard" -> vrKeyboard(args)
             "game_state" -> gameState()
             "vr_oc" -> vrOpenComposite(args)
             else -> error("unknown_provider")
@@ -128,7 +129,8 @@ class DebugBusService : Service() {
         return JSONObject()
             .put("filter", settings.filter.key).put("sharp", settings.sharpness)
             .put("fov", settings.foveation.key).put("level", settings.level.key)
-            .put("out", settings.outputPercent).put("debug", settings.debug)
+            .put("out", settings.outputPercent).put("eye", settings.eyeBuffer.key)
+            .put("fg", settings.frameGen.key).put("flow", settings.flowPercent).put("debug", settings.debug)
     }
 
     /** Controller grip correction for Windows games; no arguments reports the current values. */
@@ -217,15 +219,34 @@ class DebugBusService : Service() {
         return JSONObject(activity.debugQuickMenu(action)).put("active", true).put("action", action)
     }
 
-    /** The immersive performance HUD: on/off flips the Performance HUD switch it follows. */
+    /** The XR keyboard: show/hide it in the running immersive session; status never includes typed text. */
+    private fun vrKeyboard(args: Array<String>): JSONObject {
+        val action = args.firstOrNull() ?: "status"
+        require(args.size <= 1 && action in listOf("status", "show", "hide")) { "usage: vr_keyboard [status|show|hide]" }
+        val activity = ImmersiveXrActivity.current?.get()
+        if (action != "status") {
+            requireNotNull(activity) { "no_immersive_session" }
+            val latch = java.util.concurrent.CountDownLatch(1)
+            activity.runOnUiThread {
+                if (action == "show") activity.showXrKeyboard() else activity.hideXrKeyboard()
+                latch.countDown()
+            }
+            latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+        return JSONObject(XrNative.nativeXrKeyboardStatus())
+            .put("open", activity?.xrKeyboardOpen)
+            .put("session", activity != null)
+    }
+
+    /** The immersive status layer: on/off flips its switch (the launch panel's status layer row). */
     private fun vrHud(args: Array<String>): JSONObject {
         val action = args.firstOrNull() ?: "status"
         require(args.size <= 1 && action in listOf("status", "on", "off")) { "usage: vr_hud [status|on|off]" }
         if (action != "status") {
-            PrefManager.showFps = action == "on"
+            PrefManager.xrgameStatusLayer = action == "on"
             XrNative.nativeSetPerfHudVisible(action == "on")
         }
-        return JSONObject(XrNative.nativePerfHudStatus()).put("showFps", PrefManager.showFps)
+        return JSONObject(XrNative.nativePerfHudStatus()).put("statusLayer", PrefManager.xrgameStatusLayer)
             .put("session", ImmersiveXrActivity.current?.get() != null)
             .put("scope", "vulkan_composite_local_space_quad")
     }

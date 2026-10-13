@@ -86,6 +86,7 @@ import app.gamenative.service.gog.GOGService
 import app.gamenative.api.DebugReportApi
 import app.gamenative.ui.component.dialog.ContainerConfigDialog
 import app.gamenative.ui.component.dialog.DebugPreRunDialog
+import app.gamenative.ui.component.dialog.XrGameLaunchPanel
 import app.gamenative.ui.component.dialog.DebugReportDialog
 import app.gamenative.ui.component.dialog.GameFeedbackDialog
 import app.gamenative.ui.component.dialog.LoadingDialog
@@ -377,6 +378,30 @@ fun PluviaMain(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
 
     var openContainerConfigForAppId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // XRGame's launch panel (display mode and its options) for a game started from the library.
+    var xrLaunchPanelAppId by rememberSaveable { mutableStateOf<String?>(null) }
+    var xrLaunchPanelOffline by rememberSaveable { mutableStateOf(false) }
+    val launchFromLibrary: (String, Boolean, Boolean) -> Unit = { appId, asContainer, isOffline ->
+        trackGameLaunched(appId)
+        viewModel.setLaunchedAppId(appId)
+        viewModel.setBootToContainer(asContainer)
+        viewModel.setTestGraphics(false)
+        viewModel.setDiagnostics(false)
+        viewModel.setDebugRun(false)
+        viewModel.setOffline(isOffline)
+        preLaunchApp(
+            context = context,
+            appId = appId,
+            setLoadingDialogVisible = viewModel::setLoadingDialogVisible,
+            setLoadingProgress = viewModel::setLoadingDialogProgress,
+            setLoadingMessage = viewModel::setLoadingDialogMessage,
+            setMessageDialogState = setMessageDialogState,
+            onSuccess = viewModel::launchApp,
+            isOffline = isOffline,
+            bootToContainer = asContainer,
+        )
+    }
 
     // Track if connection banner was dismissed by user
     var connectionBannerDismissed by rememberSaveable { mutableStateOf(false) }
@@ -1366,6 +1391,19 @@ fun PluviaMain(
                 }
             }
 
+            // Hidden while its full settings are open; it reads the saved settings again after.
+            xrLaunchPanelAppId?.takeIf { openContainerConfigForAppId == null }?.let { appId ->
+                XrGameLaunchPanel(
+                    appId = appId,
+                    onLaunch = {
+                        xrLaunchPanelAppId = null
+                        launchFromLibrary(appId, false, xrLaunchPanelOffline)
+                    },
+                    onDismiss = { xrLaunchPanelAppId = null },
+                    onOpenSettings = { openContainerConfigForAppId = appId },
+                )
+            }
+
             GameFeedbackDialog(
                 state = gameFeedbackState,
                 onStateChange = { gameFeedbackState = it },
@@ -1722,24 +1760,12 @@ fun PluviaMain(
 
                     HomeScreen(
                         onClickPlay = { appId, asContainer ->
-                            trackGameLaunched(appId)
-                            viewModel.setLaunchedAppId(appId)
-                            viewModel.setBootToContainer(asContainer)
-                            viewModel.setTestGraphics(false)
-                            viewModel.setDiagnostics(false)
-                            viewModel.setDebugRun(false)
-                            viewModel.setOffline(isOffline)
-                            preLaunchApp(
-                                context = context,
-                                appId = appId,
-                                setLoadingDialogVisible = viewModel::setLoadingDialogVisible,
-                                setLoadingProgress = viewModel::setLoadingDialogProgress,
-                                setLoadingMessage = viewModel::setLoadingDialogMessage,
-                                setMessageDialogState = { msgDialogState = it },
-                                onSuccess = viewModel::launchApp,
-                                isOffline = isOffline,
-                                bootToContainer = asContainer,
-                            )
+                            if (BuildConfig.XRGAME && !asContainer && PrefManager.xrgameLaunchPanel) {
+                                xrLaunchPanelOffline = isOffline
+                                xrLaunchPanelAppId = appId
+                            } else {
+                                launchFromLibrary(appId, asContainer, isOffline)
+                            }
                         },
                         onTestGraphics = { appId ->
                             viewModel.setLaunchedAppId(appId)

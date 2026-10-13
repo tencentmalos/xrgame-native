@@ -1,6 +1,7 @@
 #include "../xrgame_profiler.h"
 #include "xr_immersive.h"
 #include "xr_vulkan_compositor.h"
+#include "xr_keyboard.h"
 
 #include "spatial/xr/XrEyeGazeTracker.h"
 
@@ -305,6 +306,16 @@ void XrImmersiveSession::submitFrame(const uint8_t *rgbaPixels, int32_t width, i
     hasPendingFrame_ = true;
 }
 
+namespace {
+std::mutex gDisplayInfoMutex;
+XrDisplayInfo gDisplayInfo;
+}  // namespace
+
+XrDisplayInfo GetXrDisplayInfo() {
+    std::lock_guard<std::mutex> lock(gDisplayInfoMutex);
+    return gDisplayInfo;
+}
+
 void XrImmersiveSession::configure(int32_t quadWidth, int32_t quadHeight, float refreshRate) {
     if (quadWidth > 0 && quadHeight > 0) {
         swapchainWidth_ = quadWidth;
@@ -328,6 +339,64 @@ void XrImmersiveSession::setSharedGameBuffer(AHardwareBuffer *buffer) {
     }
     pendingSharedBuffer_ = buffer;
     sharedBufferChanged_ = true;
+}
+
+void XrImmersiveSession::setSharedGameExchange(xrgame::XrFrameExchange *scene) {
+    std::lock_guard<std::mutex> lock(sharedBufferMutex_);
+    if (scene == pendingScene_) return;
+    if (pendingScene_ != nullptr) xrgame::Release(pendingScene_);
+    if (scene != nullptr) xrgame::Retain(scene);
+    pendingScene_ = scene;
+}
+
+void XrImmersiveSession::releaseSceneGl() {
+    if (glScene_ == nullptr) return;
+    uint32_t held = 0;
+    if (glSceneSlot_ >= 0) held |= 1u << glSceneSlot_;
+    if (glSceneOld_ >= 0) held |= 1u << glSceneOld_;
+    glScene_->held.fetch_and(~held, std::memory_order_seq_cst);
+    xrgame::Release(glScene_);
+    glScene_ = nullptr;
+    glSceneSerial_ = 0;
+    glSceneSlot_ = -1;
+    glSceneOld_ = -1;
+}
+
+// GLES composite: shows the scene ring's latest completed slot through the shared buffer texture.
+void XrImmersiveSession::takeSceneSlotGl() {
+    xrgame::XrFrameExchange *scene = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(sharedBufferMutex_);
+        scene = pendingScene_;
+    }
+    if (scene != glScene_) {
+        releaseSceneGl();
+        if (scene == nullptr) {
+            setSharedGameBuffer(nullptr);
+            return;
+        }
+        xrgame::Retain(scene);
+        glScene_ = scene;
+    }
+    if (glScene_ == nullptr) return;
+    const uint64_t latest = glScene_->latest.load(std::memory_order_seq_cst);
+    if (latest == 0 || xrgame::XrFrameExchange::Serial(latest) <= glSceneSerial_) return;
+    const int slot = static_cast<int>(xrgame::XrFrameExchange::Slot(latest));
+    if (slot >= static_cast<int>(xrgame::XrFrameExchange::kSlots)) return;
+    const bool held = slot == glSceneSlot_ || slot == glSceneOld_;
+    if (!held) glScene_->held.fetch_or(1u << slot, std::memory_order_seq_cst);
+    if (glScene_->latest.load(std::memory_order_seq_cst) != latest) {
+        // Published again meanwhile: the renderer may be writing this slot; take the next one later.
+        if (!held) glScene_->held.fetch_and(~(1u << slot), std::memory_order_seq_cst);
+        return;
+    }
+    if (glSceneOld_ >= 0 && glSceneOld_ != slot && glSceneOld_ != glSceneSlot_) {
+        glScene_->held.fetch_and(~(1u << glSceneOld_), std::memory_order_seq_cst);
+    }
+    glSceneOld_ = glSceneSlot_ == slot ? glSceneOld_ : glSceneSlot_;
+    glSceneSlot_ = slot;
+    glSceneSerial_ = xrgame::XrFrameExchange::Serial(latest);
+    setSharedGameBuffer(glScene_->buffers[slot]);
 }
 
 // Must run on the render thread (this thread) — glEGLImageTargetTexture2DOES needs this
@@ -473,6 +542,16 @@ void XrImmersiveSession::runLoop() {
         if (XR_SUCCEEDED(xrLocateViews(session_, &viewLocateInfo, &viewState, 2, &viewCount,
                                        runtimeSnapshot.views.data())) && viewCount == 2) {
             runtimeSnapshot.viewStateFlags = viewState.viewStateFlags;
+            if (!displayInfoPublished_ && runtimeSnapshot.views[0].fov.angleRight > runtimeSnapshot.views[0].fov.angleLeft) {
+                const XrFovf &fov = runtimeSnapshot.views[0].fov;
+                std::lock_guard<std::mutex> lock(gDisplayInfoMutex);
+                gDisplayInfo.tanLeft = std::tan(fov.angleLeft);
+                gDisplayInfo.tanRight = std::tan(fov.angleRight);
+                gDisplayInfo.tanUp = std::tan(fov.angleUp);
+                gDisplayInfo.tanDown = std::tan(fov.angleDown);
+                gDisplayInfo.valid = gDisplayInfo.recommendedWidth > 0;
+                displayInfoPublished_ = gDisplayInfo.valid;
+            }
         } else {
             runtimeSnapshot.viewStateFlags = 0;
         }
@@ -571,6 +650,9 @@ bool XrImmersiveSession::setupInstanceAndSession() {
     if (threadSettingsExtensionAvailable_) extensions.push_back(XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME);
     refreshRateExtensionAvailable_ = IsInstanceExtensionSupported(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
     if (refreshRateExtensionAvailable_) extensions.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
+    cylinderExtensionAvailable_ = IsInstanceExtensionSupported(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME);
+    if (cylinderExtensionAvailable_) extensions.push_back(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME);
+    LOGI("XR_KHR_composition_layer_cylinder %s", cylinderExtensionAvailable_ ? "available" : "unavailable");
     localFloorExtensionAvailable_ = IsInstanceExtensionSupported(XR_EXT_LOCAL_FLOOR_EXTENSION_NAME);
     if (localFloorExtensionAvailable_) extensions.push_back(XR_EXT_LOCAL_FLOOR_EXTENSION_NAME);
     const char *picoControllerExtension = "XR_BD_controller_interaction";
@@ -644,6 +726,7 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         if (compositor->create(instance_, systemId_, compositeConfig)) {
             vulkan_ = std::move(compositor);
             perfHud_ = std::make_unique<PerfHud>();
+            keyboard_ = std::make_unique<XrKeyboard>();
             RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after vulkan device");
         } else {
             compositor->destroy();
@@ -913,11 +996,34 @@ bool XrImmersiveSession::setupInstanceAndSession() {
                  windowsSnapshot_.stageBounds.height,
                  static_cast<int>(boundsResult));
         }
+        // The largest eye the runtime, its swapchains and the GPU accept (eye buffer tiers).
+        uint32_t limitWidth = std::min(projectionViews[0].maxImageRectWidth, projectionViews[1].maxImageRectWidth);
+        uint32_t limitHeight = std::min(projectionViews[0].maxImageRectHeight, projectionViews[1].maxImageRectHeight);
+        XrSystemProperties systemProperties{XR_TYPE_SYSTEM_PROPERTIES};
+        if (XR_SUCCEEDED(xrGetSystemProperties(instance_, systemId_, &systemProperties))) {
+            limitWidth = std::min(limitWidth, systemProperties.graphicsProperties.maxSwapchainImageWidth);
+            limitHeight = std::min(limitHeight, systemProperties.graphicsProperties.maxSwapchainImageHeight);
+        }
+        if (vulkan_) {
+            VkPhysicalDeviceProperties gpu{};
+            vulkan_->context().vk().vkGetPhysicalDeviceProperties(vulkan_->context().physicalDevice(), &gpu);
+            limitWidth = std::min({limitWidth, gpu.limits.maxImageDimension2D, gpu.limits.maxFramebufferWidth});
+            limitHeight = std::min({limitHeight, gpu.limits.maxImageDimension2D, gpu.limits.maxFramebufferHeight});
+        }
+        LOGI("XR eye views: recommended %ux%u, limit %ux%u", projectionViews[0].recommendedImageRectWidth,
+             projectionViews[0].recommendedImageRectHeight, limitWidth, limitHeight);
+        {
+            std::lock_guard<std::mutex> lock(gDisplayInfoMutex);
+            gDisplayInfo.recommendedWidth = projectionViews[0].recommendedImageRectWidth;
+            gDisplayInfo.recommendedHeight = projectionViews[0].recommendedImageRectHeight;
+            gDisplayInfo.maxWidth = limitWidth;
+            gDisplayInfo.maxHeight = limitHeight;
+        }
         if (vulkan_) {
             windowsProjectionReady_ = vulkan_->projection().initialize(
                 &vulkan_->context(), session_, static_cast<VkFormat>(chosenFormat), srgbSwapchain_,
                 projectionViews[0].recommendedImageRectWidth,
-                projectionViews[0].recommendedImageRectHeight);
+                projectionViews[0].recommendedImageRectHeight, limitWidth, limitHeight);
         } else {
             windowsProjectionReady_ = windowsProjection_.initialize(
                 session_, chosenFormat,
@@ -1357,6 +1463,7 @@ bool XrImmersiveSession::renderFrame() {
     }
 
     ensureQuadGeometryAndShader();
+    takeSceneSlotGl();
     importSharedBufferIfNeeded();
     uploadPendingGameFrameLocked();
 
@@ -1430,25 +1537,94 @@ bool XrImmersiveSession::renderFrame() {
 
 bool XrImmersiveSession::renderQuadImage(uint32_t imageIndex) {
     AHardwareBuffer *shared = nullptr;
+    xrgame::XrFrameExchange *scene = nullptr;
     {
         std::lock_guard<std::mutex> lock(sharedBufferMutex_);
         shared = pendingSharedBuffer_;
         sharedBufferChanged_ = false;
         if (shared != nullptr) AHardwareBuffer_acquire(shared);
+        scene = pendingScene_;
+        if (scene != nullptr) xrgame::Retain(scene);
     }
     std::unique_ptr<AHardwareBuffer, void (*)(AHardwareBuffer *)> sharedRef(shared, AHardwareBuffer_release);
+    std::unique_ptr<xrgame::XrFrameExchange, void (*)(xrgame::XrFrameExchange *)> sceneRef(scene, xrgame::Release);
+
+    // The game area as the player sees it, and where their gaze meets it.
+    vulkan::QuadView view;
+    const float contentScaleX = quadContentScaleX_.load();
+    const float contentScaleY = quadContentScaleY_.load();
+    const float quadWidth = quadWidth_.load();
+    const float quadHeight = quadHeight_.load();
+    const XrPosef pose = quadPose();
+    const float distance = std::sqrt(pose.position.x * pose.position.x + pose.position.y * pose.position.y +
+                                     pose.position.z * pose.position.z);
+    const bool curved = curvedScreen_.load() && cylinderExtensionAvailable_;
+    if (distance > 0.05f && quadWidth > 0.0f && quadHeight > 0.0f && contentScaleX != 0.0f && contentScaleY != 0.0f) {
+        // A content scale is signed: negative shows the game flipped on that axis.
+        const float areaWidth = quadWidth * std::fabs(contentScaleX);
+        view.tanHalfWidth = curved ? std::tan(std::min(areaWidth * 0.5f / distance, 1.4f)) : areaWidth * 0.5f / distance;
+        view.tanHalfHeight = quadHeight * std::fabs(contentScaleY) * 0.5f / distance;
+        if (quadGazeValid_) {
+            // The gaze ray in the screen's frame (+Z toward the player); for the cylinder the frame
+            // sits at its centre, the player's position.
+            const XrVector3f centre = curved ? XrVector3f{0.0f, 0.0f, 0.0f} : pose.position;
+            const XrQuaternionf inverse = QuatConjugate(pose.orientation);
+            const XrVector3f origin = QuatRotate(inverse, {quadGazePose_.position.x - centre.x,
+                                                           quadGazePose_.position.y - centre.y,
+                                                           quadGazePose_.position.z - centre.z});
+            const XrVector3f direction = QuatRotate(inverse, QuatRotate(quadGazePose_.orientation, {0.0f, 0.0f, -1.0f}));
+            bool hit = false;
+            float u = 0.5f;
+            float v = 0.5f;
+            if (curved) {
+                // Far root of |xz| = radius from inside the cylinder; u runs along the arc.
+                const float a = direction.x * direction.x + direction.z * direction.z;
+                const float b = 2.0f * (origin.x * direction.x + origin.z * direction.z);
+                const float c = origin.x * origin.x + origin.z * origin.z - distance * distance;
+                const float disc = b * b - 4.0f * a * c;
+                if (a > 1e-6f && disc >= 0.0f) {
+                    const float t = (-b + std::sqrt(disc)) / (2.0f * a);
+                    if (t > 0.0f) {
+                        const float x = origin.x + t * direction.x;
+                        const float y = origin.y + t * direction.y;
+                        const float z = origin.z + t * direction.z;
+                        u = std::atan2(x, -z) / (quadWidth / distance) + 0.5f;
+                        v = 0.5f - y / quadHeight;
+                        hit = true;
+                    }
+                }
+            } else if (direction.z < -1e-4f) {
+                // The quad faces +Z; a gaze toward it travels along -Z in its frame.
+                const float t = -origin.z / direction.z;
+                u = (origin.x + t * direction.x) / quadWidth + 0.5f;
+                v = 0.5f - (origin.y + t * direction.y) / quadHeight;
+                hit = true;
+            }
+            if (hit) {
+                view.gazeU = std::clamp((u - 0.5f) / contentScaleX + 0.5f, 0.0f, 1.0f);
+                view.gazeV = std::clamp((v - 0.5f) / contentScaleY + 0.5f, 0.0f, 1.0f);
+                view.gazeValid = true;
+            }
+        }
+    }
+
     std::lock_guard<std::mutex> lock(frameMutex_);
     const uint8_t *pixels = hasPendingFrame_ ? pendingFramePixels_.data() : nullptr;
     hasPendingFrame_ = false;
-    return vulkan_->drawQuad(imageIndex, shared, pixels, static_cast<uint32_t>(pendingFrameWidth_),
-                             static_cast<uint32_t>(pendingFrameHeight_), quadContentScaleX_.load(),
-                             quadContentScaleY_.load());
+    return vulkan_->drawQuad(imageIndex, scene, shared, pixels, static_cast<uint32_t>(pendingFrameWidth_),
+                             static_cast<uint32_t>(pendingFrameHeight_), contentScaleX, contentScaleY, view,
+                             static_cast<int64_t>(displayPeriod_));
 }
 
 void XrImmersiveSession::locateGaze(XrTime predictedDisplayTime) {
     if (!gaze_ || !vulkan_) return;
     const spatial::xr::EyeGazeSample sample = gaze_->Locate(windowsTrackingSpace_, predictedDisplayTime);
     vulkan_->projection().setGaze({sample.valid, sample.pose.orientation});
+    // The 2D quad lives in LOCAL space, which VR games may not track in.
+    const spatial::xr::EyeGazeSample local =
+        windowsTrackingSpace_ == localSpace_ ? sample : gaze_->Locate(localSpace_, predictedDisplayTime);
+    quadGazeValid_ = local.valid;
+    if (local.valid) quadGazePose_ = local.pose;
     static bool announced = false;
     if (sample.valid && !announced) {
         announced = true;
@@ -1715,10 +1891,12 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     }
     XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
     const bool hudShown = submitPerfHud(&hud, true, predictedDisplayTime);
+    XrCompositionLayerQuad keyboard{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    const bool keyboardShown = submitKeyboard(&keyboard, predictedDisplayTime, nullptr);
     XrCompositionLayerPassthroughFB passthroughLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
     passthroughLayer.space = XR_NULL_HANDLE;
     passthroughLayer.layerHandle = passthroughLayer_;
-    std::array<const XrCompositionLayerBaseHeader *, 4> layers{};
+    std::array<const XrCompositionLayerBaseHeader *, 5> layers{};
     uint32_t layerCount = 0;
     if (submitsPassthroughLayer()) {
         layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&passthroughLayer);
@@ -1726,6 +1904,7 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&projection);
     if (hudShown) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud);
     if (overlayRendered) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&overlay);
+    if (keyboardShown) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&keyboard);
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = predictedDisplayTime;
     endInfo.environmentBlendMode = submitsPassthroughLayer() ? XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
@@ -1791,23 +1970,7 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     // half-angles cy/sy for yaw, cx/sx for pitch, with the same yaw-sign convention as the
     // yaw-only case): (cy*sx, -sy*cx, sy*sx, cy*cx) — reduces exactly to the old yaw-only
     // quaternion (0, -sy, 0, cy) when pitch=0, confirming the two derivations agree.
-    const float distance = -quadPosZ_.load();
-    const float tangentialX = quadPosX_.load();
-    const float tangentialY = quadPosY_.load();
-    const float yaw = distance > 0.0001f ? std::atan2(tangentialX, distance) : 0.0f;
-    const float pitch = distance > 0.0001f ? std::atan2(tangentialY, distance) : 0.0f;
-    const float cy = std::cos(yaw * 0.5f);
-    const float sy = std::sin(yaw * 0.5f);
-    const float cx = std::cos(pitch * 0.5f);
-    const float sx = std::sin(pitch * 0.5f);
-    quad.pose = IdentityPose();
-    quad.pose.orientation.x = cy * sx;
-    quad.pose.orientation.y = -sy * cx;
-    quad.pose.orientation.z = sy * sx;
-    quad.pose.orientation.w = cy * cx;
-    quad.pose.position.x = distance * std::sin(yaw) * std::cos(pitch);
-    quad.pose.position.y = distance * std::sin(pitch);
-    quad.pose.position.z = -distance * std::cos(yaw) * std::cos(pitch);
+    quad.pose = quadPose();
     quad.size.width = quadWidth_.load();
     quad.size.height = quadHeight_.load();
 
@@ -1821,14 +1984,40 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     passthroughLayer.space = XR_NULL_HANDLE;
     passthroughLayer.layerHandle = passthroughLayer_;
 
+    // The curved screen: a cylinder centred on the player (the orbit centre), so every column is
+    // at the viewing distance; its middle sits where the flat screen's does and its arc is as wide
+    // as the flat screen. The status layer and the keyboard keep placing against the flat screen.
+    XrCompositionLayerCylinderKHR cylinder{XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR};
+    const float radius = -quadPosZ_.load();
+    const bool curved = curvedScreen_.load() && cylinderExtensionAvailable_ && radius > 0.05f;
+    if (curved) {
+        cylinder.layerFlags = quad.layerFlags;
+        cylinder.space = space;
+        cylinder.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+        cylinder.subImage = quad.subImage;
+        cylinder.pose = IdentityPose();
+        cylinder.pose.orientation = quad.pose.orientation;
+        cylinder.radius = radius;
+        cylinder.centralAngle = std::min(quad.size.width / radius, 6.0f);
+        cylinder.aspectRatio = quad.size.width / quad.size.height;
+    }
+
     std::vector<const XrCompositionLayerBaseHeader *> layers;
     if (submitsPassthroughLayer()) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&passthroughLayer));
     }
-    layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
+    if (curved) {
+        layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&cylinder));
+    } else {
+        layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
+    }
     XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
     if (submitPerfHud(&hud, false, predictedDisplayTime, &quad)) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud));
+    }
+    XrCompositionLayerQuad keyboard{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    if (submitKeyboard(&keyboard, predictedDisplayTime, &quad)) {
+        layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&keyboard));
     }
 
     // Passthrough shows the real world through gaps, so the "background" must be
@@ -1841,6 +2030,27 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     endInfo.layers = layers.data();
     XrProfileScope endProfile("host.vr.xr.end_frame");
     XrCheck(xrEndFrame(session_, &endInfo), "xrEndFrame");
+}
+
+XrPosef XrImmersiveSession::quadPose() const {
+    const float distance = -quadPosZ_.load();
+    const float tangentialX = quadPosX_.load();
+    const float tangentialY = quadPosY_.load();
+    const float yaw = distance > 0.0001f ? std::atan2(tangentialX, distance) : 0.0f;
+    const float pitch = distance > 0.0001f ? std::atan2(tangentialY, distance) : 0.0f;
+    const float cy = std::cos(yaw * 0.5f);
+    const float sy = std::sin(yaw * 0.5f);
+    const float cx = std::cos(pitch * 0.5f);
+    const float sx = std::sin(pitch * 0.5f);
+    XrPosef pose = IdentityPose();
+    pose.orientation.x = cy * sx;
+    pose.orientation.y = -sy * cx;
+    pose.orientation.z = sy * sx;
+    pose.orientation.w = cy * cx;
+    pose.position.x = distance * std::sin(yaw) * std::cos(pitch);
+    pose.position.y = distance * std::sin(pitch);
+    pose.position.z = -distance * std::cos(yaw) * std::cos(pitch);
+    return pose;
 }
 
 bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime,
@@ -1859,12 +2069,33 @@ bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo
         // With direct render the captured frame is only the overlay; the game is the shared buffer.
         frame.sourceWidth = source.width;
         frame.sourceHeight = source.height;
+        frame.outputWidth = vulkan_->quadLayerExtent().width;
+        frame.outputHeight = vulkan_->quadLayerExtent().height;
+        frame.reconstructing = vulkan_->quadReconstructing();
+        frame.filter = vulkan::GetUpscaleSettings().filter;
         frame.flat = true;
+        const vulkan::Compositor::FrameGenStats generation = vulkan_->frameGenStats();
+        frame.frameGenMultiplier = generation.multiplier;
+        frame.frameGenOutputFps = generation.outputFps;
     }
     if (displayPeriod_ > 0) frame.displayHz = 1e9f / static_cast<float>(displayPeriod_);
     XrProfileScope profile("host.vr.hud.update");
     if (!perfHud_->update(session_, vulkan_->context(), frame)) return false;
     return perfHud_->fill(localSpace_, viewSpace_, displayTime, quad, screen);
+}
+
+bool XrImmersiveSession::submitKeyboard(XrCompositionLayerQuad *quad, XrTime displayTime,
+                                        const XrCompositionLayerQuad *screen) {
+    if (!keyboard_ || !vulkan_ || viewSpace_ == XR_NULL_HANDLE || localSpace_ == XR_NULL_HANDLE) return false;
+    InputSnapshot input;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex_);
+        input = snapshot_;
+    }
+    XrProfileScope profile("host.vr.keyboard.update");
+    if (!keyboard_->update(session_, vulkan_->context(), input, localSpace_, viewSpace_, displayTime, screen)) return false;
+    keyboard_->fill(localSpace_, quad);
+    return true;
 }
 
 void XrImmersiveSession::setQuadTransform(float x, float y, float z, float width, float height,
@@ -2242,6 +2473,10 @@ void XrImmersiveSession::teardown() {
         perfHud_->destroy();
         perfHud_.reset();
     }
+    if (keyboard_) {
+        keyboard_->destroy();
+        keyboard_.reset();
+    }
     if (vulkan_) vulkan_->releaseResources();
     windowsProjection_.shutdown();
     gaze_.reset();
@@ -2270,11 +2505,16 @@ void XrImmersiveSession::teardown() {
         eglDestroyImageKHR(eglDisplay_, sharedGameImage_);
         sharedGameImage_ = EGL_NO_IMAGE_KHR;
     }
+    releaseSceneGl();
     {
         std::lock_guard<std::mutex> lock(sharedBufferMutex_);
         if (pendingSharedBuffer_ != nullptr) {
             AHardwareBuffer_release(pendingSharedBuffer_);
             pendingSharedBuffer_ = nullptr;
+        }
+        if (pendingScene_ != nullptr) {
+            xrgame::Release(pendingScene_);
+            pendingScene_ = nullptr;
         }
     }
     if (framebuffer_ != 0) {

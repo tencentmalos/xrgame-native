@@ -179,11 +179,16 @@ if(DEFINED OpenXR_DIR)
         "${FOUNDATION}/modules/xr/src/XrImguiVulkanLayer.cpp"
         "${FOUNDATION}/modules/xr/src/VulkanOffscreenImages.cpp"
         "${FOUNDATION}/modules/xr/src/XrMath.cpp"
-        "${FOUNDATION}/basic/underlying/math/private/spatial/math/SpatialMath.cpp")
+        "${FOUNDATION}/basic/underlying/math/private/spatial/math/SpatialMath.cpp"
+        # The XR keyboard's Latin layout model (data and navigation only, no overlay shell).
+        "${FOUNDATION}/modules/imgui_overlay/private/spatial/imgui/overlay/KeyboardLayout.cpp"
+        "${FOUNDATION}/modules/imgui_overlay/private/spatial/imgui/overlay/OverlayModel.cpp")
     target_include_directories(xrgame_foundation_hud
         PUBLIC
             "${FOUNDATION}/modules/xr/include"
             "${FOUNDATION}/basic/underlying/math/public"
+            "${FOUNDATION}/modules/imgui_overlay/public"
+            "${FOUNDATION}/basic/underlying/core/public"
         PRIVATE
             "${FOUNDATION}/basic/modules/implements/profiler/public"
             "${GN}")
@@ -195,6 +200,9 @@ if(DEFINED OpenXR_DIR)
             xrgame_vulkan_headers spatial::foundation_log
         PRIVATE OpenXR::openxr_loader)
     target_compile_features(xrgame_foundation_hud PUBLIC cxx_std_20)
+    # Frame generation for the big screen: Foundation's Lossless FG graph and its rebuilt shaders
+    # (the module's own Lossless.dll parser stays off).
+    add_subdirectory("${FOUNDATION}/modules/lossless_fg" foundation-lossless-fg EXCLUDE_FROM_ALL)
     add_subdirectory("${GN}/xrimmersive" xrimmersive)
     install(FILES "$<TARGET_FILE:OpenXR::openxr_loader>" DESTINATION arm64-v8a)
 else()
