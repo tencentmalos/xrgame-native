@@ -1209,6 +1209,13 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
         }
         outWidth = p.eyeWidth;
         outHeight = p.eyeHeight;
+        if (p.shot) {
+            // Where the still looks, for reading layer positions off it (LOCAL is gravity aligned).
+            const XrVector3f forward = Rotate(eyes[0].pose.orientation, {0.0f, 0.0f, -1.0f});
+            LOGI("capture: still view pitch %.1f deg, FOV up %.1f down %.1f deg",
+                 std::asin(std::clamp(forward.y, -1.0f, 1.0f)) * 57.2958f, eyes[0].fov.angleUp * 57.2958f,
+                 eyes[0].fov.angleDown * 57.2958f);
+        }
         for (uint32_t eye = 0; eye < 2; ++eye) {
             EyeUbo &out = constants.eyes[eye];
             Rows(out.toWorld, eyes[eye].pose.orientation, false);

@@ -71,6 +71,14 @@ B 段录像 20.8 s 提交 752 帧（36 fps）、跳过 0 帧，编码 753 个样
 
 两轮里 `vkQueuePresentKHR`（向编码器 Surface 送帧，在队列锁内）都没有超过 2 ms 的记录。启动和退出的云同步为 `AppChangeNumber: 7 -> 7`。
 
+## 实时旁观窗口（live 模式）
+
+my_mcp_tools `capture-sdk/tools/liveview.py` 用 `capture_video start_live TOKEN left` 接收 `SCAP1` 流，经 `adb forward` 在电脑上开窗口显示单眼画面（用户级 skill `vr-spectator`）。
+
+- run109（Hades II，APK `4187a427`）：左眼 `xr`，1296x1200，25.1 s 收到 894 个包（约 36 fps）、17.4 MB，跳帧 0；保存的流可完整解码，画面为空间中的大屏加状态层。
+- 第一版窗口用 ffmpeg 的 `-f sdl2` 输出：数据正常，但 Windows 报告窗口「未响应」，点击无反应（ffmpeg 7 的多线程 muxer 下 SDL 窗口不处理消息）。改为 PyAV 在工作线程解码、Tk 主线程只负责显示后，本地回放 10 s 解码 892 帧、窗口保持响应；run111（Alyx，APK `f829a744`）实机窗口 `Responding=True`。
+- 头显休眠时 app 在后台，DebugBus 服务无法启动（`pid=(not running)`），需要先唤醒。
+
 ## 未覆盖与已知限制
 
 - 没有在 GPU 吃满的场景（Alyx 场景内、MHR）测截取的开销；Alyx 只做了功能验证，没有 A/B。
@@ -78,4 +86,3 @@ B 段录像 20.8 s 提交 752 帧（36 fps）、跳过 0 帧，编码 753 个样
 - 直通（VST）画面、Pico 系统自己的图层、GLES 合成路径、Windows VR 加载插画（interstitial，只在内容更新时绘制）不在截取内容里。
 - Windows VR 的 `canvas` 是按截取单眼尺寸（推荐眼尺寸的一半）拷贝的投影图，不是全分辨率。
 - 开始录像时状态沿用上一次录像的 `layout`/`width`/`height`（run108 可见），已改为开始时清空，只编译验证，未上机。
-- `live` 模式（`start_live`）未测。

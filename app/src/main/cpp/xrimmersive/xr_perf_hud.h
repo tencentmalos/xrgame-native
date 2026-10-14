@@ -76,6 +76,9 @@ public:
               const XrCompositionLayerQuad *screen = nullptr, float screenRadius = 0.0f);
     // Places the panel again in front of the head on the next fill (LOCAL was recentred).
     void reanchor();
+    // The eyes' upward half-angle in radians (the smaller of the two eyes): the stereo panel goes
+    // just above the top of a level view. Places it again when the value changes.
+    void setViewTop(float angleUp);
     // The panel's layer once created, for the capture producer; else null.
     spatial::xr::XrImguiVulkanLayer *imguiLayer();
     // Before the Vulkan device and the session go away.

@@ -34,8 +34,10 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 // 5 x 2 cells of 384 x 96 px on a 0.8 x 0.08 m quad. In stereo its centre sits 1.0 m from the head,
-// straight ahead in the head's yaw frame and 35 degrees above the horizon: out of the way when
-// looking ahead, in view when looking up. A quad layer always draws over the scene whatever its
+// straight ahead in the head's yaw frame, with its lower edge a few degrees above the top of a
+// level view (the runtime's upward FOV; a fixed 35 degrees still left it inside Swan's view): out
+// of the way when looking ahead, in view when looking up. Without a reported FOV it sits at 35
+// degrees. A quad layer always draws over the scene whatever its
 // depth, so the panel is kept nearer than most scene geometry in that direction; 1.0 m stays within
 // about 0.33 dioptres of Swan's 1.5 m focal plane. The panel stays upright and parallel to the yaw
 // frame's frontal plane rather than turning towards the eye, so pitch and roll at placement do not
@@ -51,8 +53,12 @@ constexpr float kHeightMeters = kWidthMeters * kCanvasHeight / kCanvasWidth;
 constexpr float kLabelSize = 26.0f;
 constexpr float kValueSize = 36.0f;
 constexpr float kDistanceMeters = 1.0f;
-// kDistanceMeters at 35 degrees of elevation: (0, sin 35, -cos 35) metres.
-constexpr XrVector3f kAnchorOffset{0.0f, 0.574f * kDistanceMeters, -0.819f * kDistanceMeters};
+constexpr float kDegrees = 3.14159265f / 180.0f;
+// Elevation of the stereo panel's centre without a reported FOV, the margin between the view's top
+// edge and the panel's lower edge, and the highest elevation used.
+constexpr float kDefaultElevation = 35.0f * kDegrees;
+constexpr float kTopMargin = 4.0f * kDegrees;
+constexpr float kMaxElevation = 60.0f * kDegrees;
 // Gap between the big screen's top edge and the panel, as a fraction of the panel height.
 constexpr float kScreenGap = 0.6f;
 constexpr auto kUpdateInterval = std::chrono::milliseconds(250);
@@ -185,9 +191,17 @@ std::string Format(const char *format, double a, double b = 0.0) {
     return text;
 }
 
-// Panel pose in the space `head` is located in: kAnchorOffset in the head's yaw frame, the quad's
-// front (+Z) facing back along the head's forward direction, upright.
-XrPosef PlacePanel(const XrPosef &head) {
+// Elevation of the stereo panel's centre for the view's upward half-angle `viewTop` (radians, 0 when
+// unknown): its lower edge kTopMargin above the top of a level view.
+float PanelElevation(float viewTop) {
+    if (viewTop <= 0.0f) return kDefaultElevation;
+    const float halfHeight = std::atan(0.5f * kHeightMeters / kDistanceMeters);
+    return std::clamp(viewTop + kTopMargin + halfHeight, kDefaultElevation, kMaxElevation);
+}
+
+// Panel pose in the space `head` is located in: kDistanceMeters ahead in the head's yaw frame at
+// `elevation`, the quad's front (+Z) facing back along the head's forward direction, upright.
+XrPosef PlacePanel(const XrPosef &head, float elevation) {
     const XrQuaternionf &q = head.orientation;
     // Head forward is the rotated -Z axis.
     const float fx = -2.0f * (q.x * q.z + q.w * q.y);
@@ -195,7 +209,7 @@ XrPosef PlacePanel(const XrPosef &head) {
     const float yaw = std::atan2(-fx, -fz);
     const float s = std::sin(yaw);
     const float c = std::cos(yaw);
-    const XrVector3f &o = kAnchorOffset;
+    const XrVector3f o{0.0f, std::sin(elevation) * kDistanceMeters, -std::cos(elevation) * kDistanceMeters};
     XrPosef pose{};
     pose.position = {head.position.x + c * o.x + s * o.z, head.position.y + o.y,
                      head.position.z - s * o.x + c * o.z};
@@ -316,6 +330,8 @@ struct PerfHud::Impl {
     Clock::time_point lastUpdate{};
     // World pose of the panel in LOCAL space; empty until the next fill places it.
     std::optional<XrPosef> anchor;
+    // The eyes' upward half-angle (radians) as the runtime reports it; 0 until known.
+    float viewTop = 0.0f;
 
     bool create(XrSession session, vulkan::Context &context);
     void draw(const PerfHudFrame &frame, Clock::time_point now);
@@ -562,9 +578,11 @@ bool PerfHud::fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrComposi
             (head.locationFlags & kTracked) != kTracked) {
             return false;
         }
-        hud.anchor = PlacePanel(head.pose);
+        const float elevation = PanelElevation(hud.viewTop);
+        hud.anchor = PlacePanel(head.pose, elevation);
         const XrVector3f &p = hud.anchor->position;
-        LOGI("Performance HUD placed in LOCAL space at (%.2f, %.2f, %.2f)", p.x, p.y, p.z);
+        LOGI("Performance HUD placed in LOCAL space at (%.2f, %.2f, %.2f), %.1f deg up (view top %.1f deg)", p.x,
+             p.y, p.z, elevation / kDegrees, hud.viewTop / kDegrees);
         std::lock_guard<std::mutex> lock(gStatusMutex);
         gStatus.anchor = p;
     }
@@ -574,6 +592,12 @@ bool PerfHud::fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrComposi
 }
 
 void PerfHud::reanchor() { impl_->anchor.reset(); }
+
+void PerfHud::setViewTop(float angleUp) {
+    if (angleUp == impl_->viewTop) return;
+    impl_->viewTop = angleUp;
+    impl_->anchor.reset();
+}
 
 void PerfHud::destroy() { impl_->destroy(); }
 

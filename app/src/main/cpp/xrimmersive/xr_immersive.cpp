@@ -545,13 +545,21 @@ void XrImmersiveSession::runLoop() {
             runtimeSnapshot.viewStateFlags = viewState.viewStateFlags;
             if (!displayInfoPublished_ && runtimeSnapshot.views[0].fov.angleRight > runtimeSnapshot.views[0].fov.angleLeft) {
                 const XrFovf &fov = runtimeSnapshot.views[0].fov;
-                std::lock_guard<std::mutex> lock(gDisplayInfoMutex);
-                gDisplayInfo.tanLeft = std::tan(fov.angleLeft);
-                gDisplayInfo.tanRight = std::tan(fov.angleRight);
-                gDisplayInfo.tanUp = std::tan(fov.angleUp);
-                gDisplayInfo.tanDown = std::tan(fov.angleDown);
-                gDisplayInfo.valid = gDisplayInfo.recommendedWidth > 0;
-                displayInfoPublished_ = gDisplayInfo.valid;
+                const XrFovf &right = runtimeSnapshot.views[1].fov;
+                {
+                    std::lock_guard<std::mutex> lock(gDisplayInfoMutex);
+                    gDisplayInfo.tanLeft = std::tan(fov.angleLeft);
+                    gDisplayInfo.tanRight = std::tan(fov.angleRight);
+                    gDisplayInfo.tanUp = std::tan(fov.angleUp);
+                    gDisplayInfo.tanDown = std::tan(fov.angleDown);
+                    gDisplayInfo.valid = gDisplayInfo.recommendedWidth > 0;
+                    displayInfoPublished_ = gDisplayInfo.valid;
+                }
+                constexpr float kDeg = 180.0f / 3.14159265f;
+                LOGI("XR eye FOV (deg): left eye %.1f/%.1f/%.1f/%.1f, right eye %.1f/%.1f/%.1f/%.1f (left/right/up/down)",
+                     fov.angleLeft * kDeg, fov.angleRight * kDeg, fov.angleUp * kDeg, fov.angleDown * kDeg,
+                     right.angleLeft * kDeg, right.angleRight * kDeg, right.angleUp * kDeg, right.angleDown * kDeg);
+                if (perfHud_) perfHud_->setViewTop(std::min(fov.angleUp, right.angleUp));
             }
         } else {
             runtimeSnapshot.viewStateFlags = 0;
