@@ -138,6 +138,12 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
             {"game_state", "Scene readiness from the running game's Source 2 console log (-condebug)"},
             {"vr_oc", "OpenComposite full-texture copy A/B switch; vr_oc [full_copy=0|1]"},
             {"vr_keyboard", "XR on-screen keyboard; vr_keyboard [status|show|hide]"},
+            // scrcpy capture SDK (capturectl.py, scrcpy MCP): key: value lines, not JSON.
+            {"capture_source", "Capture source; capture_source [canvas|xr|status]"},
+            {"capture_screenshot", "Lossless PNG of the immersive session; capture_screenshot request TOKEN "
+                                   "[left|right|both] | status|cancel TOKEN"},
+            {"capture_video", "H.264 of the immersive session; capture_video [start [EYE]|start_live TOKEN [EYE]|"
+                              "stop|status]"},
         };
         for (const auto& provided : providers) {
             const char* command = provided.first;

@@ -20,6 +20,10 @@
 #include <memory>
 #include <vector>
 
+namespace xrimmersive::capture {
+class XrCapture;
+}
+
 namespace xrimmersive::vulkan {
 
 // Runtime-adjustable reconstruction settings (DebugBus vr_upscale, per-container defaults).
@@ -53,6 +57,8 @@ public:
                     uint32_t recommendedHeight, uint32_t limitWidth, uint32_t limitHeight);
     bool render(windowsvr::WindowsFrameTransport &transport, XrSpace space, XrCompositionLayerProjection *layer);
     void setGaze(const GazeSample &gaze) { gaze_ = gaze; }
+    // Captured frames redraw the eyes (no reuse) and copy them before the release.
+    void setCapture(capture::XrCapture *capture) { capture_ = capture; }
     bool lastRenderReused() const { return lastRenderReused_; }
     int64_t lastFreshSnap() const { return lastFreshSnap_; }
     // The game's eye size and the projection eye size of the last rendered frame, and whether it
@@ -83,6 +89,7 @@ private:
     void releaseImported(Imported &imported);
 
     Context *context_ = nullptr;
+    capture::XrCapture *capture_ = nullptr;
     XrSession session_ = XR_NULL_HANDLE;
     XrSwapchain swapchain_ = XR_NULL_HANDLE;
     VkFormat format_ = VK_FORMAT_UNDEFINED;

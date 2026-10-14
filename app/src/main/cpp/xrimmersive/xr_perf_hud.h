@@ -16,6 +16,10 @@
 #include <memory>
 #include <string>
 
+namespace spatial::xr {
+class XrImguiVulkanLayer;
+}
+
 namespace xrimmersive {
 
 namespace vulkan {
@@ -65,12 +69,15 @@ public:
     bool update(XrSession session, vulkan::Context &context, const PerfHudFrame &frame);
     // The quad of the last released panel image, world-locked in `localSpace`. With `screen` (the
     // 2D big screen's quad in the same space) it sits above the screen's top-left corner, parallel
-    // to it. Otherwise it is placed from the head pose (`viewSpace` located at `time`) when it has
-    // no position yet; false while that pose is not tracked.
+    // to it; with a `screenRadius`, the screen is that cylinder around the player and the panel
+    // follows its arc. Otherwise it is placed from the head pose (`viewSpace` located at `time`)
+    // when it has no position yet; false while that pose is not tracked.
     bool fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrCompositionLayerQuad *quad,
-              const XrCompositionLayerQuad *screen = nullptr);
+              const XrCompositionLayerQuad *screen = nullptr, float screenRadius = 0.0f);
     // Places the panel again in front of the head on the next fill (LOCAL was recentred).
     void reanchor();
+    // The panel's layer once created, for the capture producer; else null.
+    spatial::xr::XrImguiVulkanLayer *imguiLayer();
     // Before the Vulkan device and the session go away.
     void destroy();
 

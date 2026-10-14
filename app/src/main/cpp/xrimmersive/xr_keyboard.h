@@ -5,6 +5,10 @@
 #include <memory>
 #include <string>
 
+namespace spatial::xr {
+class XrImguiVulkanLayer;
+}
+
 namespace xrimmersive {
 
 namespace vulkan {
@@ -60,6 +64,8 @@ public:
     bool update(XrSession session, vulkan::Context &context, const InputSnapshot &input, XrSpace localSpace,
                 XrSpace viewSpace, XrTime time, const XrCompositionLayerQuad *screen);
     void fill(XrSpace localSpace, XrCompositionLayerQuad *quad);
+    // The panel's layer once created, for the capture producer; else null.
+    spatial::xr::XrImguiVulkanLayer *imguiLayer();
     // Before the Vulkan device and the session go away.
     void destroy();
 

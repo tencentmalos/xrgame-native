@@ -18,6 +18,10 @@
 #include <string>
 #include <vector>
 
+namespace xrimmersive::capture {
+class XrCapture;
+}
+
 namespace xrimmersive::vulkan {
 
 struct CompositeConfig {
@@ -53,6 +57,12 @@ public:
 
     Context &context() { return context_; }
     ProjectionPresenter &projection() { return projection_; }
+    // The session's capture producer (scrcpy capture SDK), or null; the quad, the interstitial and
+    // the projection copy their images into it on captured frames.
+    void setCapture(capture::XrCapture *capture) {
+        capture_ = capture;
+        projection_.setCapture(capture);
+    }
     XrGraphicsBindingVulkan2KHR binding() const;
     // R8G8B8A8_SRGB when offered (the content is sRGB-encoded), else R8G8B8A8_UNORM.
     static int64_t ChooseFormat(const std::vector<int64_t> &formats, bool *srgb);
@@ -115,6 +125,7 @@ private:
 
     Context context_;
     ProjectionPresenter projection_;
+    capture::XrCapture *capture_ = nullptr;
     std::array<SwapchainTarget, 2> targets_{};
     Image overlay_{};
     Image interstitial_{};

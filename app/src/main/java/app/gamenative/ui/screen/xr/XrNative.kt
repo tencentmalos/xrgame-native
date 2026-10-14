@@ -121,6 +121,12 @@ object XrNative {
     external fun nativePerfHudStatus(): String
 
     /**
+     * scrcpy capture SDK commands of the immersive session (DebugBus capture_source,
+     * capture_screenshot, capture_video): `key: value` lines; files go to [capturesDir].
+     */
+    external fun nativeCaptureCommand(command: String, args: Array<String>, capturesDir: String): String
+
+    /**
      * Synthetic controller state (DebugBus input) merged into the real controllers for
      * [durationMs] (0 releases): [buttons] in XrGamepadBridge's layout plus bit 16 for Menu, and
      * each [axes] entry whose [axisMask] bit is set replaces leftX, leftY, rightX, rightY (snapshot

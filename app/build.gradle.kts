@@ -698,6 +698,9 @@ abstract class PicoNativeBuildTask : DefaultTask() {
     abstract val openxrLoaderAar: RegularFileProperty
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val pulseDir: DirectoryProperty
+    // Debug builds: the private scrcpy capture SDK (my_mcp_tools .../capture-sdk/native), when given.
+    @get:Optional @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val captureSdkDir: DirectoryProperty
     @get:Input abstract val sdkDir: Property<String>
     @get:Input abstract val ndkDir: Property<String>
     @get:Internal abstract val repositoryDir: DirectoryProperty
@@ -715,6 +718,7 @@ abstract class PicoNativeBuildTask : DefaultTask() {
             environment("XRGAME_OPENXR_AAR", openxrLoaderAar.get().asFile.absolutePath)
             environment("XRGAME_PULSE_DIR", pulseDir.get().asFile.absolutePath)
             environment("XRGAME_BUILD_PROBES", if (buildProbes.get()) "ON" else "OFF")
+            environment("XRGAME_CAPTURE_SDK", captureSdkDir.orNull?.asFile?.absolutePath ?: "")
             commandLine("bash", "tools/build-picoxr-native.sh", outputDir.get().asFile.absolutePath)
         }
         execOps.exec {
@@ -842,6 +846,11 @@ androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi
                 .standardOutput.asText.get().trim()
         })
         if (variant.buildType == "debug") {
+            // -PxrGameCaptureSdk=<dir> or XRGAME_CAPTURE_SDK: the scrcpy capture SDK for stills and
+            // recordings of the immersive session (internal APKs only; never part of this repository).
+            (providers.gradleProperty("xrGameCaptureSdk").orNull ?: providers.environmentVariable("XRGAME_CAPTURE_SDK").orNull)
+                ?.takeIf { it.isNotBlank() }?.let { captureSdkDir.set(file(it)) }
+            nativeSources.from(rootProject.fileTree("foundation/modules/capture"))
             nativeSources.from(rootProject.fileTree("foundation/modules/debugbus"))
             listOf("modules/profiler_ring", "third_party/profiler_sdk/sdk",
                 "third_party/lz4", "third_party/nlohmann_json/include").forEach {

@@ -1,5 +1,7 @@
 #include "xr_vulkan_compositor.h"
 
+#include "xr_capture.h"
+
 #include "xr_vulkan_trace.h"
 
 #include "spatial/foveation/Foveation.h"
@@ -515,6 +517,10 @@ bool Compositor::drawQuad(uint32_t imageIndex, xrgame::XrFrameExchange *scene, A
     }
     context_.blit(submission->command, target.views[imageIndex], {target.width, target.height}, target.format,
                   source, overlay, params);
+    if (capture_ != nullptr) {
+        capture_->copyScreen(submission->command, target.images[imageIndex].image, target.views[imageIndex],
+                             target.format, target.width, target.height);
+    }
     for (const Image *image : acquired) {
         if (game == nullptr || image == nullptr) continue;
         context_.barrier(submission->command, image->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -547,6 +553,10 @@ bool Compositor::drawInterstitial(uint32_t imageIndex, const uint8_t *pixels, ui
     params.flags = target.srgb ? kBlitDecodeSrgb : 0u;
     context_.blit(submission->command, target.views[imageIndex], {target.width, target.height}, target.format,
                   interstitial_.view, VK_NULL_HANDLE, params);
+    if (capture_ != nullptr) {
+        capture_->copyScreen(submission->command, target.images[imageIndex].image, target.views[imageIndex],
+                             target.format, target.width, target.height);
+    }
     return context_.submit(submission);
 }
 

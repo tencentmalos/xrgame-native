@@ -2,6 +2,7 @@
 #include "xr_immersive.h"
 #include "xr_vulkan_compositor.h"
 #include "xr_keyboard.h"
+#include "spatial/xr/XrImguiVulkanLayer.h"
 
 #include "spatial/xr/XrEyeGazeTracker.h"
 
@@ -583,6 +584,11 @@ void XrImmersiveSession::runLoop() {
         xrgame_profile_counter(kXrCounterAndroidSerial, static_cast<int64_t>(runtimeSnapshot.frameSerial));
         inputProfile.end();
 
+        // A captured frame copies every layer it draws; the compose follows its xrEndFrame.
+        if (capture_ && frameState.shouldRender) {
+            capture_->begin(captureEyeWidth_, captureEyeHeight_, frameState.predictedDisplayPeriod);
+        }
+
         // Every xrBeginFrame must be matched by an xrEndFrame, but a layer may only reference a
         // swapchain image that was actually acquired — so a failed renderFrame() still ends the
         // frame, just with no layers.
@@ -603,6 +609,7 @@ void XrImmersiveSession::runLoop() {
             XrProfileScope endProfile("host.vr.xr.end_frame");
             xrEndFrame(session_, &endInfo);
         }
+        if (capture_) capture_->compose(session_, localSpace_, frameState.predictedDisplayTime);
     }
 
     teardown();
@@ -727,6 +734,10 @@ bool XrImmersiveSession::setupInstanceAndSession() {
             vulkan_ = std::move(compositor);
             perfHud_ = std::make_unique<PerfHud>();
             keyboard_ = std::make_unique<XrKeyboard>();
+            if (capture::Available()) {
+                capture_ = std::make_unique<capture::XrCapture>(vulkan_->context());
+                vulkan_->setCapture(capture_.get());
+            }
             RequestPicoGpuPriority(kPicoCompositeGpuPriority, "after vulkan device");
         } else {
             compositor->destroy();
@@ -1010,6 +1021,8 @@ bool XrImmersiveSession::setupInstanceAndSession() {
             limitWidth = std::min({limitWidth, gpu.limits.maxImageDimension2D, gpu.limits.maxFramebufferWidth});
             limitHeight = std::min({limitHeight, gpu.limits.maxImageDimension2D, gpu.limits.maxFramebufferHeight});
         }
+        captureEyeWidth_ = projectionViews[0].recommendedImageRectWidth;
+        captureEyeHeight_ = projectionViews[0].recommendedImageRectHeight;
         LOGI("XR eye views: recommended %ux%u, limit %ux%u", projectionViews[0].recommendedImageRectWidth,
              projectionViews[0].recommendedImageRectHeight, limitWidth, limitHeight);
         {
@@ -1837,6 +1850,7 @@ bool XrImmersiveSession::submitWindowsInterstitial(XrTime predictedDisplayTime,
                              static_cast<float>(interstitialSwapchainWidth_)};
     const XrCompositionLayerBaseHeader *layers[] = {
         reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad)};
+    if (capture_) capture_->note(layers[0], capture::Source::Screen);
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = predictedDisplayTime;
     endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
@@ -1905,6 +1919,16 @@ bool XrImmersiveSession::submitWindowsProjection(XrTime predictedDisplayTime, ui
     if (hudShown) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud);
     if (overlayRendered) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&overlay);
     if (keyboardShown) layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader *>(&keyboard);
+    if (capture_) {
+        capture_->note(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&projection), capture::Source::Projection);
+        if (hudShown) capture_->note(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud), capture::Source::Hud);
+        if (overlayRendered) {
+            capture_->note(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&overlay), capture::Source::Screen);
+        }
+        if (keyboardShown) {
+            capture_->note(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&keyboard), capture::Source::Keyboard);
+        }
+    }
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = predictedDisplayTime;
     endInfo.environmentBlendMode = submitsPassthroughLayer() ? XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
@@ -2011,13 +2035,16 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
     } else {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
     }
+    if (capture_) capture_->note(layers.back(), capture::Source::Screen);
     XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
-    if (submitPerfHud(&hud, false, predictedDisplayTime, &quad)) {
+    if (submitPerfHud(&hud, false, predictedDisplayTime, &quad, curved ? radius : 0.0f)) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud));
+        if (capture_) capture_->note(layers.back(), capture::Source::Hud);
     }
     XrCompositionLayerQuad keyboard{XR_TYPE_COMPOSITION_LAYER_QUAD};
     if (submitKeyboard(&keyboard, predictedDisplayTime, &quad)) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&keyboard));
+        if (capture_) capture_->note(layers.back(), capture::Source::Keyboard);
     }
 
     // Passthrough shows the real world through gaps, so the "background" must be
@@ -2054,7 +2081,7 @@ XrPosef XrImmersiveSession::quadPose() const {
 }
 
 bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime,
-                                        const XrCompositionLayerQuad *screen) {
+                                        const XrCompositionLayerQuad *screen, float screenRadius) {
     if (!perfHud_ || !vulkan_ || viewSpace_ == XR_NULL_HANDLE || localSpace_ == XR_NULL_HANDLE) return false;
     PerfHudFrame frame;
     if (stereo) {
@@ -2079,9 +2106,10 @@ bool XrImmersiveSession::submitPerfHud(XrCompositionLayerQuad *quad, bool stereo
         frame.frameGenOutputFps = generation.outputFps;
     }
     if (displayPeriod_ > 0) frame.displayHz = 1e9f / static_cast<float>(displayPeriod_);
+    if (capture_) capture_->attach(capture::Source::Hud, perfHud_->imguiLayer());
     XrProfileScope profile("host.vr.hud.update");
     if (!perfHud_->update(session_, vulkan_->context(), frame)) return false;
-    return perfHud_->fill(localSpace_, viewSpace_, displayTime, quad, screen);
+    return perfHud_->fill(localSpace_, viewSpace_, displayTime, quad, screen, screenRadius);
 }
 
 bool XrImmersiveSession::submitKeyboard(XrCompositionLayerQuad *quad, XrTime displayTime,
@@ -2092,6 +2120,7 @@ bool XrImmersiveSession::submitKeyboard(XrCompositionLayerQuad *quad, XrTime dis
         std::lock_guard<std::mutex> lock(snapshotMutex_);
         input = snapshot_;
     }
+    if (capture_) capture_->attach(capture::Source::Keyboard, keyboard_->imguiLayer());
     XrProfileScope profile("host.vr.keyboard.update");
     if (!keyboard_->update(session_, vulkan_->context(), input, localSpace_, viewSpace_, displayTime, screen)) return false;
     keyboard_->fill(localSpace_, quad);
@@ -2469,6 +2498,13 @@ void XrImmersiveSession::teardown() {
     stereoActive_.store(false);
     stereoMisses_ = 0;
     windowsTransport_.stop();
+    if (capture_) {
+        // The panels stop copying into the capture's images before they go.
+        if (perfHud_ && perfHud_->imguiLayer()) perfHud_->imguiLayer()->SetCaptureTarget(VK_NULL_HANDLE);
+        if (keyboard_ && keyboard_->imguiLayer()) keyboard_->imguiLayer()->SetCaptureTarget(VK_NULL_HANDLE);
+        if (vulkan_) vulkan_->setCapture(nullptr);
+        capture_.reset();
+    }
     if (perfHud_) {
         perfHud_->destroy();
         perfHud_.reset();

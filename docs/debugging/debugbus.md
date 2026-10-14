@@ -111,9 +111,18 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 设备无网络时 Steam 登录不上，启动和退出都会跳过云同步，下次联网启动时再同步。
 
 **头显性能 HUD**：仿 shadPS4 的 XR 状态面板。独立 ImGui context，由 Foundation 的
-`XrImguiVulkanLayer` 画进单独的 OpenXR quad 层，1.6×0.2 m。面板固定在 LOCAL 空间，不跟随头部：
-每次打开 HUD（以及 LOCAL 重新居中后），取当时头部的偏航方向，放在前方 2.5 m、左 0.9 m、上 1.0 m
-处，并朝向当时的头部位置。`status` 的 `anchorLocal` 是面板中心在 LOCAL 中的坐标。
+`XrImguiVulkanLayer` 画进单独的 OpenXR quad 层。面板固定在 LOCAL 空间，不跟随头部：
+
+- 每次打开 HUD（以及 LOCAL 重新居中后），取当时头部的偏航方向放置面板。
+- 立体模式下（2026-10-13 起）：
+  - 面板中心距头部 1.0 m，水平居中，仰角 35°，大小 0.8×0.08 m；平视时在视野上沿外，抬头可见。
+  - quad 层总画在场景之上；放近是为了让场景物体很少挡在它前面，避免辐辏冲突。
+  - 面板保持竖直，平行于偏航方向的正前平面。
+- 2D 大屏模式：
+  - 面板在屏幕左上角上方，视角大小与立体模式相同，下沿与屏幕上沿相隔 0.6 个面板高。
+  - 平面屏时与屏幕平行。
+  - 曲面屏时沿圆弧左对齐，贴在圆柱面上朝向圆心；高度按面板两端算，保证两端也不落到圆弧上沿以下，避免与曲面穿插。
+- `status` 的 `anchorLocal` 是面板中心在 LOCAL 中的坐标。
 内容为游戏 FPS（只计带来新游戏画面的投影帧）、XR 帧率/显示刷新率、CPU、GPU、内存、电池、
 CPU/GPU 温度、游戏眼图尺寸与重建方式。设备指标来自 Foundation `DeviceMetricsSampler`，
 读不到的项显示 `--`。每秒最多重绘 4 次，GPU 未完成时复用上一张图，不等待 fence。
@@ -153,6 +162,32 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 跨线程 `host.present.queue_to_complete` 仍覆盖完整请求寿命，不能把两个阶段的并行时间相加。
 验证与限制见 [MHW](../validation/mhw-present-async-20260928.md) 和
 [MHR / UI 验证](../validation/mhr-present-async-20260929.md)。
+
+### 截图与录屏（scrcpy capture SDK，2026-10-14）
+
+头显上的系统截图和面板镜像拿不到 VR 会话的内容（镜像带镜头畸变），所以沉浸式会话自己产出画面：
+私有 `my_mcp_tools` 的 capture SDK（`dev_tools/mcp/scrcpy/capture-sdk/native`），经 Foundation
+`modules/capture` 链接，只进带 SDK 构建的内部 debug 包。没有 SDK 的包上这三个命令回答
+`status: unavailable`。命令与 shadPS4 相同，回答是 SDK 的 `key: value` 行而不是 JSON，
+可以直接用 `capturectl.py --app steampsp` 或 scrcpy MCP 的 `capture_app_screenshot` /
+`record_app_video`（`service=com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService`）。
+
+| 命令 | 作用与边界 |
+| --- | --- |
+| `capture_source [canvas\|xr\|status]` | `canvas`：会话自己画的图，2D 大屏的 quad 图（mono），或 Windows VR 两只眼的投影图并排（`stereo_sbs`）。`xr`：佩戴者看到的画面去掉镜头畸变：把本会话提交的图层（投影、大屏 quad/曲面、叠加层、状态层、键盘）按眼做光线求交合成，单眼为运行时推荐眼尺寸的一半，两眼并排。直通和 Pico 系统自己的图层不在其中（直通处为黑）。截图或录像进行中拒绝切换 |
+| `capture_screenshot request TOKEN [left\|right\|both]` / `status\|cancel TOKEN` | 无损 PNG，TOKEN 为 32 位小写十六进制。下一帧取图，写到 `files/captures/snapshot-TOKEN.png`，用 `run-as` 取回。需要正在运行的沉浸式 Vulkan 合成会话 |
+| `capture_video start [EYE]` / `start_live TOKEN [EYE]` / `stop` / `status` | MediaCodec H.264：文件模式写 `files/captures/embedded-<ns>.h264` 和 `.frames.csv`；live 模式走 `scapture.TOKEN` 本地 socket。每隔一个 XR 帧编码一次（72 Hz 下 36 fps，90 Hz 下 45 fps）；编码器忙时跳过该帧（`skipped`），不阻塞 XR 线程。会话结束即停止录像 |
+
+实现（`app/src/main/cpp/xrimmersive/xr_capture.cpp`，改编自 shadPS4 的 `capture_recorder`/`xr_capture`）：
+- 只在被截取的帧上做额外工作：有待取的截图，或录像中每隔一帧。
+- 每个图层在自己的命令缓冲里、`xrReleaseSwapchainImage` 之前按采样方式拷贝，不需要 swapchain 的 TRANSFER_SRC。投影层在截取帧上不复用上一张图，保证拷到的就是显示的那张。
+- 状态层和键盘通过 Foundation `XrImguiVulkanLayer::SetCaptureTarget` 拷贝；它们最多每秒重绘 4 次，所以整个会话都挂着目标图（面板小、拷贝频率与重绘相同），任何一帧的截图都带得上它们。
+- `xrEndFrame` 之后在同一队列上做合成（compute）、PNG 回读和编码器 blit；回读数据在完成线程上取出，PNG 在单独线程写，XR 线程不等 GPU。
+- 编码器的输入 Surface 走 Vulkan swapchain（合成设备在带 SDK 的构建里打开 `VK_KHR_android_surface`/`VK_KHR_swapchain`），acquire 超时为 0。
+
+构建：`-PxrGameCaptureSdk=<…/capture-sdk/native>` 或环境变量 `XRGAME_CAPTURE_SDK`（只作用于 debug 构建），
+`BUILD_INFO.json` 的 `captureSdk` 记录其源文件哈希和 `XRGAME_CAPTURE_SDK_REVISION`。SDK 源码不进本仓库。
+Swan 上的验证（Alyx 投影、Hades II 大屏）见 [截图与录屏记录](../validation/swan-xr-capture-20261014.md)。
 
 JSON 返回 `schema: 1`。Kotlin provider 的 `sampledAtBootNs` 使用 Android elapsed realtime
 （含休眠）；现有 Present trace `mono_ns` 使用 `System.nanoTime`（CLOCK_MONOTONIC），两者

@@ -145,6 +145,15 @@ struct ComputeFeatures {
 // One command buffer per submission, recycled once its fence has signalled. Work that must wait
 // for the GPU (returning game images to the producer) is attached to the submission and runs on
 // the completion thread.
+// Semaphores of one submission, and work that must follow it on the queue (a present) while the
+// queue lock is still held.
+struct SubmitSync {
+    VkSemaphore wait = VK_NULL_HANDLE;
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    VkSemaphore signal = VK_NULL_HANDLE;
+    std::function<void(VkQueue)> afterSubmit;
+};
+
 struct Submission {
     VkCommandBuffer command = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
@@ -175,10 +184,13 @@ public:
     const spatial::foveation::vulkan::Capabilities &fdm() const { return fdm_; }
     const ComputeFeatures &compute() const { return compute_; }
     bool lost() const { return lost_.load(); }
+    // VK_KHR_android_surface and VK_KHR_swapchain are enabled (capture builds only).
+    bool surfaces() const { return surfaces_; }
 
     // Starts a command buffer, waiting only when every submission in the ring is still in flight.
     Submission *begin();
     bool submit(Submission *submission);
+    bool submit(Submission *submission, const SubmitSync &sync);
     // Blocks until the submission that received `serial` has completed (submissions retire in order).
     bool waitSerial(uint64_t serial);
     // The last submission known to have completed; never blocks.
@@ -187,7 +199,9 @@ public:
     static constexpr uint32_t kSubmissionCount = 6;
 
     bool importHardwareBuffer(AHardwareBuffer *buffer, bool swapRedBlue, Image *out);
-    bool createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, Image *out);
+    // `out->view` shows layer 0 in `format`.
+    bool createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, Image *out,
+                     uint32_t layers = 1, VkImageCreateFlags flags = 0);
     void destroyImage(Image *image);
     bool createHostBuffer(VkDeviceSize size, VkBufferUsageFlags usage, HostBuffer *out);
     void destroyHostBuffer(HostBuffer *buffer);
@@ -234,6 +248,7 @@ private:
     spatial::foveation::vulkan::Capabilities fdm_{};
     ComputeFeatures compute_{};
     std::atomic<bool> lost_{false};
+    bool surfaces_ = false;
 
     std::mutex completionMutex_;
     std::condition_variable completionCv_;

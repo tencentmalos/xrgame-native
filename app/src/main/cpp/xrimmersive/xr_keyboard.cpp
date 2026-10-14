@@ -1,5 +1,6 @@
 #include "xr_keyboard.h"
 
+#include "xr_capture.h"
 #include "xr_immersive.h"
 #include "xr_vulkan.h"
 
@@ -191,6 +192,8 @@ bool XrKeyboard::Impl::create(XrSession session, vulkan::Context &context) {
     config.width_meters = size.width;
     config.height_meters = size.height;
     config.input_enabled = false;
+    // The capture producer copies the panel's images (TRANSFER_SRC swapchain).
+    config.capture_source = capture::Available();
 
     RestoreImGuiContext restore;
     imgui = ImGui::CreateContext();
@@ -575,5 +578,9 @@ void XrKeyboard::fill(XrSpace localSpace, XrCompositionLayerQuad *quad) {
 }
 
 void XrKeyboard::destroy() { impl_->destroy(); }
+
+spatial::xr::XrImguiVulkanLayer *XrKeyboard::imguiLayer() {
+    return impl_->layer.IsCreated() ? &impl_->layer : nullptr;
+}
 
 }  // namespace xrimmersive

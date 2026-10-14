@@ -11,6 +11,8 @@ test -x "$cmake_bin" && test -x "$ninja_bin"
 test -f "$ndk/build/cmake/android.toolchain.cmake"
 args=(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 args+=("-DXRGAME_BUILD_PROBES=${XRGAME_BUILD_PROBES:-OFF}")
+# Debug builds only: the private scrcpy capture SDK (my_mcp_tools .../capture-sdk/native); empty clears it.
+args+=("-DSPATIAL_SCRCPY_CAPTURE_SDK_ROOT=${XRGAME_CAPTURE_SDK:-}")
 if [[ -n "${XRGAME_OPENXR_AAR:-}" ]]; then
     mkdir -p "$build/openxr"
     unzip -q -o "$XRGAME_OPENXR_AAR" -d "$build/openxr"
@@ -40,7 +42,7 @@ for name in ['libpulseaudio.so', 'libpulse.so', 'libpulsecommon-13.0.so', 'libpu
     shutil.copy2(src/name, out/name)
 PY
 python3 - "$repository" "$output" "$ndk" <<'PY'
-import hashlib, json, pathlib, subprocess, sys
+import hashlib, json, os, pathlib, subprocess, sys
 repo, out, ndk = map(pathlib.Path, sys.argv[1:])
 info = {'revision': subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip(),
         'dirty': bool(subprocess.check_output(['git', '-C', str(repo), 'status', '--porcelain'])),
@@ -66,5 +68,12 @@ info['foundation'] = revision(foundation) | {
                 if path.is_file()},
 }
 info['references'] = {name: revision(repo/'references'/name) for name in ['Vulkan-Headers', 'fmt']}
+# The private capture SDK (debug builds): its revision when the build host records one, and its sources.
+capture = os.environ.get('XRGAME_CAPTURE_SDK')
+if capture and (out/'arm64-v8a/libxrgame_debugbus.so').exists():
+    root = pathlib.Path(capture)
+    info['captureSdk'] = {'revision': os.environ.get('XRGAME_CAPTURE_SDK_REVISION', 'unknown'),
+                          'sources': {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                                      for path in sorted(root.rglob('*')) if path.is_file()}}
 (out/'BUILD_INFO.json').write_text(json.dumps(info, indent=2)+'\n')
 PY

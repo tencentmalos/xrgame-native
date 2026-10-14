@@ -323,6 +323,29 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativePerfHudStatus(JNIEnv *env, jclas
     return env->NewStringUTF(xrimmersive::PerfHudStatusJson().c_str());
 }
 
+JNIEXPORT jstring JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeCaptureCommand(JNIEnv *env, jclass, jstring command,
+                                                             jobjectArray args, jstring capturesDir) {
+    const auto text = [env](jstring value) {
+        std::string out;
+        const char *chars = value != nullptr ? env->GetStringUTFChars(value, nullptr) : nullptr;
+        if (chars != nullptr) {
+            out = chars;
+            env->ReleaseStringUTFChars(value, chars);
+        }
+        return out;
+    };
+    std::vector<std::string> arguments;
+    const jsize count = args != nullptr ? env->GetArrayLength(args) : 0;
+    for (jsize i = 0; i < count; ++i) {
+        auto item = static_cast<jstring>(env->GetObjectArrayElement(args, i));
+        arguments.push_back(text(item));
+        env->DeleteLocalRef(item);
+    }
+    const std::string out = xrimmersive::capture::HandleCommand(text(command), arguments, text(capturesDir));
+    return env->NewStringUTF(out.c_str());
+}
+
 JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeSetDebugInput(JNIEnv *env, jclass, jint buttons, jint axisMask,
                                                             jfloatArray axes, jint durationMs) {

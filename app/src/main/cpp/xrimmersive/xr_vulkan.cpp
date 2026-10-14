@@ -146,11 +146,26 @@ bool Context::create(XrInstance xrInstance, XrSystemId system, PFN_vkGetInstance
     VkInstanceCreateInfo instanceInfo{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     instanceInfo.pApplicationInfo = &application;
     const bool trace = TraceEnabled();
-    const char *debugUtils = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-    if (trace) {
-        instanceInfo.enabledExtensionCount = 1;
-        instanceInfo.ppEnabledExtensionNames = &debugUtils;
+    std::vector<const char *> instanceExtensions;
+    if (trace) instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#if XRGAME_CAPTURE
+    // The capture SDK's encoder takes frames through a swapchain on its input Surface.
+    if (auto enumerate = reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
+            getInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties"))) {
+        uint32_t count = 0;
+        enumerate(nullptr, &count, nullptr);
+        std::vector<VkExtensionProperties> offered(count);
+        enumerate(nullptr, &count, offered.data());
+        surfaces_ = HasExtension(offered, VK_KHR_SURFACE_EXTENSION_NAME) &&
+                    HasExtension(offered, VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+        if (surfaces_) {
+            instanceExtensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+            instanceExtensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+        }
     }
+#endif
+    instanceInfo.enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size());
+    instanceInfo.ppEnabledExtensionNames = instanceExtensions.data();
     XrVulkanInstanceCreateInfoKHR xrInstanceInfo{XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR};
     xrInstanceInfo.systemId = system;
     xrInstanceInfo.pfnGetInstanceProcAddr = getInstanceProcAddr;
@@ -198,6 +213,11 @@ bool Context::create(XrInstance xrInstance, XrSystemId system, PFN_vkGetInstance
             return false;
         }
         extensions.push_back(name);
+    }
+
+    if (surfaces_) {
+        surfaces_ = HasExtension(available, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        if (surfaces_) extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
 
     // FDM for the upscale passes: the device enables exactly what the probe reports.
@@ -453,15 +473,23 @@ Submission *Context::begin() {
     return &submission;
 }
 
-bool Context::submit(Submission *submission) {
+bool Context::submit(Submission *submission) { return submit(submission, SubmitSync{}); }
+
+bool Context::submit(Submission *submission, const SubmitSync &sync) {
     if (submission == nullptr) return false;
     VkResult result = vk_.vkEndCommandBuffer(submission->command);
     if (result == VK_SUCCESS) {
         VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         info.commandBufferCount = 1;
         info.pCommandBuffers = &submission->command;
+        info.waitSemaphoreCount = sync.wait != VK_NULL_HANDLE ? 1 : 0;
+        info.pWaitSemaphores = &sync.wait;
+        info.pWaitDstStageMask = &sync.waitStage;
+        info.signalSemaphoreCount = sync.signal != VK_NULL_HANDLE ? 1 : 0;
+        info.pSignalSemaphores = &sync.signal;
         std::lock_guard<std::mutex> lock(queueMutex_);
         result = vk_.vkQueueSubmit(queue_, 1, &info, submission->fence);
+        if (result == VK_SUCCESS && sync.afterSubmit) sync.afterSubmit(queue_);
     }
     if (result != VK_SUCCESS) {
         LOGE("vulkan composite: submit failed (%d)", result);
@@ -571,13 +599,15 @@ bool Context::importHardwareBuffer(AHardwareBuffer *buffer, bool swapRedBlue, Im
     return true;
 }
 
-bool Context::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, Image *out) {
+bool Context::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, Image *out,
+                          uint32_t layers, VkImageCreateFlags flags) {
     VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    imageInfo.flags = flags;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
     imageInfo.format = format;
     imageInfo.extent = {width, height, 1};
     imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
+    imageInfo.arrayLayers = layers;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.usage = usage;

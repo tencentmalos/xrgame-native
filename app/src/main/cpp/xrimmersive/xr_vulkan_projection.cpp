@@ -1,5 +1,6 @@
 #include "../xrgame_profiler.h"
 #include "xr_vulkan_projection.h"
+#include "xr_capture.h"
 #include "xr_vulkan_probe.h"
 
 #include "spatial/foveation/Foveation.h"
@@ -321,7 +322,9 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
     }
 
     lastRenderReused_ = false;
-    if (!fresh[0] && !fresh[1] && releasedImageValid_ && reuseReleased_ && SameSettings(settings, drawnSettings_)) {
+    const bool capturing = capture_ != nullptr && capture_->active();
+    if (!fresh[0] && !fresh[1] && releasedImageValid_ && reuseReleased_ && !capturing &&
+        SameSettings(settings, drawnSettings_)) {
         lastRenderReused_ = true;
         xrgame_profile_counter(kXrCounterPresentFresh, 0);
         xrgame_profile_counter(kXrCounterPresentFidLeft, static_cast<int64_t>(frames[0].frameId));
@@ -486,6 +489,8 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
         view.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(width), static_cast<int32_t>(height)}};
         view.subImage.imageArrayIndex = eye;
     }
+
+    if (capturing) capture_->copyProjection(command, target, views_[imageIndex], format_, width, height);
 
     // Turnip on KGSL exports no sync fd, so the eyes go back to the producer when the fence
     // signals (completion thread) instead of with a release fence.

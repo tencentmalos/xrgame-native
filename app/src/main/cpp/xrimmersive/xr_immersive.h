@@ -18,6 +18,7 @@
 #include <android/hardware_buffer.h>
 
 #include "../winlator/xr_frame_exchange.h"
+#include "xr_capture.h"
 #include "xr_perf_hud.h"
 #include "xr_keyboard.h"
 #include "xr_windows_projection.h"
@@ -206,9 +207,10 @@ private:
     void submitQuadLayer(XrTime predictedDisplayTime, XrSpace space, XrSwapchain swapchain,
                           int32_t width, int32_t height, bool sessionActive);
     bool submitWindowsProjection(XrTime predictedDisplayTime, uint64_t xrSerial);
-    // The performance HUD quad for this frame, when shown (Vulkan composite only).
+    // The performance HUD quad for this frame, when shown (Vulkan composite only). `screenRadius`
+    // is the curved screen's cylinder radius, 0 for the flat screen.
     bool submitPerfHud(XrCompositionLayerQuad *quad, bool stereo, XrTime displayTime,
-                       const XrCompositionLayerQuad *screen = nullptr);
+                       const XrCompositionLayerQuad *screen = nullptr, float screenRadius = 0.0f);
     // The XR keyboard while Kotlin requests it; under `screen` on the 2D big screen.
     bool submitKeyboard(XrCompositionLayerQuad *quad, XrTime displayTime, const XrCompositionLayerQuad *screen);
     // The projection presenter of the active backend.
@@ -252,6 +254,10 @@ private:
     std::unique_ptr<vulkan::Compositor> vulkan_;
     std::unique_ptr<PerfHud> perfHud_;
     std::unique_ptr<XrKeyboard> keyboard_;
+    // Stills and recordings for the scrcpy capture SDK (debug builds with the SDK only).
+    std::unique_ptr<capture::XrCapture> capture_;
+    uint32_t captureEyeWidth_ = 0;
+    uint32_t captureEyeHeight_ = 0;
     XrDuration displayPeriod_ = 0;
     // XR_EXT_eye_gaze_interaction for eye-tracked foveation of the Vulkan reconstruction.
     std::unique_ptr<spatial::xr::XrEyeGazeTracker> gaze_;

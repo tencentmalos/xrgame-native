@@ -1,5 +1,6 @@
 #include "xr_perf_hud.h"
 
+#include "xr_capture.h"
 #include "xr_vulkan.h"
 
 // xrimmersive enables the OpenGL ES platform structs of openxr_platform.h.
@@ -32,23 +33,28 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-// 5 x 2 cells of 384 x 96 px on a 2.0 x 0.2 m quad. In stereo its centre sits 2.5 m ahead, 0.9 m
-// left and 1.0 m up from the head (the top-left corner where shadPS4's head-locked panel has it),
-// measured in the head's yaw frame. The panel stays upright and parallel to that frame's frontal
-// plane rather than turning towards the eye, so pitch and roll at placement do not tilt it. On the
-// 2D big screen it sits just above the screen's top-left corner, parallel to the screen.
+// 5 x 2 cells of 384 x 96 px on a 0.8 x 0.08 m quad. In stereo its centre sits 1.0 m from the head,
+// straight ahead in the head's yaw frame and 35 degrees above the horizon: out of the way when
+// looking ahead, in view when looking up. A quad layer always draws over the scene whatever its
+// depth, so the panel is kept nearer than most scene geometry in that direction; 1.0 m stays within
+// about 0.33 dioptres of Swan's 1.5 m focal plane. The panel stays upright and parallel to the yaw
+// frame's frontal plane rather than turning towards the eye, so pitch and roll at placement do not
+// tilt it. On the 2D big screen it sits above the screen's top-left corner, parallel to the
+// screen (along the arc of the curved screen), at the same angular size.
 constexpr int kColumns = 5;
 constexpr int kCellWidth = 384;
 constexpr int kCellHeight = 96;
 constexpr int kCanvasWidth = kColumns * kCellWidth;
 constexpr int kCanvasHeight = 2 * kCellHeight;
-constexpr float kWidthMeters = 2.0f;
+constexpr float kWidthMeters = 0.8f;
 constexpr float kHeightMeters = kWidthMeters * kCanvasHeight / kCanvasWidth;
 constexpr float kLabelSize = 26.0f;
 constexpr float kValueSize = 36.0f;
-constexpr XrVector3f kAnchorOffset{-0.9f, 1.0f, -2.5f};
+constexpr float kDistanceMeters = 1.0f;
+// kDistanceMeters at 35 degrees of elevation: (0, sin 35, -cos 35) metres.
+constexpr XrVector3f kAnchorOffset{0.0f, 0.574f * kDistanceMeters, -0.819f * kDistanceMeters};
 // Gap between the big screen's top edge and the panel, as a fraction of the panel height.
-constexpr float kScreenGap = 0.25f;
+constexpr float kScreenGap = 0.6f;
 constexpr auto kUpdateInterval = std::chrono::milliseconds(250);
 constexpr auto kStaleAfter = std::chrono::seconds(2);
 
@@ -206,18 +212,41 @@ XrVector3f Rotate(const XrQuaternionf &q, const XrVector3f &v) {
             v.z + q.w * t.z + (q.x * t.y - q.y * t.x)};
 }
 
-// The panel on the 2D big screen: parallel to `screen`, left-aligned just above its top edge, at
-// the stereo panel's angular size for the screen's distance and never wider than the screen.
-XrPosef PlaceOnScreen(const XrCompositionLayerQuad &screen, XrExtent2Df *size) {
+XrQuaternionf Multiply(const XrQuaternionf &a, const XrQuaternionf &b) {
+    return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+
+// The panel on the 2D big screen: left-aligned above its top edge, at the stereo panel's angular
+// size for the screen's distance and never wider than the screen. On the flat screen it is
+// parallel to `screen`. The curved screen is a cylinder of `radius` around the player (the space
+// origin) with its axis along the screen's up axis; there the panel is a flat quad tangent to it,
+// left-aligned along the arc and facing the axis. Its ends then lie slightly outside the cylinder,
+// so its lower edge is raised until even the ends stay above the arc's top edge as seen from the
+// axis; before that the panel's lower corners dipped below the arc while drawing over it.
+XrPosef PlaceOnScreen(const XrCompositionLayerQuad &screen, float radius, XrExtent2Df *size) {
     const XrVector3f &c = screen.pose.position;
     const float distance = std::sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
-    const float width = std::min(kWidthMeters * distance / -kAnchorOffset.z, screen.size.width);
+    const float width = std::min(kWidthMeters * distance / kDistanceMeters, screen.size.width);
     const float height = width * kCanvasHeight / kCanvasWidth;
     *size = {width, height};
+    const float gap = kScreenGap * height;
+    XrPosef pose{};
+    if (radius > 0.0f) {
+        const float angle = (width - screen.size.width) * 0.5f / radius;
+        const float halfSpan = width * 0.5f / radius;
+        const float spread = std::sqrt(1.0f + halfSpan * halfSpan);
+        const float y = screen.size.height * 0.5f * spread + gap + height * 0.5f;
+        pose.position = Rotate(screen.pose.orientation,
+                               {radius * std::sin(angle), y, -radius * std::cos(angle)});
+        // Turned by -angle about the screen's up axis, its +Z faces the axis.
+        pose.orientation = Multiply(screen.pose.orientation,
+                                    {0.0f, std::sin(-angle * 0.5f), 0.0f, std::cos(-angle * 0.5f)});
+        return pose;
+    }
     const XrVector3f offset = Rotate(screen.pose.orientation,
                                      {(width - screen.size.width) * 0.5f,
-                                      (screen.size.height + height) * 0.5f + kScreenGap * height, 0.0f});
-    XrPosef pose{};
+                                      (screen.size.height + height) * 0.5f + gap, 0.0f});
     pose.orientation = screen.pose.orientation;
     pose.position = {c.x + offset.x, c.y + offset.y, c.z + offset.z};
     return pose;
@@ -300,6 +329,8 @@ bool PerfHud::Impl::create(XrSession session, vulkan::Context &context) {
     config.width_meters = kWidthMeters;
     config.height_meters = kHeightMeters;
     config.input_enabled = false;
+    // The capture producer copies the panel's images (TRANSFER_SRC swapchain).
+    config.capture_source = capture::Available();
 
     RestoreImGuiContext restore;
     imgui = ImGui::CreateContext();
@@ -510,14 +541,14 @@ bool PerfHud::update(XrSession session, vulkan::Context &context, const PerfHudF
 }
 
 bool PerfHud::fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrCompositionLayerQuad *quad,
-                   const XrCompositionLayerQuad *screen) {
+                   const XrCompositionLayerQuad *screen, float screenRadius) {
     Impl &hud = *impl_;
     if (screen != nullptr) {
         // Follows the screen every frame, so moving or resizing it carries the panel along. The
         // stereo anchor is dropped so a later stereo session places the panel in front of the head.
         hud.anchor.reset();
         hud.layer.FillQuadLayer(localSpace, false, *quad);
-        quad->pose = PlaceOnScreen(*screen, &quad->size);
+        quad->pose = PlaceOnScreen(*screen, screenRadius, &quad->size);
         std::lock_guard<std::mutex> lock(gStatusMutex);
         gStatus.anchor = quad->pose.position;
         return true;
@@ -545,5 +576,9 @@ bool PerfHud::fill(XrSpace localSpace, XrSpace viewSpace, XrTime time, XrComposi
 void PerfHud::reanchor() { impl_->anchor.reset(); }
 
 void PerfHud::destroy() { impl_->destroy(); }
+
+spatial::xr::XrImguiVulkanLayer *PerfHud::imguiLayer() {
+    return impl_->layer.IsCreated() ? &impl_->layer : nullptr;
+}
 
 }  // namespace xrimmersive

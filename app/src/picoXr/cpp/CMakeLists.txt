@@ -25,6 +25,13 @@ if(XRGAME_BUILD_PROBES)
     target_compile_options(xrgame_debugbus PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
     install(TARGETS xrgame_debugbus LIBRARY DESTINATION arm64-v8a)
 
+    # The scrcpy capture SDK (private my_mcp_tools, linked through Foundation's capture module) for
+    # the immersive session's stills and recordings; absent unless SPATIAL_SCRCPY_CAPTURE_SDK_ROOT
+    # names a checkout.
+    if(SPATIAL_SCRCPY_CAPTURE_SDK_ROOT)
+        add_subdirectory("${XRGAME_ROOT}/foundation/modules/capture" foundation-capture EXCLUDE_FROM_ALL)
+    endif()
+
     add_executable(xrgame_exec_probe exec_probe.c)
     target_compile_options(xrgame_exec_probe PRIVATE -Wall -Wextra -Werror)
     set_target_properties(xrgame_exec_probe PROPERTIES OUTPUT_NAME "libxrgame_exec_probe.so")

@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Adapted from shadPS4's host_shaders/xr_capture.comp (GPL-2.0-or-later).
+//
+// Capture compose of the immersive session (xr_capture.cpp).
+//   mode 0 (xr): for every pixel of each output eye (side by side), cast the eye's view ray
+//          through the layers the session submitted, bottom to top: projection layers are
+//          reprojected by rotation only (they are rendered from nearly the same eye position),
+//          quads are ray-plane and cylinders ray-cylinder intersected. Black where nothing is
+//          hit (passthrough, or no layer).
+//   mode 1 (canvas): the big screen's image as it is.
+//   mode 2 (canvas): the projection's eye images side by side.
+// All images are sampled through UNORM views and written raw, so the bytes keep the swapchains'
+// sRGB encoding; blending therefore happens on encoded values.
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+const uint kOff = 0u;
+const uint kQuad = 1u;
+const uint kCylinder = 2u;
+const uint kProjection = 3u;
+const uint kOpaque = 0u;
+const uint kPremultiplied = 1u;
+const uint kUnpremultiplied = 2u;
+const int kMaxLayers = 6;
+
+struct Layer {
+    vec4 toLayer[3];  // rows of the layer's world->layer rotation (projection: world->view)
+    vec4 center;      // quad / cylinder centre (world)
+    vec4 shape;       // quad: width, height; cylinder: radius, central angle, height;
+                      // projection: tan(left), tan(right), tan(down), tan(up)
+    vec4 rect;        // normalized uv offset (xy) and size (zw) in the image
+    uvec4 info;       // type, image, array layer, blend
+};
+
+struct Eye {
+    vec4 toWorld[3];  // rows of the output eye's view->world rotation
+    vec4 tanFov;      // tan(left), tan(right), tan(down), tan(up)
+    vec4 position;    // eye position (world)
+    Layer layers[kMaxLayers];
+};
+
+layout(std140, binding = 0) uniform Constants {
+    Eye eyes[2];
+    ivec4 extent;  // output eye width, height, eye count, mode
+};
+layout(binding = 1) uniform sampler2DArray images[4];
+layout(binding = 2, rgba8) uniform writeonly image2D target;
+
+vec3 Rotate(vec4 rows[3], vec3 v) {
+    return vec3(dot(rows[0].xyz, v), dot(rows[1].xyz, v), dot(rows[2].xyz, v));
+}
+
+bool Inside(vec2 uv) {
+    return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+}
+
+vec4 Fetch(Layer layer, vec2 uv) {
+    vec3 coord = vec3(layer.rect.xy + uv * layer.rect.zw, float(layer.info.z));
+    switch (layer.info.y) {
+    case 0u: return texture(images[0], coord);
+    case 1u: return texture(images[1], coord);
+    case 2u: return texture(images[2], coord);
+    default: return texture(images[3], coord);
+    }
+}
+
+// The layer's uv along the ray, or a negative value when the ray misses it.
+vec2 LayerUv(Layer layer, vec3 position, vec3 dir) {
+    if (layer.info.x == kProjection) {
+        vec3 v = Rotate(layer.toLayer, dir);
+        if (v.z >= -1e-6) return vec2(-1.0);
+        vec2 t = v.xy / -v.z;
+        return vec2((t.x - layer.shape.x) / (layer.shape.y - layer.shape.x),
+                    (layer.shape.w - t.y) / (layer.shape.w - layer.shape.z));
+    }
+    vec3 o = Rotate(layer.toLayer, position - layer.center.xyz);
+    vec3 d = Rotate(layer.toLayer, dir);
+    if (layer.info.x == kQuad) {
+        if (abs(d.z) < 1e-6) return vec2(-1.0);
+        float t = -o.z / d.z;
+        if (t <= 0.0) return vec2(-1.0);
+        vec2 hit = o.xy + t * d.xy;
+        return vec2(hit.x / layer.shape.x + 0.5, 0.5 - hit.y / layer.shape.y);
+    }
+    // Cylinder around the local Y axis, its image centred on -Z; seen from inside (far root).
+    float a = d.x * d.x + d.z * d.z;
+    float b = 2.0 * (o.x * d.x + o.z * d.z);
+    float c = o.x * o.x + o.z * o.z - layer.shape.x * layer.shape.x;
+    float disc = b * b - 4.0 * a * c;
+    if (a < 1e-6 || disc < 0.0) return vec2(-1.0);
+    float t = (-b + sqrt(disc)) / (2.0 * a);
+    if (t <= 0.0) return vec2(-1.0);
+    vec3 hit = o + t * d;
+    return vec2(atan(hit.x, -hit.z) / layer.shape.y + 0.5, 0.5 - hit.y / layer.shape.z);
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    int eyeIndex = pixel.x / extent.x;
+    if (eyeIndex >= extent.z || pixel.y >= extent.y) return;
+    vec2 uv = (vec2(pixel.x - eyeIndex * extent.x, pixel.y) + 0.5) / vec2(extent.xy);
+    Eye e = eyes[eyeIndex];
+
+    if (extent.w != 0) {
+        Layer layer = e.layers[0];
+        vec4 c = layer.info.x != kOff ? Fetch(layer, uv) : vec4(0.0);
+        imageStore(target, pixel, vec4(c.rgb, 1.0));
+        return;
+    }
+
+    vec3 viewDir = vec3(mix(e.tanFov.x, e.tanFov.y, uv.x), mix(e.tanFov.w, e.tanFov.z, uv.y), -1.0);
+    vec3 dir = normalize(Rotate(e.toWorld, viewDir));
+    vec3 color = vec3(0.0);
+    for (int i = 0; i < kMaxLayers; ++i) {
+        Layer layer = e.layers[i];
+        if (layer.info.x == kOff) continue;
+        vec2 layerUv = LayerUv(layer, e.position.xyz, dir);
+        if (!Inside(layerUv)) continue;
+        vec4 c = Fetch(layer, layerUv);
+        if (layer.info.w == kOpaque) {
+            color = c.rgb;
+        } else if (layer.info.w == kPremultiplied) {
+            color = c.rgb + color * (1.0 - c.a);
+        } else {
+            color = mix(color, c.rgb, c.a);
+        }
+    }
+    imageStore(target, pixel, vec4(color, 1.0));
+}

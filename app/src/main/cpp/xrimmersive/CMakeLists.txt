@@ -16,6 +16,7 @@ project(xrimmersive)
 
 add_library(xrimmersive SHARED
     xr_immersive.cpp
+    xr_capture.cpp
     xr_perf_hud.cpp
     xr_keyboard.cpp
     xr_frame_generation.cpp
@@ -51,6 +52,13 @@ target_link_libraries(xrimmersive PRIVATE
     jnigraphics
     log
 )
+
+# Debug builds with the scrcpy capture SDK (app/src/picoXr/cpp/CMakeLists.txt) record and screenshot
+# the session; without it the capture commands answer unavailable.
+if(TARGET spatial::foundation_capture)
+    target_link_libraries(xrimmersive PRIVATE spatial::foundation_capture)
+    target_compile_definitions(xrimmersive PRIVATE XRGAME_CAPTURE=1)
+endif()
 
 target_compile_definitions(xrimmersive PRIVATE
     XR_USE_PLATFORM_ANDROID=1

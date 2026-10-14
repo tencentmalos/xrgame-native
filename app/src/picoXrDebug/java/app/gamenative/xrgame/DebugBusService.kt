@@ -40,6 +40,7 @@ class DebugBusService : Service() {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
             "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard")
+        private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
     }
@@ -77,7 +78,9 @@ class DebugBusService : Service() {
 
     /** Called synchronously by Foundation handlers on the bounded query worker, never a GPU lock. */
     @Keep
-    fun query(command: String, args: Array<String>): String = try {
+    fun query(command: String, args: Array<String>): String = if (command in CAPTURE_COMMANDS) {
+        capture(command, args)
+    } else try {
         require(command in ARGUMENT_COMMANDS || args.isEmpty()) { "unexpected_arguments" }
         val result = when (command) {
             "status" -> JSONObject()
@@ -111,6 +114,17 @@ class DebugBusService : Service() {
     } catch (e: Exception) {
         // Never return exception messages containing paths, launch arguments or account data.
         JSONObject().put("error", "provider_failed").put("type", e.javaClass.simpleName).toString()
+    }
+
+    /**
+     * The scrcpy capture SDK's commands for the immersive session, answered in its `key: value`
+     * format (my_mcp_tools capturectl.py, scrcpy MCP capture_app_screenshot / record_app_video).
+     * Files go to app-private files/captures; tools pull them with run-as.
+     */
+    private fun capture(command: String, args: Array<String>): String = try {
+        XrNative.nativeCaptureCommand(command, args, File(filesDir, "captures").absolutePath)
+    } catch (e: Throwable) {
+        "status: failed\nerror: ${e.javaClass.simpleName}\n"
     }
 
     /** Windows VR pacing/latency experiments; no arguments reports the current values. */
