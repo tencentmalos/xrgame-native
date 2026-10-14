@@ -56,7 +56,9 @@ namespace fc = spatial::capture;
 // SteamPSP's names in answers, the A/B properties it has always used, and its log tag.
 void ConfigureOnce() {
     static std::once_flag once;
-    std::call_once(once, [] { fc::Configure({"steampsp", "debug.xrgame.capture", "xrimmersive"}); });
+    std::call_once(once, [] {
+        fc::Configure({.product = "steampsp", .propertyPrefix = "debug.xrgame.capture", .logTag = "xrimmersive"});
+    });
 }
 
 fc::VulkanBinding Binding(vulkan::Context &context) {
