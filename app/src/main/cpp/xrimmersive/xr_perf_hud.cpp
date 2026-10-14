@@ -8,6 +8,7 @@
 
 #include "imgui.h"
 #include "spatial/perf/PerfMetrics.hpp"
+#include "spatial/perf/StatusCells.hpp"
 #include "spatial/platform/android/JniHelper.h"
 #include "spatial/xr/XrImguiVulkanLayer.h"
 
@@ -88,6 +89,8 @@ struct Status {
 };
 std::mutex gStatusMutex;
 Status gStatus;
+// The panel's cells as last drawn, for DebugBus vr_hud (the PC spectator's side panel).
+spatial::perf::StatusCells gStatusCells;
 
 void SetError(const char *error) {
     std::lock_guard<std::mutex> lock(gStatusMutex);
@@ -100,14 +103,15 @@ struct RestoreImGuiContext {
 };
 
 // The local filesystem, minus two Swan problems. SELinux logs a denial for every read of a node the
-// app may not read (kgsl gpuclk/clock_mhz, devfreq: several a second), so a /sys node that failed
-// once is not read again. Thermal zones named after a trip point report the threshold
-// (cpu-hw-trip-* is always 105 C), not a temperature, so their type is hidden and they are skipped.
+// app may not read (kgsl gpuclk/clock_mhz/gpu_busy_percentage, devfreq: several a second), so a /sys
+// node that failed once is not read again. Thermal zones named after a trip point report the
+// threshold (cpu-hw-trip-* is always 105 C), not a temperature, so their type is hidden and they are
+// skipped. GPU usage comes from kgsl's gpubusy, the only GPU load node an app may read on Swan; its
+// occasional empty "0 0" windows are held over by Foundation's reader.
 class HudFileSource final : public spatial::perf::FileSource {
 public:
     std::optional<std::string> read(const std::string &path) const override {
         if (refused(path)) return std::nullopt;
-        if (path.ends_with("/gpubusy")) return std::nullopt;
         auto text = local_->read(path);
         if (!text) {
             refuse(path);
@@ -309,7 +313,10 @@ std::string PerfHudStatusJson() {
                   static_cast<long long>(gStatus.lastUpdateUs), static_cast<long long>(gStatus.maxUpdateUs),
                   number(gStatus.gameFps).c_str(), number(gStatus.xrFps).c_str(), anchor.c_str(),
                   gStatus.input.c_str(), gStatus.error.c_str());
-    return text;
+    std::string json = text;
+    if (json.empty() || json.back() != '}') return json;  // cut short: leave it as it was
+    json.pop_back();
+    return json + "," + gStatusCells.jsonFields() + "}";
 }
 
 void InitPerfHudJni(JNIEnv *env, jobject context) {
@@ -472,6 +479,11 @@ void PerfHud::Impl::draw(const PerfHudFrame &frame, Clock::time_point now) {
     ImDrawList *drawList = ImGui::GetBackgroundDrawList();
     drawList->AddRectFilled({0.0f, 0.0f}, io.DisplaySize, IM_COL32(10, 17, 28, 235), 14.0f);
     drawList->AddRect({1.0f, 1.0f}, {io.DisplaySize.x - 1.0f, io.DisplaySize.y - 1.0f}, accent, 14.0f, 0, 2.0f);
+    {
+        std::vector<spatial::perf::StatusCells::Cell> cells;
+        for (const int i : kCellOrder) cells.emplace_back(kLabels[i], values[i]);
+        gStatusCells.publish(std::move(cells));
+    }
     for (int cell = 0; cell < static_cast<int>(kCellOrder.size()); ++cell) {
         const int i = kCellOrder[cell];
         const float x = 20.0f + static_cast<float>((cell % kColumns) * kCellWidth);
@@ -527,6 +539,7 @@ bool PerfHud::update(XrSession session, vulkan::Context &context, const PerfHudF
         }
         std::lock_guard<std::mutex> lock(gStatusMutex);
         gStatus = {};
+        gStatusCells.clear();
         gStatus.created = true;
     }
     if (!hud.device) {

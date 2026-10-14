@@ -96,7 +96,7 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 | `quickmenu [status\|open\|close\|toggle]` | 在主线程开关沉浸式快捷菜单（最多等 1 秒），返回菜单、暂停、指针模式、立体（Windows VR）、直通渲染和 overlay 尺寸 |
 | `quickmenu exit` | 打开快捷菜单（如未打开），把焦点放到「退出」并像 A 键一样确认，游戏按菜单退出的原路径结束（退出云同步、OpenComposite DLL 还原）。立即返回 `exitRequested`，约 1 s 后执行；用 `launch status` 确认会话已结束。比连续 `nav down` 再按 A 可靠 |
 | `quickmenu nav <up\|down\|left\|right\|ok\|back\|next\|prev>` | 用 `input` 发一次菜单导航：左摇杆、A、B、RB、LB |
-| `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改状态层开关（`PrefManager.xrgameStatusLayer`，即启动面板的「状态层」，默认开；游戏画面里的 2D 性能 HUD 仍由 `PrefManager.showFps` 控制）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置 |
+| `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改状态层开关（`PrefManager.xrgameStatusLayer`，即启动面板的「状态层」，默认开；游戏画面里的 2D 性能 HUD 仍由 `PrefManager.showFps` 控制）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置，以及面板上 10 个格子的当前内容（`cells`，Foundation `StatusCells`）和它们的新鲜度（`cellsAgeMs`），供 PC 旁观窗口的跟随面板显示 |
 
 `input` 在原生 `syncControllerInputs` 中与真实手柄合并，所以平面游戏的 XInput、快捷菜单导航、
 指针模式双击和 Windows VR（OpenXR action）都会收到。只在沉浸式 XR 会话运行时生效，到期自动释放。
@@ -179,9 +179,9 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 | `capture_video start [EYE]` / `start_live TOKEN [EYE]` / `stop` / `status` | MediaCodec H.264：文件模式写 `files/captures/embedded-<ns>.h264` 和 `.frames.csv`；live 模式走 `scapture.TOKEN` 本地 socket。默认每隔一个 XR 帧编码一次（72 Hz 下 36 fps，90 Hz 下 45 fps），12 Mbps，关键帧间隔 2 s；编码器没有空闲图像时这一帧不编码、下一个 XR 帧重试，不阻塞 XR 线程。`status` 给出 `skipped_busy`（编码器没还图像）、`skipped_pending`（我们的上一次提交未完成）、`compose_latency_ms_avg/max`、`encoder_images`、`realtime`。会话结束即停止录像 |
 | `capture_config [video_bit_rate=8M] [max_size=1024] [max_fps=30] [i_frame_interval=2] \| reset \| status` | 与 scrcpy 的 `--video-bit-rate`/`--max-size`/`--max-fps` 对应，0 表示默认；对之后开始的录像和直播生效，截图不受影响。`max_size` 限制编码画面的长边（编码前线性缩小），`max_fps` 低于默认节奏时按时间间隔编码。`capturectl.py`、`liveview.py` 和 scrcpy MCP `record_app_video` 的同名参数通过它设置，用完恢复原值 |
 
-实现（`app/src/main/cpp/xrimmersive/xr_capture.cpp`，改编自 shadPS4 的 `capture_recorder`/`xr_capture`）：
+实现在 Foundation `modules/capture`（2026-10-14 下沉，供其他模拟器复用，接入步骤见 Foundation `docs/guides/emulator-capture.md`）：命令协议 `CaptureHub`、XR 图层 `XrLayerCapture`、2D 窗口 `WindowCapture`。`app/src/main/cpp/xrimmersive/xr_capture.cpp` 只把 `vulkan::Context` 转成 `VulkanBinding`，并配置产品名 `steampsp`、属性前缀 `debug.xrgame.capture` 和日志 tag `xrimmersive`。
 - 只在被截取的帧上做额外工作：有待取的截图，或录像中每隔一帧。
-- 每个图层在自己的命令缓冲里、`xrReleaseSwapchainImage` 之前按采样方式拷贝，不需要 swapchain 的 TRANSFER_SRC。投影层在截取帧上不复用上一张图，保证拷到的就是显示的那张。
+- 每个图层在自己的命令缓冲里、`xrReleaseSwapchainImage` 之前用计算着色器按采样方式拷贝进 RGBA8 图像（sRGB 视图采样后再编码回去，字节不变），不需要 swapchain 的 TRANSFER_SRC。投影层在截取帧上不复用上一张图，保证拷到的就是显示的那张。
 - 状态层和键盘通过 Foundation `XrImguiVulkanLayer::SetCaptureTarget` 拷贝；它们最多每秒重绘 4 次，所以整个会话都挂着目标图（面板小、拷贝频率与重绘相同），任何一帧的截图都带得上它们。
 - `xrEndFrame` 之后在同一队列上做合成（compute）、PNG 回读和编码器 blit；回读数据在完成线程上取出，PNG 在单独线程写，XR 线程不等 GPU。
 - 编码器的输入 Surface 走 Vulkan swapchain（合成设备在带 SDK 的构建里打开 `VK_KHR_android_surface`/`VK_KHR_swapchain`），acquire 超时为 0。Swan 上编码器（`c2.qti.avc.encoder`，硬件）要求至少 18 张图，我们建 20 张。
@@ -195,7 +195,7 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 （`WindowInspector`，含遮罩），不含 Pico 环境和系统浮层。录像默认按窗口尺寸、30 fps，`capture_config` 同样生效；
 截图为窗口全尺寸。沉浸式会话开始时它让出生产者位置，回到 SteamPSP 窗口时重新接上，`liveview.py --follow`
 据此自动跟随。
-- 我们自己的 `HardwareRenderer` 把窗口画进一个 `AImageReader`，`xr_panel_feed.cpp` 的线程只取最新一张，经 GLES blit 送进编码器的输入 Surface，旧帧直接丢弃。HWUI 绝不直接画进编码器 Surface：RenderThread 是全进程共用的，编码器一旦不收帧，`dequeueBuffer` 会卡住整个 app 的界面和 DebugBus（run116 的实际故障）。
+- 我们自己的 `HardwareRenderer` 把窗口画进一个 `AImageReader`，Foundation `WindowFeed` 的线程只取最新一张，经 GLES blit 送进编码器的输入 Surface，旧帧直接丢弃。HWUI 绝不直接画进编码器 Surface：RenderThread 是全进程共用的，编码器一旦不收帧，`dequeueBuffer` 会卡住整个 app 的界面和 DebugBus（run116 的实际故障）。
 - 编码器失败、提前结束或 3 s 不收帧时结束这次录制，`status` 为 `failed` 并给出原因；app 不受影响。
 
 构建：`-PxrGameCaptureSdk=<…/capture-sdk/native>` 或环境变量 `XRGAME_CAPTURE_SDK`（只作用于 debug 构建），

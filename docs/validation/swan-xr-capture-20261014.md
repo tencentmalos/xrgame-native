@@ -142,6 +142,34 @@ P3/P4 后段游戏帧率降到约 29 fps（负载下降），只有 P1/P2 在相
 | Hades II `xr` 左眼，默认（隔一个 XR 帧） | 1296x1200 | 364 / 10.06 s | 36.07 |
 | 退出后的 2D 窗口 | 1920x1080 | 310 / 10.27 s | 30.09 |
 
+## 旁观窗口的状态面板、声音、GPU 读数，以及下沉到 Foundation
+
+同一次开机，运行时 bundle 同上。
+
+| 运行 | APK | `libxrimmersive.so` Build ID | PID | 内容 |
+|---|---|---|---|---|
+| run121 | `4a8d021aa17d5cfef096e6704f8765bf42d8c6ed8dab27df8dab8c14c0364dc2` | `f0104c9f6eda5491230829b17c5e704e7c0a594d` | 29940 | 状态层 GPU 读数、失败后重新开始、`vr_hud` 导出格子 |
+| run122 | `b94439acbd4cfd4e2133edecb7f78c9f00f86412b1aeed11288e50af8c7efbb7` | `cc123a275503e9530731efcbd2328a9ddf76ea8a` | 13627 | 截取改由 Foundation `modules/capture` 实现后的回归，约 4 分钟 |
+
+- **状态层的 GPU 一栏**一直是 `--`：Swan 处于 SELinux enforcing，app 读不到 `gpu_busy_percentage`、`gpuclk`、`clock_mhz`、`devfreq/cur_freq`（run-as 下 Permission denied），只有 `gpubusy`（`vendor_sysfs_kgsl_gpubusy`）可读。10-12 跳过 `gpubusy` 的做法就让这一栏永远为空。现在改回读 `gpubusy`，偶尔出现的 `0 0` 窗口由 Foundation 的读取器短暂沿用上一值：Hades II 中读到 80–85%，Alyx 菜单中 99%。KGSL 性能计数器也关着（`perfcounter` 为 0），所以头显里拿不到 GPU 频率。PC 旁观面板通过 adb 读 `gpuclk` 补上，标注 `(adb)`。
+- **失败后重新开始**：直播因查看器断开而失败后，`wanted` 仍为真，新的 `start_live` 被当成「已在录制」而忽略（revision 停在 5），新开的查看器永远连不上。现在处于 `failed` 时接受新的开始：run121 中 revision 5 → 6，进入 `recording`。
+- **跟随面板**：`vr_hud` 的 `cells`（Foundation `StatusCells`）在 run121 Hades II 中给出 10 个格子，`cellsAgeMs` 约 0.1 s，与头显状态层一致。liveview 的面板停靠在窗口右侧，跟随窗口移动；关闭面板会关闭整个查看器（Windows 可能把面板当作主窗口）。
+- 查看器的面板、声音和设备名在 my_mcp_tools `83fa1fb`。
+- **声音**：查看器旁边运行 scrcpy 4.0 的只传音频模式（`--no-video --audio-source=playback --audio-dup`）。8 s 录音为 Opus 48 kHz 双声道，RMS −42 dBFS、峰值 0.035（Hades II 当时比较安静），说明能抓到播放的声音。头显本身是否仍出声（`--audio-dup`）没有在头显里确认。
+
+**run122（Foundation 下沉后的回归）。** 截取模块搬到 Foundation `d859388`（分支 `feature/malos/capture-producers`；`CaptureHub`、`XrLayerCapture`、`WindowCapture`，见 Foundation `docs/guides/emulator-capture.md`），图层拷贝从图形管线的全屏 blit 改为计算着色器（sRGB 视图采样后再编码回去）：
+
+| 项目 | 结果 |
+|---|---|
+| 2D 窗口 | 截图 1920x1080；录像 5 s，30.3 fps，丢弃 2 |
+| Hades II `xr` / `canvas` 截图 | 5184x2400 `stereo_sbs`（大屏和状态层，双眼）/ 2250x1264 原图，颜色正常 |
+| Hades II 录像 6 s | `xr` 左眼 1296x1200 35.8 fps、`canvas` 2250x1264 35.7 fps，跳帧 0；合成延迟均值约 8 ms |
+| Hades II `vr_hud` | 游戏 60.0、XR 64.8/72、CPU 33% 2.6 GHz、GPU 81%、温度 72/63 °C 等 10 格 |
+| Alyx `xr` / `canvas` 截图（主菜单） | 5184x2400 合成（含状态层）/ 2592x1200 投影两眼原图，颜色正常 |
+| Alyx 录像 6 s | `xr` 左眼 23.9 fps、`canvas` 23.3 fps；跳帧 147 / 161，全部是「编码器没还图像」；合成延迟均值 1.7 / 2.2 ms |
+
+Alyx 的跳帧属于之前记录过的编码器一侧瓶颈（同类：run110 场景内 16%）。这次是刚启动后的主菜单，设备在降温节流中（`thermal-engine` 正在设置冷却档位）。没有在同一局里和下沉前的版本对比，所以不能断言 Alyx 录像帧率没有变化。
+
 ## 未覆盖与已知限制
 
 - 没有在 GPU 吃满的场景（Alyx 场景内、MHR）测截取的开销；Alyx 只做了功能验证，没有 A/B。
