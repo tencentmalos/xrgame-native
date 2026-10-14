@@ -1810,8 +1810,9 @@ static XrResult XRAPI_CALL gn_xrGetSystemProperties(XrInstance instance, XrSyste
     properties->systemId = gn_system_id;
     properties->vendorId = 0x474e;
     gn_copy(properties->systemName, XR_MAX_SYSTEM_NAME_SIZE, "XRGame Native VR bridge");
-    properties->graphicsProperties.maxSwapchainImageHeight = 4096;
-    properties->graphicsProperties.maxSwapchainImageWidth = 4096;
+    /* What xrCreateSwapchain accepts; eye sizes reach the headset's largest eye (XrResolutionRecommendation). */
+    properties->graphicsProperties.maxSwapchainImageHeight = 16384;
+    properties->graphicsProperties.maxSwapchainImageWidth = 16384;
     properties->graphicsProperties.maxLayerCount = 16;
     properties->trackingProperties.orientationTracking = XR_TRUE;
     properties->trackingProperties.positionTracking = XR_TRUE;

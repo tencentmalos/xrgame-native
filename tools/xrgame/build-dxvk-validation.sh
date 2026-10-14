@@ -8,7 +8,7 @@ reference="$base/src/dxvk"
 patch="$project/tools/xrgame/patches/dxvk-present-deferred-clears.patch"
 latency_patch="$project/tools/xrgame/patches/dxvk-waitable-frame-latency.patch"
 completion_patch="$project/tools/xrgame/patches/dxvk-present-gpu-completion.patch"
-quality_patch="$project/tools/xrgame/patches/dxvk-xrgame-resource-scale.patch"
+quality_patch="$project/tools/xrgame/patches/dxvk-xrgame-texture-quality.patch"
 latency_probe=${XRGAME_DXVK_LATENCY_PROBE:-1}
 [[ "$latency_probe" == 0 || "$latency_probe" == 1 ]]
 cross="$base/build/arm64ec.ini"

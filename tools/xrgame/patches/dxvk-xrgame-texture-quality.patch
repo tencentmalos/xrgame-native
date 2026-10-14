@@ -1,0 +1,325 @@
+diff --git a/src/d3d11/d3d11_context.cpp b/src/d3d11/d3d11_context.cpp
+index 6f1f22bd..5c627af8 100644
+--- a/src/d3d11/d3d11_context.cpp
++++ b/src/d3d11/d3d11_context.cpp
+@@ -836,6 +836,14 @@ namespace dxvk {
+     D3D11CommonTexture* dstTextureInfo = GetCommonTexture(pDstResource);
+     D3D11CommonTexture* srcTextureInfo = GetCommonTexture(pSrcResource);
+ 
++    if (unlikely(dstTextureInfo->XrGameReduced() || srcTextureInfo->XrGameReduced())) {
++      static std::atomic<bool> s_logged = { false };
++
++      if (!s_logged.exchange(true))
++        Logger::warn("XRGame: resolve with an image reduced by the texture quality setting is skipped");
++      return;
++    }
++
+     const DXGI_VK_FORMAT_INFO dstFormatInfo = m_parent->LookupFormat(dstDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
+     const DXGI_VK_FORMAT_INFO srcFormatInfo = m_parent->LookupFormat(srcDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
+ 
+@@ -4279,6 +4287,27 @@ namespace dxvk {
+     VkExtent3D dstExtent = util::computeBlockExtent(blockCount, dstFormatInfo->blockSize);
+     dstExtent = util::snapExtent3D(DstOffset, dstExtent, dstMipExtent);
+ 
++    // XRGame texture quality: the images may leave out top mip levels. Everything
++    // above is in D3D11 terms, which stays valid for kept levels since those have
++    // the same sizes. Only the image side of the copy changes; staging buffers keep
++    // D3D11 indices.
++    VkImageSubresourceLayers dstImageLayers = *pDstLayers;
++    VkImageSubresourceLayers srcImageLayers = *pSrcLayers;
++
++    if (unlikely(pDstTexture->XrGameReduced() || pSrcTexture->XrGameReduced())) {
++      static std::atomic<bool> s_loggedLevel = { false };
++
++      // Nothing to write if the destination level does not exist
++      if (!pDstTexture->XrGameMapMip(dstImageLayers.mipLevel))
++        return;
++
++      if (!pSrcTexture->XrGameMapMip(srcImageLayers.mipLevel)) {
++        if (!s_loggedLevel.exchange(true))
++          Logger::warn("XRGame: copy from a mip level left out by the texture quality setting is skipped");
++        return;
++      }
++    }
++
+     // It is possible for any of the given images to be a staging image with
+     // no actual image, so we need to account for all possibilities here.
+     bool dstIsImage = pDstTexture->HasImage();
+@@ -4288,8 +4317,8 @@ namespace dxvk {
+       EmitCs([
+         cDstImage  = pDstTexture->GetImage(),
+         cSrcImage  = pSrcTexture->GetImage(),
+-        cDstLayers = *pDstLayers,
+-        cSrcLayers = *pSrcLayers,
++        cDstLayers = dstImageLayers,
++        cSrcLayers = srcImageLayers,
+         cDstOffset = DstOffset,
+         cSrcOffset = SrcOffset,
+         cExtent    = SrcExtent
+@@ -4343,7 +4372,7 @@ namespace dxvk {
+ 
+           if (dstIsImage) {
+             VkImageSubresourceLayers dstLayer = { dstAspectMask,
+-              pDstLayers->mipLevel, pDstLayers->baseArrayLayer + i, 1 };
++              dstImageLayers.mipLevel, pDstLayers->baseArrayLayer + i, 1 };
+ 
+             EmitCs([
+               cDstImage   = pDstTexture->GetImage(),
+@@ -4363,7 +4392,7 @@ namespace dxvk {
+             });
+           } else if (srcIsImage) {
+             VkImageSubresourceLayers srcLayer = { srcAspectMask,
+-              pSrcLayers->mipLevel, pSrcLayers->baseArrayLayer + i, 1 };
++              srcImageLayers.mipLevel, pSrcLayers->baseArrayLayer + i, 1 };
+ 
+             EmitCs([
+               cSrcImage   = pSrcTexture->GetImage(),
+@@ -5675,9 +5704,15 @@ namespace dxvk {
+       pDstSubresource->arrayLayer, pDstTexture->Desc()->MipLevels);
+ 
+     if (dstIsImage) {
++      VkImageSubresourceLayers dstLayers = vk::makeSubresourceLayers(*pDstSubresource);
++
++      // XRGame texture quality: levels the image leaves out take no data.
++      if (unlikely(!pDstTexture->XrGameMapMip(dstLayers.mipLevel)))
++        return;
++
+       EmitCs([
+         cDstImage         = pDstTexture->GetImage(),
+-        cDstLayers        = vk::makeSubresourceLayers(*pDstSubresource),
++        cDstLayers        = dstLayers,
+         cDstOffset        = DstOffset,
+         cDstExtent        = DstExtent,
+         cStagingSlice     = std::move(StagingBuffer),
+diff --git a/src/d3d11/d3d11_initializer.cpp b/src/d3d11/d3d11_initializer.cpp
+index 902b9695..4cffed64 100644
+--- a/src/d3d11/d3d11_initializer.cpp
++++ b/src/d3d11/d3d11_initializer.cpp
+@@ -188,9 +188,12 @@ namespace dxvk {
+           uint32_t index = D3D11CalcSubresource(mip, layer, desc->MipLevels);
+           VkExtent3D mipLevelExtent = pTexture->MipLevelExtent(mip);
+ 
+-          if (pTexture->HasImage()) {
++          // XRGame texture quality: levels the image leaves out are not uploaded.
++          uint32_t imageMip = mip;
++
++          if (pTexture->HasImage() && pTexture->XrGameMapMip(imageMip)) {
+             VkDeviceSize mipSizePerLayer = util::computeImageDataSize(
+-              packedFormat, image->mipLevelExtent(mip), formatInfo->aspectMask);
++              packedFormat, image->mipLevelExtent(imageMip), formatInfo->aspectMask);
+ 
+             m_transferCommands += 1;
+ 
+diff --git a/src/d3d11/d3d11_texture.cpp b/src/d3d11/d3d11_texture.cpp
+index 19dd03fc..533b10ca 100644
+--- a/src/d3d11/d3d11_texture.cpp
++++ b/src/d3d11/d3d11_texture.cpp
+@@ -3,10 +3,59 @@
+ #include "d3d11_gdi.h"
+ #include "d3d11_texture.h"
+ 
++#include "../util/util_env.h"
+ #include "../util/util_shared_res.h"
+ #include "../util/util_win32_compat.h"
+ 
+ namespace dxvk {
++
++  namespace {
++
++    /**
++     * \brief XRGame texture quality
++     *
++     * Read once from XRGAME_TEXTURE_QUALITY. The mip cap is the largest
++     * level, by its longer side, that images keep. A fixed cap rather than
++     * a per-texture drop keeps equal-sized levels of different textures in
++     * step, so copies between them (texture streaming) find both levels or
++     * neither.
++     */
++    uint32_t GetXrGameMipCap() {
++      static const uint32_t s_mipCap = [] {
++        std::string quality = env::getEnvVar("XRGAME_TEXTURE_QUALITY");
++        uint32_t mipCap = 0u;
++
++        if (quality == "medium")
++          mipCap = 1024u;
++        else if (quality == "low")
++          mipCap = 512u;
++        else
++          quality = "high";
++
++        Logger::info(str::format("XRGame texture quality ", quality));
++        return mipCap;
++      }();
++
++      return s_mipCap;
++    }
++
++
++    VkDeviceSize XrGameImageSize(
++            VkFormat              Format,
++            VkImageAspectFlags    Aspects,
++            VkExtent3D            Extent,
++            uint32_t              Levels,
++            uint32_t              Layers) {
++      VkDeviceSize size = 0u;
++
++      for (uint32_t i = 0; i < Levels; i++)
++        size += util::computeImageDataSize(Format, util::computeMipLevelExtent(Extent, i), Aspects);
++
++      return size * Layers;
++    }
++
++  }
++
+   
+   D3D11CommonTexture::D3D11CommonTexture(
+           ID3D11Resource*             pInterface,
+@@ -211,6 +260,18 @@ namespace dxvk {
+       }
+     }
+ 
++    // XRGame texture quality. Only device-local images that the application
++    // can neither map nor share, and whose tiling it cannot query, qualify.
++    if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_NONE
++     && Dimension == D3D11_RESOURCE_DIMENSION_TEXTURE2D
++     && !vkImage && !m_11on12.Resource && !DxgiUsage
++     && hSharedHandle == INVALID_HANDLE_VALUE
++     && !(m_desc.MiscFlags & (sharingFlags | D3D11_RESOURCE_MISC_TILED
++                            | D3D11_RESOURCE_MISC_GDI_COMPATIBLE | D3D11_RESOURCE_MISC_GENERATE_MIPS))
++     && m_desc.SampleDesc.Count == 1 && !m_desc.CPUAccessFlags && !isMultiPlane
++     && m_desc.TextureLayout == D3D11_TEXTURE_LAYOUT_UNDEFINED)
++      XrGameReduce(imageInfo, formatProperties->aspectMask);
++
+     // Skip image creation if possible
+     if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_STAGING)
+       return;
+@@ -514,6 +575,49 @@ namespace dxvk {
+   }
+ 
+ 
++  void D3D11CommonTexture::XrGameReduce(
++          DxvkImageCreateInfo&  ImageInfo,
++          VkImageAspectFlags    Aspects) {
++    static std::atomic<uint32_t> s_count = { 0u };
++    static std::atomic<uint64_t> s_saved = { 0u };
++
++    uint32_t mipCap = GetXrGameMipCap();
++    uint32_t levels = m_desc.MipLevels;
++    uint32_t bind = m_desc.BindFlags;
++
++    // Sampled-only textures with mipmaps.
++    if (!mipCap || Aspects != VK_IMAGE_ASPECT_COLOR_BIT || levels < 2
++     || !(bind & D3D11_BIND_SHADER_RESOURCE)
++     || (bind & (D3D11_BIND_RENDER_TARGET | D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_UNORDERED_ACCESS)))
++      return;
++
++    uint32_t size = std::max(m_desc.Width, m_desc.Height);
++
++    while (m_xrgameMipDrop + 1u < levels && (size >> m_xrgameMipDrop) > mipCap)
++      m_xrgameMipDrop += 1u;
++
++    if (!m_xrgameMipDrop)
++      return;
++
++    ImageInfo.extent.width  = std::max(1u, m_desc.Width  >> m_xrgameMipDrop);
++    ImageInfo.extent.height = std::max(1u, m_desc.Height >> m_xrgameMipDrop);
++    ImageInfo.mipLevels    -= m_xrgameMipDrop;
++
++    VkDeviceSize full = XrGameImageSize(ImageInfo.format, Aspects,
++      VkExtent3D { m_desc.Width, m_desc.Height, 1u }, levels, m_desc.ArraySize);
++    VkDeviceSize reduced = XrGameImageSize(ImageInfo.format, Aspects,
++      ImageInfo.extent, ImageInfo.mipLevels, m_desc.ArraySize);
++    uint32_t count = ++s_count;
++    uint64_t saved = (s_saved += full - reduced);
++
++    if (count == 1u || !(count % 64u)) {
++      Logger::info(str::format("XRGame texture quality: ", count, " textures reduced, ",
++        saved >> 20, " MiB saved (latest ", m_desc.Width, "x", m_desc.Height, ", ",
++        ImageInfo.mipLevels, " of ", levels, " levels kept)"));
++    }
++  }
++
++
+   BOOL D3D11CommonTexture::CheckImageSupport(
+     const DxvkImageCreateInfo*  pImageInfo,
+           VkImageTiling         Tiling) const {
+diff --git a/src/d3d11/d3d11_texture.h b/src/d3d11/d3d11_texture.h
+index 589603cf..dba0bb13 100644
+--- a/src/d3d11/d3d11_texture.h
++++ b/src/d3d11/d3d11_texture.h
+@@ -148,6 +148,32 @@ namespace dxvk {
+         VkExtent3D { m_desc.Width, m_desc.Height, m_desc.Depth }, Level);
+     }
+ 
++    /**
++     * \brief XRGame texture quality: top mip levels the image leaves out
++     *
++     * D3D11 mip N is image mip N - XrGameMipDrop(). The application keeps
++     * seeing its own description; only the image is smaller.
++     */
++    uint32_t XrGameMipDrop() const {
++      return m_xrgameMipDrop;
++    }
++
++    bool XrGameReduced() const {
++      return m_xrgameMipDrop != 0u;
++    }
++
++    /**
++     * \brief Maps a D3D11 mip level to the image
++     * \returns \c false if the image leaves the level out
++     */
++    bool XrGameMapMip(uint32_t& Level) const {
++      if (Level < m_xrgameMipDrop)
++        return false;
++
++      Level -= m_xrgameMipDrop;
++      return true;
++    }
++
+     /**
+      * \brief Special DXGI usage flags
+      *
+@@ -588,6 +614,12 @@ namespace dxvk {
+ 
+     void*                         m_mapPtr = nullptr;
+ 
++    uint32_t                      m_xrgameMipDrop = 0u;
++
++    void XrGameReduce(
++            DxvkImageCreateInfo&  ImageInfo,
++            VkImageAspectFlags    Aspects);
++
+     void CreateMappedBuffer(
+             UINT                  Subresource);
+     
+diff --git a/src/d3d11/d3d11_view_srv.cpp b/src/d3d11/d3d11_view_srv.cpp
+index 78f4830a..20cbb86d 100644
+--- a/src/d3d11/d3d11_view_srv.cpp
++++ b/src/d3d11/d3d11_view_srv.cpp
+@@ -176,6 +176,25 @@ namespace dxvk {
+       m_info.Image.NumLevels = viewInfo.mipCount;
+       m_info.Image.NumLayers = viewInfo.layerCount;
+ 
++      // XRGame texture quality: the image may leave out the top mip levels.
++      // A view of left-out levels only reads the largest level the image keeps.
++      if (texture->XrGameMipDrop()) {
++        uint32_t drop  = texture->XrGameMipDrop();
++        uint32_t first = viewInfo.mipIndex;
++        uint32_t end   = first + viewInfo.mipCount;
++
++        first = first > drop ? first - drop : 0u;
++        end   = end   > drop ? end   - drop : 0u;
++
++        if (end <= first) {
++          first = 0u;
++          end   = 1u;
++        }
++
++        viewInfo.mipIndex = first;
++        viewInfo.mipCount = end - first;
++      }
++
+       // Create the underlying image view object
+       m_imageView = texture->GetImage()->createView(viewInfo);
+     }

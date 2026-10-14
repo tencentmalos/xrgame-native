@@ -9,20 +9,22 @@ class XrGameQualitySettingsTest {
     @Test fun unsetOrUnknownValuesMeanTheDefaults() {
         assertEquals("high", XrGameQualitySettings.textureQuality("WINEESYNC=1"))
         assertEquals("high", XrGameQualitySettings.textureQuality("XRGAME_TEXTURE_QUALITY=ultra"))
-        assertEquals("100", XrGameQualitySettings.renderScale("WINEESYNC=1"))
-        assertEquals("100", XrGameQualitySettings.renderScale("XRGAME_RENDER_SCALE=60"))
+    }
+
+    @Test fun capsMatchTheTranslationLayers() {
+        assertEquals(null, XrGameQualitySettings.textureCap("high"))
+        assertEquals(1024, XrGameQualitySettings.textureCap("medium"))
+        assertEquals(512, XrGameQualitySettings.textureCap("low"))
     }
 
     @Test fun valuesRoundTripAndDefaultsRemoveTheVariables() {
-        val reduced = XrGameQualitySettings.withRenderScale(XrGameQualitySettings.withTextureQuality("WINEESYNC=1", "low"), "37.5")
+        val reduced = XrGameQualitySettings.withTextureQuality("WINEESYNC=1", "low")
         assertEquals("low", XrGameQualitySettings.textureQuality(reduced))
-        assertEquals("37.5", XrGameQualitySettings.renderScale(reduced))
-        assertEquals("37.5", EnvVars(reduced).get(XrGameQualitySettings.RENDER_SCALE_ENV))
+        assertEquals("low", EnvVars(reduced).get(XrGameQualitySettings.TEXTURE_QUALITY_ENV))
         assertEquals("1", EnvVars(reduced).get("WINEESYNC"))
 
-        val restored = XrGameQualitySettings.withRenderScale(XrGameQualitySettings.withTextureQuality(reduced, "high"), "100")
+        val restored = XrGameQualitySettings.withTextureQuality(reduced, "high")
         assertFalse(EnvVars(restored).has(XrGameQualitySettings.TEXTURE_QUALITY_ENV))
-        assertFalse(EnvVars(restored).has(XrGameQualitySettings.RENDER_SCALE_ENV))
         assertEquals("1", EnvVars(restored).get("WINEESYNC"))
     }
 }

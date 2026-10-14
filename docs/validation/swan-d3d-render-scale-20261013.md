@@ -1,5 +1,7 @@
 # Swan：vkd3d 渲染缩放（与 shadPS4 一致，2026-10-13）
 
+> **已移除（2026-10-14）**：渲染缩放不适合 Steam 游戏，按用户要求从主干移除。实现保留在主仓分支 `feature/malos/d3d-render-scale`，见[移除记录](swan-d3d-render-scale-removal-20261014.md)。本记录作为历史保留。
+
 规格见 [D3D 转换层的渲染缩放与纹理质量 v1](../specs/xrgame-d3d-render-scale-texture-quality-v1.md) 的 2.2 节。本记录覆盖 vkd3d-proton（D3D12）在 MHR 上的实现和首轮验证，以及 2026-10-14 补上的 DXVK（D3D11，组件 xrg6）实现；DXVK 的画面还没有在 2D 的 D3D11 游戏上验过。
 
 起因：用户指出之前实现的「只缩放阴影深度数组」与 shadPS4 的 render scale 不一致，要的是整体渲染目标按比例缩小、shader 修正坐标、游戏看到的资源尺寸不变。

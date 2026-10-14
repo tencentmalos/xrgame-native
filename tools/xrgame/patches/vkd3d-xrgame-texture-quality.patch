@@ -1,0 +1,461 @@
+diff --git a/libs/vkd3d/command.c b/libs/vkd3d/command.c
+index e30a09a6..4f913a9c 100644
+--- a/libs/vkd3d/command.c
++++ b/libs/vkd3d/command.c
+@@ -9639,6 +9639,36 @@ static bool validate_d3d12_box(const D3D12_BOX *box)
+             && box->back > box->front;
+ }
+ 
++/* XRGame: copies address D3D12 mip levels, but the Vulkan image may leave out top levels
++ * (texture quality). The extents were computed in D3D12 terms, which stay valid for kept levels
++ * since those have the same sizes. Returns false when the copy has to be dropped. */
++static bool d3d12_command_list_xrgame_remap_copy(const struct d3d12_resource *src_resource,
++        const struct d3d12_resource *dst_resource, struct vkd3d_image_copy_info *info)
++{
++    switch (info->batch_type)
++    {
++        case VKD3D_BATCH_TYPE_COPY_BUFFER_TO_IMAGE:
++            return d3d12_resource_xrgame_remap_mip(dst_resource, &info->copy.buffer_image.imageSubresource.mipLevel);
++
++        case VKD3D_BATCH_TYPE_COPY_IMAGE_TO_BUFFER:
++            if (d3d12_resource_xrgame_remap_mip(src_resource, &info->copy.buffer_image.imageSubresource.mipLevel))
++                return true;
++            FIXME_ONCE("Readback of a mip level left out by the texture quality setting, skipping.\n");
++            return false;
++
++        case VKD3D_BATCH_TYPE_COPY_IMAGE:
++            if (!d3d12_resource_xrgame_remap_mip(dst_resource, &info->copy.image.dstSubresource.mipLevel))
++                return false;
++            if (d3d12_resource_xrgame_remap_mip(src_resource, &info->copy.image.srcSubresource.mipLevel))
++                return true;
++            FIXME_ONCE("Copy from a mip level left out by the texture quality setting, skipping.\n");
++            return false;
++
++        default:
++            return true;
++    }
++}
++
+ static bool d3d12_command_list_init_copy_texture_region(struct d3d12_command_list *list,
+         const D3D12_TEXTURE_COPY_LOCATION *dst,
+         UINT dst_x, UINT dst_y, UINT dst_z,
+@@ -9897,6 +9927,10 @@ static bool d3d12_command_list_init_copy_texture_region(struct d3d12_command_lis
+         out->writes_full_subresource = false;
+     }
+ 
++    if ((src_resource->xrgame_mip_drop || dst_resource->xrgame_mip_drop) &&
++            !d3d12_command_list_xrgame_remap_copy(src_resource, dst_resource, out))
++        return false;
++
+     return true;
+ }
+ 
+@@ -10359,6 +10393,15 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyResource(d3d12_command_list
+                     continue;
+                 }
+ 
++                if ((src_resource->xrgame_mip_drop || dst_resource->xrgame_mip_drop) &&
++                        (!d3d12_resource_xrgame_remap_mip(dst_resource, &vk_image_copy.dstSubresource.mipLevel) ||
++                        !d3d12_resource_xrgame_remap_mip(src_resource, &vk_image_copy.srcSubresource.mipLevel)))
++                {
++                    if (i >= dst_resource->xrgame_mip_drop)
++                        FIXME_ONCE("CopyResource from a mip level left out by the texture quality setting, skipping.\n");
++                    continue;
++                }
++
+                 /* Copying sampler feedback is only allowed in CopyResource. */
+                 if (d3d12_resource_desc_is_sampler_feedback(&src_resource->desc))
+                     vk_image_copy.extent = d3d12_resource_desc_get_padded_feedback_extent(&src_resource->desc);
+@@ -10377,7 +10420,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyResource(d3d12_command_list
+                 /* CopyResource() always copies all subresources, so we can safely discard the dst_resource contents. */
+                 d3d12_command_list_barrier_batch_init(&barriers);
+ 
+-                if (i == 0 && j == 0)
++                if (i == max(src_resource->xrgame_mip_drop, dst_resource->xrgame_mip_drop) && j == 0)
+                 {
+                     d3d12_command_list_check_and_resolve_pending_transfer_image_write(list, &barriers,
+                             dst_resource->res.vk_image, UINT32_MAX);
+@@ -11678,6 +11721,12 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResolveSubresource(d3d12_comman
+     dst_resource = impl_from_ID3D12Resource(dst);
+     src_resource = impl_from_ID3D12Resource(src);
+ 
++    if (dst_resource->xrgame_mip_drop || src_resource->xrgame_mip_drop)
++    {
++        FIXME_ONCE("Resolve with an image reduced by the XRGame texture quality, skipping.\n");
++        return;
++    }
++
+     assert(d3d12_resource_is_texture(dst_resource));
+     assert(d3d12_resource_is_texture(src_resource));
+ 
+@@ -12928,7 +12977,19 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResourceBarrier(d3d12_command_l
+                             transition_src_stage_mask, transition_src_access,
+                             transition_dst_stage_mask, transition_dst_access,
+                             dsv_decay_mask);
+-                    d3d12_command_list_barrier_batch_add_layout_transition(list, &batch, &vk_transition);
++                    d3d12_resource_xrgame_remap_range(preserve_resource, &vk_transition.subresourceRange);
++
++                    /* A level the image leaves out only needs the memory dependency. */
++                    if (vk_transition.subresourceRange.levelCount)
++                    {
++                        d3d12_command_list_barrier_batch_add_layout_transition(list, &batch, &vk_transition);
++                    }
++                    else
++                    {
++                        d3d12_command_list_barrier_batch_add_global_transition(list, &batch,
++                                transition_src_stage_mask, transition_src_access,
++                                transition_dst_stage_mask, transition_dst_access);
++                    }
+                 }
+                 else
+                 {
+@@ -17990,6 +18051,12 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResolveSubresourceRegion(d3d12_
+         return;
+     }
+ 
++    if (dst_resource->xrgame_mip_drop || src_resource->xrgame_mip_drop)
++    {
++        FIXME_ONCE("Resolve with an image reduced by the XRGame texture quality, skipping.\n");
++        return;
++    }
++
+     assert(d3d12_resource_is_texture(dst_resource));
+     assert(d3d12_resource_is_texture(src_resource));
+ 
+@@ -20656,7 +20723,19 @@ static void d3d12_command_list_process_enhanced_barrier_texture(struct d3d12_com
+     if (barrier->LayoutBefore == D3D12_BARRIER_LAYOUT_UNDEFINED && !(barrier->Flags & D3D12_TEXTURE_BARRIER_FLAG_DISCARD))
+         FIXME("Transitioning away from UNDEFINED, but there is no DISCARD flag. Uncertain what is expected here. vkd3d-proton will force a discard.\n");
+ 
+-    d3d12_command_list_barrier_batch_add_layout_transition(list, batch, &vk_transition);
++    d3d12_resource_xrgame_remap_range(resource, &vk_transition.subresourceRange);
++
++    /* A level the image leaves out only needs the memory dependency. */
++    if (vk_transition.subresourceRange.levelCount)
++    {
++        d3d12_command_list_barrier_batch_add_layout_transition(list, batch, &vk_transition);
++    }
++    else
++    {
++        d3d12_command_list_barrier_batch_add_global_transition(list, batch,
++                vk_transition.srcStageMask, vk_transition.srcAccessMask,
++                vk_transition.dstStageMask, vk_transition.dstAccessMask);
++    }
+ 
+     discarding_transition = vk_transition.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+             vk_transition.newLayout != VK_IMAGE_LAYOUT_UNDEFINED &&
+diff --git a/libs/vkd3d/device.c b/libs/vkd3d/device.c
+index 6c713c90..6afa8df2 100644
+--- a/libs/vkd3d/device.c
++++ b/libs/vkd3d/device.c
+@@ -578,6 +578,7 @@ enum vkd3d_application_feature_override
+ 
+ static enum vkd3d_application_feature_override vkd3d_application_feature_override;
+ uint64_t vkd3d_config_flags;
++struct vkd3d_xrgame_config vkd3d_xrgame_config = {VKD3D_XRGAME_TEXTURE_QUALITY_HIGH};
+ struct vkd3d_shader_quirk_info vkd3d_shader_quirk_info_template;
+ 
+ struct vkd3d_instance_application_meta
+@@ -1297,6 +1298,22 @@ static const struct vkd3d_debug_option vkd3d_config_options[] =
+     {"no_nvx", VKD3D_CONFIG_FLAG_NO_NVX},
+ };
+ 
++static void vkd3d_xrgame_config_init(void)
++{
++    static const char * const quality_names[] = {"high", "medium", "low"};
++    char env[64];
++
++    if (vkd3d_get_env_var("XRGAME_TEXTURE_QUALITY", env, sizeof(env)))
++    {
++        if (!strcmp(env, "medium"))
++            vkd3d_xrgame_config.texture_quality = VKD3D_XRGAME_TEXTURE_QUALITY_MEDIUM;
++        else if (!strcmp(env, "low"))
++            vkd3d_xrgame_config.texture_quality = VKD3D_XRGAME_TEXTURE_QUALITY_LOW;
++    }
++
++    INFO("XRGame texture quality %s.\n", quality_names[vkd3d_xrgame_config.texture_quality]);
++}
++
+ static void vkd3d_config_flags_init_once(void)
+ {
+     char config[VKD3D_PATH_MAX];
+@@ -1309,6 +1326,7 @@ static void vkd3d_config_flags_init_once(void)
+ 
+     vkd3d_instance_deduce_config_flags_from_environment();
+     vkd3d_instance_apply_global_shader_quirks();
++    vkd3d_xrgame_config_init();
+ 
+     /* If we're going to use vk_debug, make sure we can get debug callbacks. */
+     if (vkd3d_config_flags & VKD3D_CONFIG_FLAG_VULKAN_DEBUG)
+diff --git a/libs/vkd3d/resource.c b/libs/vkd3d/resource.c
+index c36bfe9a..dafaeb58 100644
+--- a/libs/vkd3d/resource.c
++++ b/libs/vkd3d/resource.c
+@@ -722,6 +722,97 @@ static bool d3d12_device_supports_universal_color_ds_copy(struct d3d12_device *d
+     return true;
+ }
+ 
++static uint32_t vkd3d_xrgame_mip_cap(void)
++{
++    /* Largest level, by its longer side, that the Vulkan image keeps. A fixed cap rather than
++     * a per-texture drop keeps equal-sized levels of different textures in step, so copies
++     * between them (texture streaming) find both levels or neither. */
++    switch (vkd3d_xrgame_config.texture_quality)
++    {
++        case VKD3D_XRGAME_TEXTURE_QUALITY_MEDIUM:
++            return 1024;
++        case VKD3D_XRGAME_TEXTURE_QUALITY_LOW:
++            return 512;
++        default:
++            return 0;
++    }
++}
++
++/* Decides from the description and heap alone, so that GetResourceAllocationInfo and the
++ * placed resource that follows it agree on the image size. */
++static void vkd3d_xrgame_get_reduction(const D3D12_HEAP_PROPERTIES *heap_properties, bool shared,
++        const D3D12_RESOURCE_DESC1 *desc, const struct vkd3d_format *format, uint32_t *mip_drop)
++{
++    uint32_t cap, levels, size;
++
++    *mip_drop = 0;
++
++    /* Reserved, CPU-visible and shared resources keep their exact layout. */
++    if (!heap_properties || is_cpu_accessible_heap(heap_properties) || shared)
++        return;
++    if (desc->Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || desc->SampleDesc.Count != 1 ||
++            desc->Layout != D3D12_TEXTURE_LAYOUT_UNKNOWN || d3d12_resource_desc_is_sampler_feedback(desc))
++        return;
++    if (desc->Flags & (D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER |
++            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS))
++        return;
++
++    levels = min(desc->MipLevels, max_miplevel_count(desc));
++
++    if ((cap = vkd3d_xrgame_mip_cap()) && format->vk_aspect_mask == VK_IMAGE_ASPECT_COLOR_BIT && levels >= 2 &&
++            !(desc->Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL |
++            D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE)))
++    {
++        size = max(desc->Width, desc->Height);
++        while (*mip_drop + 1 < levels && (size >> *mip_drop) > cap)
++            ++*mip_drop;
++    }
++}
++
++static void vkd3d_xrgame_note_reduced_image(struct d3d12_device *device, const struct d3d12_resource *resource,
++        const VkImageCreateInfo *image_info, VkImage vk_image)
++{
++    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
++    static uint64_t saved_total;
++    static uint32_t image_count;
++    const struct vkd3d_vk_device_procs *vk_procs = &device->vk_procs;
++    VkDeviceImageMemoryRequirements full_info;
++    VkMemoryRequirements reduced_requirements;
++    VkMemoryRequirements2 full_requirements;
++    VkImageCreateInfo full_image;
++    uint64_t saved, total;
++    uint32_t count;
++
++    full_image = *image_info;
++    full_image.extent.width = resource->desc.Width;
++    full_image.extent.height = resource->desc.Height;
++    full_image.mipLevels = image_info->mipLevels + resource->xrgame_mip_drop;
++
++    full_info.sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS;
++    full_info.pNext = NULL;
++    full_info.pCreateInfo = &full_image;
++    full_info.planeAspect = 0;
++    full_requirements.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
++    full_requirements.pNext = NULL;
++    VK_CALL(vkGetDeviceImageMemoryRequirements(device->vk_device, &full_info, &full_requirements));
++    VK_CALL(vkGetImageMemoryRequirements(device->vk_device, vk_image, &reduced_requirements));
++
++    saved = full_requirements.memoryRequirements.size > reduced_requirements.size ?
++            full_requirements.memoryRequirements.size - reduced_requirements.size : 0;
++
++    pthread_mutex_lock(&mutex);
++    count = ++image_count;
++    total = (saved_total += saved);
++    pthread_mutex_unlock(&mutex);
++
++    if (count == 1 || !(count % 64))
++    {
++        INFO("XRGame texture quality: %u textures reduced, %.1f MiB saved (latest %ux%u, %u of %u levels kept).\n",
++                count, total / (1024.0 * 1024.0), (unsigned int)resource->desc.Width, resource->desc.Height,
++                image_info->mipLevels, full_image.mipLevels);
++    }
++}
++
+ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
+         const D3D12_HEAP_PROPERTIES *heap_properties, D3D12_HEAP_FLAGS heap_flags,
+         const D3D12_RESOURCE_DESC1 *desc, struct d3d12_resource *resource,
+@@ -737,6 +828,7 @@ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
+     VkImageCreateInfo *image_info = &create_info->image_info;
+     const bool sparse_resource = !heap_properties;
+     const struct vkd3d_format *format;
++    uint32_t mip_drop;
+     bool disable_compression;
+     bool use_concurrent;
+     unsigned int i;
+@@ -916,6 +1008,20 @@ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
+     }
+ 
+     image_info->mipLevels = min(desc->MipLevels, max_miplevel_count(desc));
++
++    vkd3d_xrgame_get_reduction(heap_properties,
++            !!((resource ? resource->heap_flags : heap_flags) & D3D12_HEAP_FLAG_SHARED),
++            desc, format, &mip_drop);
++
++    if (mip_drop)
++    {
++        image_info->extent.width = max(1u, image_info->extent.width >> mip_drop);
++        image_info->extent.height = max(1u, image_info->extent.height >> mip_drop);
++        image_info->mipLevels -= mip_drop;
++    }
++
++    if (resource)
++        resource->xrgame_mip_drop = mip_drop;
+     image_info->samples = vk_samples_from_dxgi_sample_desc(&desc->SampleDesc);
+     image_info->tiling = format->vk_image_tiling;
+     image_info->initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+@@ -1199,6 +1305,9 @@ static HRESULT vkd3d_create_image(struct d3d12_device *device,
+ 
+     resource->format_compatibility_list = create_info.format_compat_list;
+ 
++    if (vr >= 0 && resource->xrgame_mip_drop)
++        vkd3d_xrgame_note_reduced_image(device, resource, &create_info.image_info, *vk_image);
++
+     return hresult_from_vk_result(vr);
+ }
+ 
+@@ -2821,6 +2930,37 @@ VkImageSubresource d3d12_resource_get_vk_subresource(const struct d3d12_resource
+             all_aspects);
+ }
+ 
++/* Maps a D3D12 mip level to the Vulkan image. Returns false when the image leaves the level out. */
++bool d3d12_resource_xrgame_remap_mip(const struct d3d12_resource *resource, uint32_t *mip_level)
++{
++    if (*mip_level < resource->xrgame_mip_drop)
++        return false;
++
++    *mip_level -= resource->xrgame_mip_drop;
++    return true;
++}
++
++/* Maps a D3D12 mip range to the Vulkan image. levelCount becomes 0 when the image has none of it. */
++void d3d12_resource_xrgame_remap_range(const struct d3d12_resource *resource, VkImageSubresourceRange *range)
++{
++    uint32_t drop = resource->xrgame_mip_drop;
++    uint32_t end;
++
++    if (!drop)
++        return;
++
++    if (range->levelCount == VK_REMAINING_MIP_LEVELS)
++    {
++        range->baseMipLevel = range->baseMipLevel > drop ? range->baseMipLevel - drop : 0;
++        return;
++    }
++
++    end = range->baseMipLevel + range->levelCount;
++    end = end > drop ? end - drop : 0;
++    range->baseMipLevel = range->baseMipLevel > drop ? range->baseMipLevel - drop : 0;
++    range->levelCount = end > range->baseMipLevel ? end - range->baseMipLevel : 0;
++}
++
+ static HRESULT d3d12_validate_resource_flags(D3D12_RESOURCE_FLAGS flags)
+ {
+     unsigned int unknown_flags = flags & ~(D3D12_RESOURCE_FLAG_NONE
+@@ -6480,6 +6620,26 @@ static struct vkd3d_view *vkd3d_create_texture_uav_view(struct d3d12_device *dev
+     return vkd3d_view_map_create_view(&resource->view_map, device, &key);
+ }
+ 
++static void vkd3d_xrgame_remap_view_mips(const struct d3d12_resource *resource, struct vkd3d_texture_view_desc *desc)
++{
++    VkImageSubresourceRange range;
++
++    range.baseMipLevel = min(desc->miplevel_idx, resource->desc.MipLevels);
++    range.levelCount = min(desc->miplevel_count, resource->desc.MipLevels - range.baseMipLevel);
++    d3d12_resource_xrgame_remap_range(resource, &range);
++
++    /* A view of left-out levels only reads the largest level the image keeps. */
++    if (!range.levelCount)
++    {
++        range.baseMipLevel = 0;
++        range.levelCount = 1;
++    }
++
++    desc->miplevel_idx = range.baseMipLevel;
++    desc->miplevel_count = range.levelCount;
++    desc->miplevel_clamp = max(0.0f, desc->miplevel_clamp - (float)resource->xrgame_mip_drop);
++}
++
+ static struct vkd3d_view *vkd3d_create_texture_srv_view(struct d3d12_device *device,
+         struct d3d12_resource *resource, const D3D12_SHADER_RESOURCE_VIEW_DESC *desc)
+ {
+@@ -6577,6 +6737,9 @@ static struct vkd3d_view *vkd3d_create_texture_srv_view(struct d3d12_device *dev
+     if (key.u.texture.miplevel_count == VK_REMAINING_MIP_LEVELS)
+         key.u.texture.miplevel_count = resource->desc.MipLevels - key.u.texture.miplevel_idx;
+ 
++    if (resource->xrgame_mip_drop)
++        vkd3d_xrgame_remap_view_mips(resource, &key.u.texture);
++
+     vkd3d_texture_view_desc_fixup(device, &key.u.texture);
+ 
+     if ((vkd3d_config_flags & VKD3D_CONFIG_FLAG_PREALLOCATE_SRV_MIP_CLAMPS) &&
+diff --git a/libs/vkd3d/vkd3d_private.h b/libs/vkd3d/vkd3d_private.h
+index 9616a3a4..9762835c 100644
+--- a/libs/vkd3d/vkd3d_private.h
++++ b/libs/vkd3d/vkd3d_private.h
+@@ -248,6 +248,22 @@ struct vkd3d_instance
+ 
+ extern uint64_t vkd3d_config_flags;
+ 
++/* XRGame texture quality, read once from XRGAME_TEXTURE_QUALITY. The application keeps seeing its
++ * own resource descriptions; only the Vulkan images shrink. */
++enum vkd3d_xrgame_texture_quality
++{
++    VKD3D_XRGAME_TEXTURE_QUALITY_HIGH = 0,
++    VKD3D_XRGAME_TEXTURE_QUALITY_MEDIUM = 1,
++    VKD3D_XRGAME_TEXTURE_QUALITY_LOW = 2,
++};
++
++struct vkd3d_xrgame_config
++{
++    enum vkd3d_xrgame_texture_quality texture_quality;
++};
++
++extern struct vkd3d_xrgame_config vkd3d_xrgame_config;
++
+ struct vkd3d_queue_timeline_trace_cookie
+ {
+     unsigned int index;
+@@ -1156,6 +1172,10 @@ struct d3d12_resource
+ 
+     VkImageView vrs_view;
+ 
++    /* XRGame texture quality: number of top D3D12 mip levels the Vulkan image leaves out.
++     * D3D12 mip N is Vulkan mip N - xrgame_mip_drop. */
++    uint32_t xrgame_mip_drop;
++
+     struct vkd3d_private_store private_store;
+     struct d3d_destruction_notifier destruction_notifier;
+ };
+@@ -1204,6 +1224,8 @@ HRESULT d3d12_resource_validate_desc(const D3D12_RESOURCE_DESC1 *desc,
+         struct d3d12_device *device);
+ VkImageSubresource d3d12_resource_get_vk_subresource(const struct d3d12_resource *resource,
+         uint32_t subresource_idx, bool all_aspects);
++bool d3d12_resource_xrgame_remap_mip(const struct d3d12_resource *resource, uint32_t *mip_level);
++void d3d12_resource_xrgame_remap_range(const struct d3d12_resource *resource, VkImageSubresourceRange *range);
+ VkImageAspectFlags vk_image_aspect_flags_from_d3d12(
+         const struct vkd3d_format *format, uint32_t plane_idx);
+ VkImageSubresource vk_image_subresource_from_d3d12(
+@@ -6377,6 +6399,9 @@ static inline VkExtent3D d3d12_resource_desc_get_subresource_extent(const struct
+ static inline VkExtent3D d3d12_resource_get_view_subresource_extent(const struct d3d12_resource *resource, const struct vkd3d_view *view)
+ {
+     VkImageSubresourceLayers vk_subresource = vk_subresource_layers_from_view(view);
++
++    /* Views address the Vulkan image; the description is in D3D12 terms. */
++    vk_subresource.mipLevel += resource->xrgame_mip_drop;
+     return d3d12_resource_desc_get_vk_subresource_extent(&resource->desc, resource->format, &vk_subresource);
+ }
+ 

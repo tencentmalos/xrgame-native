@@ -265,13 +265,13 @@ private const val EXIT_PROCESS_RESPONSE_TIMEOUT_MS = 2_000L
 private const val QUICK_MENU_PROCESS_POLL_INTERVAL_MS = 2_000L
 private const val DEFAULT_FPS_LIMITER_MAX_HZ = 60
 private const val DEFAULT_FPS_LIMITER_TARGET_HZ = 60
-private const val FPS_LIMITER_ENABLED_EXTRA = "fpsLimiterEnabled"
-private const val FPS_LIMITER_TARGET_EXTRA = "fpsLimiterTarget"
+internal const val FPS_LIMITER_ENABLED_EXTRA = "fpsLimiterEnabled"
+internal const val FPS_LIMITER_TARGET_EXTRA = "fpsLimiterTarget"
 
-private fun initialFpsLimiterEnabled(container: Container): Boolean =
+internal fun initialFpsLimiterEnabled(container: Container): Boolean =
     parseBooleanExtra(container.getExtra(FPS_LIMITER_ENABLED_EXTRA)) ?: true
 
-private fun initialFpsLimiterTarget(container: Container): Int =
+internal fun initialFpsLimiterTarget(container: Container): Int =
     parsePositiveFpsLimit(container.getExtra(FPS_LIMITER_TARGET_EXTRA))
         ?: DEFAULT_FPS_LIMITER_TARGET_HZ
 

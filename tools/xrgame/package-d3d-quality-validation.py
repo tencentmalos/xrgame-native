@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the texture quality / render scale builds of DXVK and vkd3d-proton.
+"""Package the texture quality builds of DXVK and vkd3d-proton.
 
 Starts from the validated private archives (DXVK xrg4, vkd3d-proton xrg1), replaces the rebuilt
 DLLs and adds the quality patches. Source pins, patch hashes and binary hashes are checked against
@@ -16,18 +16,18 @@ import tarfile
 
 DXVK_PIN = 'a6764047e587178283fcde4073ae6e1410af594f'
 VKD3D_PIN = '212991fc2c266bc0d59f4c4ce8f80f7126508d71'
-DXVK_VERSION = '11.0-a676404-arm64ec-xrg6'
-DXVK_VERSION_CODE = 6
-VKD3D_VERSION = '11.0-212991f-arm64ec-xrg3'
-VKD3D_VERSION_CODE = 3
+DXVK_VERSION = '11.0-a676404-arm64ec-xrg7'
+DXVK_VERSION_CODE = 7
+VKD3D_VERSION = '11.0-212991f-arm64ec-xrg4'
+VKD3D_VERSION_CODE = 4
 DXVK_BASE_SHA256 = 'e1a2b0581fb95effe566ef2f4f3b1f906ae3455c9e62e88b9abf1a77a3ec2e39'
 VKD3D_BASE_SHA256 = 'e50a148e0abbcd3321a1bf6cc3912b9463298b47ded1a0c35eeedbe3f7cb0b42'
 DXVK_PATCHES = ('dxvk-present-deferred-clears.patch', 'dxvk-waitable-frame-latency.patch',
-                'dxvk-present-gpu-completion.patch', 'dxvk-xrgame-resource-scale.patch')
-VKD3D_PATCHES = ('vkd3d-xrgame-resource-scale.patch', 'dxil-spirv-xrgame-render-scale.patch')
-DESCRIPTION = 'XRGame private build: XRGAME_TEXTURE_QUALITY and XRGAME_RENDER_SCALE; defaults unchanged'
+                'dxvk-present-gpu-completion.patch', 'dxvk-xrgame-texture-quality.patch')
+VKD3D_PATCHES = ('vkd3d-xrgame-texture-quality.patch',)
+DESCRIPTION = 'XRGame private build: XRGAME_TEXTURE_QUALITY; defaults unchanged'
 VALIDATION = ('Private validation build; see docs/validation/swan-d3d-texture-quality-20261013.md and '
-              'docs/validation/swan-d3d-render-scale-20261013.md.')
+              'docs/validation/swan-d3d-render-scale-removal-20261014.md.')
 MTIME = 1791849600
 
 
@@ -87,7 +87,7 @@ def package_dxvk(args, here, inspect):
             or build['patchSha256'] != sha(patches['dxvk-present-deferred-clears.patch'])
             or build['latencyProbePatchSha256'] != sha(patches['dxvk-waitable-frame-latency.patch'])
             or build['gpuCompletionPatchSha256'] != sha(patches['dxvk-present-gpu-completion.patch'])
-            or build.get('qualityPatchSha256') != sha(patches['dxvk-xrgame-resource-scale.patch'])
+            or build.get('qualityPatchSha256') != sha(patches['dxvk-xrgame-texture-quality.patch'])
             or build['recipeSha256'] != sha((here / 'build-dxvk-validation.sh').read_bytes())):
         raise ValueError('DXVK build does not match the pinned quality recipe')
     if json.loads(original['xrgame-build.json'])['sourcePins']['dxvk'] != DXVK_PIN:
@@ -115,10 +115,9 @@ def package_vkd3d(args, here, inspect):
     recipes = {'tools/xrgame/patches/' + name: sha(data) for name, data in patches.items()}
     recipes['tools/xrgame/build-d3d.sh'] = sha((here / 'build-d3d.sh').read_bytes())
     inventory = finish(original, payload, VKD3D_VERSION_CODE, VKD3D_VERSION, VKD3D_BASE_SHA256, recipes, here)
-    # build-d3d.sh applies the patches to a copy of the pinned tree; the build directory carries
-    # their digest, so record them next to the binaries.
-    inventory['qualityPatchSha256'] = sha(patches['vkd3d-xrgame-resource-scale.patch'])
-    inventory['dxilSpirvPatchSha256'] = sha(patches['dxil-spirv-xrgame-render-scale.patch'])
+    # build-d3d.sh applies the patch to a copy of the pinned tree; the build directory carries
+    # its digest, so record it next to the binaries.
+    inventory['qualityPatchSha256'] = sha(patches['vkd3d-xrgame-texture-quality.patch'])
     original['xrgame-build.json'] = encoded(inventory)
     return write_archive(args.output / f'vkd3d-proton-{VKD3D_VERSION}.wcp', original, inspect, 'vkd3d')
 

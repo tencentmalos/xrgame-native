@@ -23,7 +23,7 @@ data class WindowsVrRuntimeConfig(
                 enabled = container.getExtra("windowsVrEnabled", "false").toBoolean(),
                 openCompositeEnabled = container.getExtra("windowsVrOpenCompositeEnabled", "false").toBoolean(),
                 renderScalePercent = if (recommended) XrResolutionRecommendation.RECOMMENDED_PERCENT
-                else container.xrRenderScale.coerceIn(25, 100),
+                else container.xrRenderScale.coerceIn(XrResolutionRecommendation.MIN_PERCENT, XrResolutionRecommendation.LIMIT_PERCENT),
                 renderScaleRecommended = recommended,
             )
         }

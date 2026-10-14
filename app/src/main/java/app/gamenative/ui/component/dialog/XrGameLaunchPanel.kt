@@ -63,6 +63,11 @@ import app.gamenative.data.GameSource
 import app.gamenative.service.SteamService
 import app.gamenative.ui.screen.xr.XrScreenPresets
 import app.gamenative.ui.screen.xr.windows.WindowsVrUpscale
+import app.gamenative.ui.screen.xr.windows.XrResolutionRecommendation
+import app.gamenative.ui.screen.xserver.FPS_LIMITER_ENABLED_EXTRA
+import app.gamenative.ui.screen.xserver.FPS_LIMITER_TARGET_EXTRA
+import app.gamenative.ui.screen.xserver.initialFpsLimiterEnabled
+import app.gamenative.ui.screen.xserver.initialFpsLimiterTarget
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.xrgame.XrGameApiCapture
 import app.gamenative.xrgame.XrGameLaunchMode
@@ -77,11 +82,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-private val RENDER_SCALES = listOf(50, 75, 100)
+/** VR render resolution: percentages of the recommended eye, then XrResolutionRecommendation's high and limit. */
+private val RENDER_SCALES = listOf(50, 75, 100, XrResolutionRecommendation.HIGH_PERCENT, XrResolutionRecommendation.LIMIT_PERCENT)
 private val LABEL_WIDTH = 100.dp
 private val CONTROL_HEIGHT = 30.dp
 private const val MAX_BUTTONS = 3
 private val REFRESH_RATES = listOf(72, 90, 120)
+/** Frame limit presets in FPS; XR sessions run at 72 or 90 Hz on Swan. */
+private val FRAME_LIMITS = listOf(30, 36, 45, 60, 72, 90)
+
+/** The quick menu's FPS limiter, as XServerScreen keeps it in the container extras. */
+private data class FrameLimit(val enabled: Boolean, val target: Int)
 
 private typealias OptionItem = @Composable () -> Unit
 
@@ -110,18 +121,27 @@ fun XrGameLaunchPanel(
     var vrGame by remember(appId) { mutableStateOf(false) }
     var mode by remember(appId) { mutableStateOf(Mode.FLAT) }
     var statusLayer by remember { mutableStateOf(PrefManager.xrgameStatusLayer) }
+    // The quick menu's frame limiter: container extras, applied by XServerScreen at start.
+    var initialFrameLimit by remember(appId) { mutableStateOf<FrameLimit?>(null) }
+    var frameLimit by remember(appId) { mutableStateOf<FrameLimit?>(null) }
     var advanced by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     val launchFocus = remember { FocusRequester() }
 
     LaunchedEffect(appId) {
-        val (data, name) = withContext(Dispatchers.IO) {
+        val (data, name, limit) = withContext(Dispatchers.IO) {
             val container = ContainerUtils.getOrCreateContainer(context, appId)
-            ContainerUtils.toContainerData(container) to gameTitle(appId)
+            Triple(
+                ContainerUtils.toContainerData(container),
+                gameTitle(appId),
+                FrameLimit(initialFpsLimiterEnabled(container), initialFpsLimiterTarget(container)),
+            )
         }
         title = name
         initial = data
         draft = data
+        initialFrameLimit = limit
+        frameLimit = limit
         vrGame = data.windowsVrEnabled
         mode = XrGameLaunchMode.current(data, headset)
     }
@@ -139,6 +159,17 @@ fun XrGameLaunchPanel(
             if (saved != initial) {
                 runCatching { withContext(Dispatchers.IO) { ContainerUtils.applyToContainer(context, appId, saved) } }
                     .onFailure { Timber.e(it, "Launch panel: saving %s failed", appId) }
+            }
+            val limit = frameLimit
+            if (limit != null && limit != initialFrameLimit) {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        val container = ContainerUtils.getContainer(context, appId)
+                        container.putExtra(FPS_LIMITER_ENABLED_EXTRA, limit.enabled)
+                        container.putExtra(FPS_LIMITER_TARGET_EXTRA, limit.target)
+                        container.saveData()
+                    }
+                }.onFailure { Timber.e(it, "Launch panel: saving the frame limit of %s failed", appId) }
             }
             Timber.i("Launch panel: %s starts in %s (vr=%b)", appId, mode.key, vrGame)
             onLaunch()
@@ -200,6 +231,7 @@ fun XrGameLaunchPanel(
                                 vrGame = vrGame,
                                 mode = mode,
                                 statusLayer = statusLayer,
+                                frameLimit = frameLimit,
                                 advanced = advanced,
                                 captureAvailable = captureAvailable,
                                 twoColumns = twoColumns,
@@ -210,6 +242,7 @@ fun XrGameLaunchPanel(
                                 },
                                 onMode = { mode = it },
                                 onStatusLayer = { statusLayer = it },
+                                onFrameLimit = { frameLimit = it },
                                 onAdvanced = { advanced = it },
                             )
                         }
@@ -247,6 +280,7 @@ private fun LaunchOptions(
     vrGame: Boolean,
     mode: Mode,
     statusLayer: Boolean,
+    frameLimit: FrameLimit?,
     advanced: Boolean,
     captureAvailable: Boolean,
     twoColumns: Boolean,
@@ -254,6 +288,7 @@ private fun LaunchOptions(
     onVrGame: (Boolean) -> Unit,
     onMode: (Mode) -> Unit,
     onStatusLayer: (Boolean) -> Unit,
+    onFrameLimit: (FrameLimit) -> Unit,
     onAdvanced: (Boolean) -> Unit,
 ) {
     val off = stringResource(R.string.xrgame_launch_off)
@@ -460,23 +495,20 @@ private fun LaunchOptions(
             }
         }
     }
-    // Big-screen frame generation runs on the Vulkan composite before the filter, so it reads as
-    // off on GLES and choosing it switches the game to Vulkan, like the filter.
-    val frameGen = if (reconstructs) upscale.frameGen else WindowsVrUpscale.FrameGen.OFF
-    if (mode == Mode.XR && !vrGame) {
+    if (frameLimit != null) {
         main += {
+            // The game's own frame rate, capped by the X server as the quick menu's FPS limiter
+            // does; the saved target stays selectable when it is not one of the presets.
+            val (enabled, target) = frameLimit
+            val steps = (FRAME_LIMITS + if (enabled) listOf(target) else emptyList()).distinct().sorted()
             ChoiceRow(
-                label = stringResource(R.string.xrgame_launch_frame_gen),
-                choices = listOf(stringResource(R.string.xrgame_vr_upscale_off), "2x", "3x", "4x"),
-                selected = frameGen.ordinal,
-                note = if (frameGen != WindowsVrUpscale.FrameGen.OFF) stringResource(R.string.xrgame_launch_frame_gen_note) else null,
-                onSelect = { index ->
-                    val next = upscale.copy(frameGen = WindowsVrUpscale.FrameGen.entries[index])
-                    var envVars = WindowsVrUpscale.withSettings(data.envVars, next)
-                    if (next.frameGen != WindowsVrUpscale.FrameGen.OFF && !reconstructs) {
-                        envVars = WindowsVrUpscale.withBackend(envVars, WindowsVrUpscale.BACKEND_VULKAN)
-                    }
-                    onData(data.copy(envVars = envVars))
+                label = stringResource(R.string.xrgame_launch_frame_limit),
+                choices = listOf(stringResource(R.string.performance_hud_fps_limiter_off)) +
+                    steps.map { stringResource(R.string.performance_hud_fps_limiter_value, it) },
+                selected = if (enabled) 1 + steps.indexOf(target) else 0,
+                note = stringResource(R.string.xrgame_launch_frame_limit_note),
+                onSelect = { idx ->
+                    onFrameLimit(if (idx == 0) frameLimit.copy(enabled = false) else FrameLimit(true, steps[idx - 1]))
                 },
             )
         }
@@ -488,10 +520,32 @@ private fun LaunchOptions(
             } else {
                 1 + RENDER_SCALES.indices.minBy { kotlin.math.abs(RENDER_SCALES[it] - data.xrRenderScale) }
             }
+            // The eye size the game renders at, from the eye views the last XR session recorded,
+            // as the Windows VR runtime hands it out.
+            val display = remember { WindowsVrUpscale.Display.decode(PrefManager.xrDisplayInfo) }
+            val eye = display?.let {
+                XrResolutionRecommendation.eyeSize(
+                    it.recommendedWidth.toLong(),
+                    it.recommendedHeight.toLong(),
+                    it.maxWidth.toLong(),
+                    it.maxHeight.toLong(),
+                    if (data.xrRenderScaleRecommended) XrResolutionRecommendation.RECOMMENDED_PERCENT else data.xrRenderScale,
+                    data.xrRenderScaleRecommended,
+                )
+            }
+            val high = stringResource(R.string.xrgame_launch_eye_buffer_high)
+            val limit = stringResource(R.string.xrgame_launch_eye_buffer_max)
             ChoiceRow(
                 label = stringResource(R.string.xrgame_launch_render_scale),
-                choices = listOf(stringResource(R.string.xrgame_launch_recommended)) + RENDER_SCALES.map { "$it%" },
+                choices = listOf(stringResource(R.string.xrgame_launch_recommended)) + RENDER_SCALES.map {
+                    when (it) {
+                        XrResolutionRecommendation.HIGH_PERCENT -> high
+                        XrResolutionRecommendation.LIMIT_PERCENT -> limit
+                        else -> "$it%"
+                    }
+                },
                 selected = scaleIndex,
+                note = eye?.let { (w, h) -> stringResource(R.string.xrgame_launch_eye_buffer_eye, "${w}x$h") },
                 onSelect = { idx ->
                     onData(
                         if (idx == 0) {
@@ -531,24 +585,9 @@ private fun LaunchOptions(
                 stringResource(R.string.xrgame_launch_texture_quality_low),
             ),
             selected = qualities.indexOf(quality),
-            note = if (quality != qualities[0]) stringResource(R.string.xrgame_launch_texture_quality_note) else null,
+            note = XrGameQualitySettings.textureCap(quality)?.let { stringResource(R.string.xrgame_launch_texture_quality_note, it) },
             onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withTextureQuality(data.envVars, qualities[it]))) },
         )
-    }
-    if (!vrGame) {
-        // shadPS4's render scale, done in the D3D translation layers. VR games size their eye
-        // images with the VR render resolution above instead.
-        main += {
-            val scales = XrGameQualitySettings.RENDER_SCALES
-            val scale = XrGameQualitySettings.renderScale(data.envVars)
-            ChoiceRow(
-                label = stringResource(R.string.xrgame_launch_d3d_render_scale),
-                choices = scales.map { "$it%" },
-                selected = scales.indexOf(scale),
-                note = if (scale != scales[0]) stringResource(R.string.xrgame_launch_d3d_render_scale_note) else null,
-                onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withRenderScale(data.envVars, scales[it]))) },
-            )
-        }
     }
 
     val extra = mutableListOf<OptionItem>()
@@ -570,17 +609,6 @@ private fun LaunchOptions(
                 choices = steps.map { "$it%" },
                 selected = steps.indices.minBy { kotlin.math.abs(steps[it] - upscale.sharpness) },
                 onSelect = { updateUpscale(upscale.copy(sharpness = steps[it])) },
-            )
-        }
-    }
-    if (mode == Mode.XR && !vrGame && frameGen != WindowsVrUpscale.FrameGen.OFF) {
-        extra += {
-            val steps = WindowsVrUpscale.FLOW_STEPS
-            ChoiceRow(
-                label = stringResource(R.string.xrgame_launch_frame_gen_flow),
-                choices = steps.map { "$it%" },
-                selected = steps.indices.minBy { kotlin.math.abs(steps[it] - upscale.flowPercent) },
-                onSelect = { updateUpscale(upscale.copy(flowPercent = steps[it])) },
             )
         }
     }

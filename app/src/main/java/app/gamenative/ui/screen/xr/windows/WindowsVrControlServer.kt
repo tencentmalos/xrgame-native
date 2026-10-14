@@ -235,8 +235,13 @@ class WindowsVrControlServer(
 
     private fun getViews(): String {
         val snapshot = currentSnapshot() ?: return "ERROR unavailable"
+        // The largest eye the XR session allows, for scales above the recommendation.
+        val display = WindowsVrUpscale.Display.fromNative(app.gamenative.ui.screen.xr.XrNative.nativeXrDisplayInfo())
+            ?: WindowsVrUpscale.Display.decode(app.gamenative.PrefManager.xrDisplayInfo)
         val (scaledWidth, scaledHeight) = XrResolutionRecommendation.eyeSize(
-            snapshot.timing[5], snapshot.timing[6], config.renderScalePercent, config.renderScaleRecommended,
+            snapshot.timing[5], snapshot.timing[6],
+            display?.maxWidth?.toLong() ?: 0L, display?.maxHeight?.toLong() ?: 0L,
+            config.renderScalePercent, config.renderScaleRecommended,
         )
         return "OK count=2 width=$scaledWidth height=$scaledHeight"
     }
