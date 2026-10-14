@@ -585,7 +585,6 @@ private fun LaunchOptions(
                 stringResource(R.string.xrgame_launch_texture_quality_low),
             ),
             selected = qualities.indexOf(quality),
-            note = XrGameQualitySettings.textureCap(quality)?.let { stringResource(R.string.xrgame_launch_texture_quality_note, it) },
             onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withTextureQuality(data.envVars, qualities[it]))) },
         )
     }

@@ -65,7 +65,6 @@
     <string name="xrgame_launch_texture_quality_high">高</string>
     <string name="xrgame_launch_texture_quality_medium">中</string>
     <string name="xrgame_launch_texture_quality_low">低</string>
-    <string name="xrgame_launch_texture_quality_note">贴图最高只加载到长边 %1$d 像素，更大的 mipmap 层级不加载，以节省显存。只影响 D3D11/D3D12 游戏；渲染目标和没有 mipmap 的贴图（界面通常属于这类）不受影响。游戏启动时生效。</string>
     <string name="xrgame_launch_eye_buffer">XR 输出分辨率</string>
     <string name="xrgame_launch_eye_buffer_high">高</string>
     <string name="xrgame_launch_eye_buffer_max">极高</string>

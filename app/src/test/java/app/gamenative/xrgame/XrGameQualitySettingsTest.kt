@@ -11,12 +11,6 @@ class XrGameQualitySettingsTest {
         assertEquals("high", XrGameQualitySettings.textureQuality("XRGAME_TEXTURE_QUALITY=ultra"))
     }
 
-    @Test fun capsMatchTheTranslationLayers() {
-        assertEquals(null, XrGameQualitySettings.textureCap("high"))
-        assertEquals(1024, XrGameQualitySettings.textureCap("medium"))
-        assertEquals(512, XrGameQualitySettings.textureCap("low"))
-    }
-
     @Test fun valuesRoundTripAndDefaultsRemoveTheVariables() {
         val reduced = XrGameQualitySettings.withTextureQuality("WINEESYNC=1", "low")
         assertEquals("low", XrGameQualitySettings.textureQuality(reduced))

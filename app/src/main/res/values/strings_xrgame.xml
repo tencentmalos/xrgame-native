@@ -65,7 +65,6 @@
     <string name="xrgame_launch_texture_quality_high">High</string>
     <string name="xrgame_launch_texture_quality_medium">Medium</string>
     <string name="xrgame_launch_texture_quality_low">Low</string>
-    <string name="xrgame_launch_texture_quality_note">Textures load at most %1$d pixels on their longer side: larger mipmap levels are left out to save video memory. Only D3D11/D3D12 games; render targets and textures without mipmaps (usually the interface) are not affected. Takes effect when the game starts.</string>
     <string name="xrgame_launch_eye_buffer">XR output resolution</string>
     <string name="xrgame_launch_eye_buffer_high">High</string>
     <string name="xrgame_launch_eye_buffer_max">Ultra</string>

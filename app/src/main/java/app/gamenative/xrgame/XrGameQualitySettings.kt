@@ -16,13 +16,6 @@ object XrGameQualitySettings {
     const val TEXTURE_QUALITY_ENV = "XRGAME_TEXTURE_QUALITY"
     val TEXTURE_QUALITIES = listOf("high", "medium", "low")
 
-    /** Largest texture level kept, by its longer side, as vkd3d-proton and DXVK apply it; null keeps all. */
-    fun textureCap(quality: String): Int? = when (quality) {
-        "medium" -> 1024
-        "low" -> 512
-        else -> null
-    }
-
     fun textureQuality(envVars: String): String =
         EnvVars(envVars).get(TEXTURE_QUALITY_ENV).takeIf { it in TEXTURE_QUALITIES } ?: TEXTURE_QUALITIES[0]
 
