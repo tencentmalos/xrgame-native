@@ -94,7 +94,7 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 | `input axis <轴> <-1..1> [ms]` | 覆盖控制器快照里的一个轴，默认 300 ms：`lx ly rx ry`（摇杆；快捷菜单把 `ly>0` 当作向下，游戏原样收到这个值作为 XInput Y）、`lt rt`（扳机）、`lg rg`（握把，>0.5 同时算 LB/RB） |
 | `input release` / `input status` | 立即释放 / 查看当前覆盖和剩余时间 |
 | `quickmenu [status\|open\|close\|toggle]` | 在主线程开关沉浸式快捷菜单（最多等 1 秒），返回菜单、暂停、指针模式、立体（Windows VR）、直通渲染和 overlay 尺寸 |
-| `quickmenu exit` | 打开快捷菜单（如未打开），把焦点放到「退出」并像 A 键一样确认，游戏按菜单退出的原路径结束（退出云同步、OpenComposite DLL 还原）。立即返回 `exitRequested`，约 1 s 后执行；用 `launch status` 确认会话已结束。比连续 `nav down` 再按 A 可靠 |
+| `quickmenu exit` | 打开快捷菜单（如未打开），直接执行「退出」项本身的动作，游戏按菜单退出的原路径结束（退出云同步、OpenComposite DLL 还原）。立即返回 `exitRequested`，约 0.5 s 后执行；用 `launch status` 确认会话已结束。比连续 `nav down` 再按 A 可靠。2026-10-14 前它合成确认键，按键会送到持有焦点的 Android View（游戏中是 TouchpadView），两次落空、菜单停在暂停的游戏上 |
 | `quickmenu nav <up\|down\|left\|right\|ok\|back\|next\|prev>` | 用 `input` 发一次菜单导航：左摇杆、A、B、RB、LB |
 | `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改状态层开关（`PrefManager.xrgameStatusLayer`，即启动面板的「状态层」，默认开；游戏画面里的 2D 性能 HUD 仍由 `PrefManager.showFps` 控制）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置，以及面板上 10 个格子的当前内容（`cells`，Foundation `StatusCells`）和它们的新鲜度（`cellsAgeMs`），供 PC 旁观窗口的跟随面板显示 |
 

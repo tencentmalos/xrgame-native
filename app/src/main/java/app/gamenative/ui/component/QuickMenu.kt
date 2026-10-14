@@ -74,6 +74,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -620,9 +621,15 @@ fun QuickMenu(
         }
     }
 
+    val currentOnItemSelected by rememberUpdatedState(onItemSelected)
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     LaunchedEffect(Unit) {
         immersiveHooks?.registerFocusExit?.invoke {
             runCatching { exitFocusRequester.requestFocus() }
+        }
+        // What the Exit item does when pressed, without going through focus or key events.
+        immersiveHooks?.registerExit?.invoke {
+            if (currentOnItemSelected(QuickMenuAction.EXIT_GAME)) currentOnDismiss()
         }
         immersiveHooks?.registerFocusTabRail?.invoke {
             val requester = when (selectedTab) {

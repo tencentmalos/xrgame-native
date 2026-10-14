@@ -165,6 +165,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     @Volatile
     private var quickMenuFocusTabRail: (() -> Unit)? = null
     private var quickMenuFocusExit: (() -> Unit)? = null
+    private var quickMenuExit: (() -> Unit)? = null
 
     @Volatile
     private var quickMenuFocusedActivate: (() -> (() -> Unit)?)? = null
@@ -426,6 +427,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                     registerAdjustmentControl = { control -> quickMenuAdjustmentControl = control },
                     registerFocusTabRail = { action -> quickMenuFocusTabRail = action },
                     registerFocusExit = { action -> quickMenuFocusExit = action },
+                    registerExit = { action -> quickMenuExit = action },
                     registerFocusedActivate = { getter -> quickMenuFocusedActivate = getter },
                     controls = ImmersiveControls(
                         passthroughEnabled = passthroughEnabled,
@@ -613,20 +615,20 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     /**
-     * DebugBus `quickmenu exit`: opens the quick menu if needed, focuses its Exit item and confirms
-     * it like the controller's A button, so the game exits through the menu's own path (exit cloud
-     * sync, OpenComposite restore). Stick navigation could leave the focus on another row.
+     * DebugBus `quickmenu exit`: opens the quick menu if needed and runs its Exit item, so the game
+     * exits through the menu's own path (exit cloud sync, OpenComposite restore). It used to focus
+     * Exit and synthesize the confirm key, but a synthetic key goes to the focused Android view,
+     * which need not be the menu: during play the game's TouchpadView holds focus. Twice (Alyx,
+     * 2026-10-13/14) the key reached no menu item, so the menu stayed open over a stopped game.
+     * The controller's A avoids this the same way: it runs the focused row's reported action.
      */
     private fun debugExit() {
         runOnUiThread {
             if (!quickMenuVisible) quickMenuToggle?.invoke()
             window.decorView.postDelayed({
-                quickMenuFocusExit?.invoke()
-                window.decorView.postDelayed({
-                    Timber.i("Immersive: DebugBus confirms the quick menu Exit item")
-                    dispatchMenuKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
-                    dispatchMenuKeyEvent(android.view.KeyEvent.KEYCODE_BUTTON_A)
-                }, DEBUG_EXIT_STEP_MS)
+                val exit = quickMenuExit
+                Timber.i("Immersive: DebugBus runs the quick menu Exit item (registered=%b)", exit != null)
+                exit?.invoke()
             }, DEBUG_EXIT_STEP_MS)
         }
     }
@@ -1437,9 +1439,11 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         } == true
         val fallbackHandled = if (!consumed) dispatchKeyEvent(event) else false
         if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            // A synthetic key goes to the focused Android view; name it when nothing took the key.
             Timber.i(
-                "Immersive: menu key dispatch keyCode=%d consumedByBus=%b dispatchKeyEvent=%b",
+                "Immersive: menu key dispatch keyCode=%d consumedByBus=%b dispatchKeyEvent=%b focus=%s",
                 event.keyCode, consumed, fallbackHandled,
+                if (consumed || fallbackHandled) "-" else currentFocus?.javaClass?.simpleName,
             )
         }
     }
