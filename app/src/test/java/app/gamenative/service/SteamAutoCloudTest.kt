@@ -2507,6 +2507,121 @@ class SteamAutoCloudTest {
         assertTrue(result.filesUploaded > 0)
     }
 
+    private fun uploadBatchAt(changeNumber: Long) {
+        val batch = mock<`in`.dragonbra.javasteam.steam.handlers.steamcloud.AppUploadBatchResponse>()
+        whenever(batch.batchID).thenReturn(changeNumber)
+        whenever(batch.appChangeNumber).thenReturn(changeNumber)
+        every { mockSteamCloud.beginAppUploadBatch(any(), any(), any(), any(), any(), any(), any()) } returns
+            CompletableFuture.completedFuture(batch)
+    }
+
+    private fun cachedSha(name: String): ByteArray? = runBlocking {
+        db.appFileChangeListsDao().getByAppId(steamAppId)?.userFileInfo
+            ?.firstOrNull { it.filename.substringAfterLast('/').substringAfterLast('\\') == name }?.sha
+    }
+
+    // XRGame: a batch that commits some files and fails others still moves the cloud change number.
+    // The files the cloud now holds are recorded with that number, so the next launch is not a
+    // conflict with our own upload and retries only the file that failed.
+    @Test
+    fun xrgame_equalCn_batchPartlyFails_recordsWhatTheCloudHolds() = runBlocking {
+        org.junit.Assume.assumeTrue(app.gamenative.BuildConfig.XRGAME)
+        val localCn = 5L
+        cacheCurrentLocalFiles(localCn)
+        val synced = cloudSaveFiles()
+        val oldSave1 = File(saveFilesDir, "SaveData_1.sav").readBytes()
+
+        val newSave0 = "save 0 after play".toByteArray()
+        File(saveFilesDir, "SaveData_0.sav").writeBytes(newSave0)
+        File(saveFilesDir, "SaveData_1.sav").writeBytes("save 1 after play".toByteArray())
+
+        // The batch commits SaveData_0 and fails SaveData_1; the cloud moves on with SaveData_0 only.
+        uploadBatchAt(localCn + 1)
+        every { mockSteamCloud.commitFileUpload(any(), any(), any(), match { it.endsWith("SaveData_1.sav") }, any()) } returns
+            CompletableFuture.completedFuture(false)
+        val afterBatch = makeCloudFileChangeList(
+            cloudChangeNumber = localCn + 1,
+            files = cloudSaveFiles(mapOf("SaveData_1.sav" to oldSave1)),
+            pathPrefixes = savePathPrefixes,
+        )
+        every { mockSteamCloud.getAppFileListChange(any(), any(), any()) } returnsMany listOf(
+            CompletableFuture.completedFuture(makeCloudFileChangeList(localCn, synced, savePathPrefixes)),
+            CompletableFuture.completedFuture(afterBatch),
+        )
+
+        val first = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = makePrefixToPath(),
+        ).await()!!
+
+        assertEquals(SyncResult.UpdateFail, first.syncResult)
+        assertEquals(localCn + 1, db.appChangeNumbersDao().getByAppId(steamAppId)!!.changeNumber)
+        assertTrue("SaveData_0 is in the cloud", sha1(newSave0).contentEquals(cachedSha("SaveData_0.sav")))
+        assertTrue("SaveData_1 is still a local change", sha1(oldSave1).contentEquals(cachedSha("SaveData_1.sav")))
+
+        // Next launch: same cloud, so only SaveData_1 uploads, without a conflict.
+        uploadBatchAt(localCn + 2)
+        every { mockSteamCloud.commitFileUpload(any(), any(), any(), any(), any()) } returns
+            CompletableFuture.completedFuture(true)
+        every { mockSteamCloud.getAppFileListChange(any(), any(), any()) } returns
+            CompletableFuture.completedFuture(afterBatch)
+
+        val second = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = makePrefixToPath(),
+        ).await()!!
+
+        assertEquals(SyncResult.Success, second.syncResult)
+        assertEquals(1, second.filesUploaded)
+        assertEquals(localCn + 2, db.appChangeNumbersDao().getByAppId(steamAppId)!!.changeNumber)
+    }
+
+    // XRGame: after a failed batch, a cloud that differs from our last sync in anything but the
+    // batch (here a file another device added) records nothing, and the never-synced file is not
+    // downloaded: that would cache a full local scan and mark the failed upload as synced.
+    @Test
+    fun xrgame_equalCn_batchFails_cloudChangedElsewhere_recordsNothing() = runBlocking {
+        org.junit.Assume.assumeTrue(app.gamenative.BuildConfig.XRGAME)
+        val localCn = 5L
+        cacheCurrentLocalFiles(localCn)
+        val oldSave0 = File(saveFilesDir, "SaveData_0.sav").readBytes()
+        val withForeignFile = cloudSaveFiles() + cloudSaveFile("SaveData_9.sav", "from another device".toByteArray())
+
+        File(saveFilesDir, "SaveData_0.sav").writeBytes("save 0 after play".toByteArray())
+
+        uploadBatchAt(localCn + 1)
+        every { mockSteamCloud.commitFileUpload(any(), any(), any(), any(), any()) } returns
+            CompletableFuture.completedFuture(false)
+        every { mockSteamCloud.getAppFileListChange(any(), any(), any()) } returnsMany listOf(
+            CompletableFuture.completedFuture(makeCloudFileChangeList(localCn, withForeignFile, savePathPrefixes)),
+            CompletableFuture.completedFuture(makeCloudFileChangeList(localCn + 1, withForeignFile, savePathPrefixes)),
+        )
+        every { mockSteamCloud.clientFileDownload(any(), any(), any(), any(), any()) } returns
+            CompletableFuture<FileDownloadInfo>().apply { completeExceptionally(IllegalStateException("no download expected")) }
+
+        val result = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = makePrefixToPath(),
+        ).await()!!
+
+        assertEquals(SyncResult.UpdateFail, result.syncResult)
+        assertEquals(localCn, db.appChangeNumbersDao().getByAppId(steamAppId)!!.changeNumber)
+        assertTrue("SaveData_0 is still a local change", sha1(oldSave0).contentEquals(cachedSha("SaveData_0.sav")))
+        io.mockk.verify(exactly = 0) { mockSteamCloud.clientFileDownload(any(), any(), any(), any(), any()) }
+    }
+
     // ── Scenario 5: User didn't play locally, but another device uploaded new saves ──
     // No local changes to lose — safe to download.
     @Test

@@ -630,6 +630,7 @@ object SteamAutoCloud {
                 }
                 // XRGame calls the Cloud service directly to keep its EResults (null without one).
                 val xrCloud = if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameCloudRpc.service(steamInstance.steamClient) else null
+                val deletedFiles = mutableListOf<UserFileInfo>()
                 if (xrCloud != null) {
                     Timber.i(
                         "Steam Cloud upload batch %d at change %d",
@@ -639,12 +640,13 @@ object SteamAutoCloud {
                     // Declaring deletes in the batch does not remove the files; without this the
                     // next sync downloads them again as never-synced cloud files.
                     fileChanges.filesDeleted.forEach { file ->
-                        app.gamenative.xrgame.XrGameCloudRpc.deleteFile(
+                        val deleted = app.gamenative.xrgame.XrGameCloudRpc.deleteFile(
                             xrCloud,
                             appInfo.id,
                             cloudFilename(file),
                             uploadBatchResponse.batchID,
                         )
+                        if (deleted) deletedFiles += file
                     }
                 }
 
@@ -904,7 +906,7 @@ object SteamAutoCloud {
                     onProgress?.invoke("Upload complete", 1.0f)
                 }
 
-                UserFilesUploadResult(uploadBatchSuccess, uploadBatchResponse.appChangeNumber, filesUploaded, bytesUploaded)
+                UserFilesUploadResult(uploadBatchSuccess, uploadBatchResponse.appChangeNumber, filesUploaded, bytesUploaded, deletedFiles)
             }
         }
 
@@ -1025,6 +1027,54 @@ object SteamAutoCloud {
                 }
             }
 
+            // XRGame: Steam keeps what a failed batch committed and still moves the cloud change
+            // number. Left unrecorded, the next launch takes our own partial upload for another
+            // device's and asks about a conflict. Record the batch when the cloud now holds exactly
+            // our last sync plus the uploads it lists with our SHA and the deletes it confirmed;
+            // what failed stays a local change and uploads next time. Anything else in the cloud
+            // records nothing.
+            val recordFailedBatch: suspend (FileChanges, List<UserFileInfo>) -> Unit = { fileChanges, deletedFiles ->
+                val cached = steamInstance.fileChangeListsDao.getByAppId(appInfo.id)?.userFileInfo.orEmpty()
+                val cloudFiles = runCatching { steamCloud.getAppFileListChange(appInfo.id, 0).await() }
+                    .onFailure { Timber.w(it, "Upload batch failed; could not read the cloud manifest") }
+                    .getOrNull()
+                if (cached.isNotEmpty() && cloudFiles != null && !cloudFiles.isOnlyDelta) {
+                    val pathOf: (UserFileInfo) -> String = { it.getAbsPath(prefixToPath).toString().lowercase() }
+                    val cloudShaByPath = cloudFiles.files.associate {
+                        getFullFilePath(it, cloudFiles).toString().lowercase() to it.shaFile
+                    }
+                    val recorded = cached.associateBy(pathOf).toMutableMap()
+                    var done = 0
+                    (fileChanges.filesCreated + fileChanges.filesModified).forEach { file ->
+                        if (file.sha.contentEquals(cloudShaByPath[pathOf(file)])) {
+                            recorded[pathOf(file)] = file
+                            done++
+                        }
+                    }
+                    deletedFiles.forEach { file ->
+                        if (pathOf(file) !in cloudShaByPath && recorded.remove(pathOf(file)) != null) done++
+                    }
+                    val matchesCloud = recorded.keys == cloudShaByPath.keys &&
+                        recorded.all { (path, file) -> file.sha.contentEquals(cloudShaByPath[path]) }
+                    if (matchesCloud) {
+                        Timber.i(
+                            "Upload batch failed; the cloud holds %d of its change(s) at change %d, recording them",
+                            done,
+                            cloudFiles.currentChangeNumber,
+                        )
+                        lastCloudAppChangeNumber = cloudFiles.currentChangeNumber
+                        with(steamInstance) {
+                            db.withTransaction {
+                                fileChangeListsDao.insert(appInfo.id, recorded.values.toList())
+                                changeNumbersDao.insert(appInfo.id, cloudFiles.currentChangeNumber)
+                            }
+                        }
+                    } else {
+                        Timber.w("Upload batch failed and the cloud differs from our last sync; nothing recorded")
+                    }
+                }
+            }
+
             val uploadUserFiles: (CoroutineScope) -> Deferred<Unit> = { parentScope ->
                 parentScope.asyncIsolated {
                     Timber.i("Uploading local user files")
@@ -1070,6 +1120,7 @@ object SteamAutoCloud {
                         }
                     } else {
                         syncResult = SyncResult.UpdateFail
+                        if (BuildConfig.XRGAME) recordFailedBatch(fileChanges, uploadResult.filesDeleted)
                     }
                 }
             }
@@ -1225,7 +1276,10 @@ object SteamAutoCloud {
                                 uploadUserFiles(parentScope).await()
                                 // Keep-Local is upload-only; without this, cloud-only files this
                                 // device never had would be orphaned. Pull them down instead.
-                                reconcileNeverSyncedCloudFiles(parentScope).await()
+                                // XRGame: not after a failed upload (see the equal-number case).
+                                if (!(BuildConfig.XRGAME && syncResult == SyncResult.UpdateFail)) {
+                                    reconcileNeverSyncedCloudFiles(parentScope).await()
+                                }
                             }
 
                             SaveLocation.Remote -> {
@@ -1267,7 +1321,14 @@ object SteamAutoCloud {
                     // upload-only sync can leave cloud-only files that were never downloaded here.
                     // Reconcile after any upload (the two file sets are disjoint: never-synced files
                     // are by definition not on disk, so not local changes).
-                    val downloaded = reconcileNeverSyncedCloudFiles(parentScope).await()
+                    // XRGame: not after a failed upload. Reconciling caches a full local scan,
+                    // which would mark the changes that did not upload as synced, and a later
+                    // launch behind the cloud would then download over them.
+                    val downloaded = if (BuildConfig.XRGAME && syncResult == SyncResult.UpdateFail) {
+                        0
+                    } else {
+                        reconcileNeverSyncedCloudFiles(parentScope).await()
+                    }
 
                     if (!hasLocalChanges) {
                         if (downloaded > 0) {
