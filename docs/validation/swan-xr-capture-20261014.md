@@ -104,6 +104,44 @@ P3/P4 后段游戏帧率降到约 29 fps（负载下降），只有 P1/P2 在相
 
 `capture_config`（与 scrcpy 的 `--video-bit-rate`/`--max-size`/`--max-fps` 对应）在 run115 验证：默认直播 1296x1200（半眼缓冲），`max_size=720` 时 720x666，结束后恢复为默认。截图改为全尺寸：xr 双眼 5184x2400、单眼 2592x2400，VR `canvas` 2592x1200（投影 swapchain 原尺寸）。APK `4e4f036adffe8385cf0078473e8a15774b4f24e50de2f717f602be6d718bd945`。
 
+## 进游戏前的 2D 窗口（旁观者看游戏库）
+
+没有沉浸式会话时，SteamPSP 的窗口（游戏库、启动面板、对话框）由 `XrPanelCapture` 作为生产者（`steampsp.panel`），同一组 DebugBus 命令和 `liveview.py --follow` 都能用。同一次开机（boot id 同上），运行时 bundle 同上，capture SDK 为 my_mcp_tools `codex/scrcpy-steampsp-capture` 的 drain 改动（见下，提交为 `e6b4d2f`；run117/118 用的是提交前同内容的工作区）。
+
+| 运行 | APK | `libxrimmersive.so` Build ID | PID | 内容 |
+|---|---|---|---|---|
+| run116 | `9b335d77ee87197a7315d63065c0606b422c71d521fbd13b83746951e17e8e61` | `df8fb9323266aecb32b7134670fd75c749ebe43f` | 22697 | 第一版：HWUI 用 `Surface.lockHardwareCanvas` 直接画进编码器的输入 Surface |
+| run117 | `c18d0968a8ff887d4935813d80bf1c5cd43fde43a5cd292a203e2e487e8b09a5` | `7771d1847d2fe6704aa01fc25a5c0433452a5f6d` | 25098 | 改为 `AImageReader` 中转；约 2 分 45 秒 |
+| run118 | `59dde4f74b6b15e257c11ff533e59dd6b22d9ffcf630e02c4827b503a17e247d` | `dd8ff1b8a512da21997b3b795f738aa7f71fc534` | 26965 | 加上按理想时间线排帧；约 2 分钟 |
+
+**run116（失败，保留）。** 2D 窗口截图（1920x1080）正常，直播开始后约 7 s 停住，之后整个 app 无响应，DebugBus `launch` 与 `quickmenu exit` 都超时。`debuggerd` 栈：主线程在 `ThreadedRenderer.syncAndDrawFrame` 等 RenderThread，RenderThread 卡在编码器输入 Surface 的 `BufferQueueProducer::dequeueBuffer`；EncoderSession 的 drain 线程已退出，live socket 的写线程还在等包（所以不是订阅端断开）。日志里 `lockHardwareCanvas` 每帧都对编码器 Surface 断开重连、重新分配缓冲（`GraphicBufferSource ... released unpopulated slots`），从 11:40:15.6 起编码器不再取帧，16.3 s 起 `dequeueBuffer` 不再返回。drain 为何退出没能取到（SDK 当时不记录这种退出的原因）。根因在设计：HWUI 的 RenderThread 全进程共用，任何一个它画进的 Surface 卡住，app 所有窗口都会卡住。
+
+**改法。**
+- 我们自己的 `HardwareRenderer`（整个录制只 `setSurface` 一次）把窗口画进 `AImageReader`（4 张图）。
+- 读取器的回调只保留最新一张。`xr_panel_feed.cpp` 的线程（`XRGame:PanelEnc`）经 GLES blit 把它送进编码器的输入 Surface（`EGL_RECORDABLE_ANDROID`，交换间隔 0），只有这个线程可能等编码器。
+- 编码器失败、提前 EOS，或一次投递超过 3 s，就结束录制并报 `failed`。停止编码器会让其 Surface 失效，从而放开卡住的投递。
+- SDK 的 drain 现在把 `AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED` 当作信息码，dequeue 出错带上错误码，未请求的 EOS 记为失败，所以不会再无声退出。
+
+**run117（Hades II 1145350）。**
+
+| 步骤 | 结果 |
+|---|---|
+| 2D 窗口截图 | 1920x1080 PNG，无损 |
+| `liveview --follow` 140 s | 4 段流：2D 窗口 → 2D 窗口（启动时 activity 重新 resume）→ `xr_composite` 1296x1200（大屏）→ 退出后回到 2D 窗口；共 4004 个包、解码 3996 帧、103 MB |
+| 推流 15 s 时 `capture_video status` | `recording`，提交 351、编码 350、丢弃 1 |
+| 推流中 DebugBus `status`、`launch`、`quickmenu exit` | 都及时返回 |
+| HWUI 对读取器的连接 | 每段录制一次 connect（run116 是每帧一次） |
+| 直播 10 s 后杀掉查看器 | `status: failed`，`error: live capture subscriber disconnected or too slow`；日志 `rendered 254, fed 254, dropped 0, encoded 254`；DebugBus 照常应答，随后的 2D 窗口截图正常 |
+
+**run118（帧节奏，系统 72 Hz）。** 原来按「当前时间 + 间隔」排下一帧，72 Hz 下 30 fps 每次都要等三个 vsync，只有 24 fps。改为沿理想时间线累加，2D 窗口与 XR 会话的 `max_fps` 都按此修正。
+
+| 录制 | 尺寸 | 样本 / 时长 | 帧率 |
+|---|---|---|---|
+| 2D 窗口（默认 30 fps） | 1920x1080 | 459 / 15.20 s | 30.14 |
+| Hades II `xr` 左眼，`max_fps=30` | 1296x1200 | 449 / 14.99 s | 29.88 |
+| Hades II `xr` 左眼，默认（隔一个 XR 帧） | 1296x1200 | 364 / 10.06 s | 36.07 |
+| 退出后的 2D 窗口 | 1920x1080 | 310 / 10.27 s | 30.09 |
+
 ## 未覆盖与已知限制
 
 - 没有在 GPU 吃满的场景（Alyx 场景内、MHR）测截取的开销；Alyx 只做了功能验证，没有 A/B。
@@ -111,3 +149,5 @@ P3/P4 后段游戏帧率降到约 29 fps（负载下降），只有 P1/P2 在相
 - 直通（VST）画面、Pico 系统自己的图层、GLES 合成路径、Windows VR 加载插画（interstitial，只在内容更新时绘制）不在截取内容里。
 - Windows VR 的 `canvas` 是按截取单眼尺寸（推荐眼尺寸的一半）拷贝的投影图，不是全分辨率。
 - 开始录像时状态沿用上一次录像的 `layout`/`width`/`height`（run108 可见），已改为开始时清空，只编译验证，未上机。
+- 2D 窗口只含 SteamPSP 自己的窗口（activity 加对话框），不含 Pico 环境、系统浮层、`SurfaceView` 内容；阴影按平台默认光源近似。只在游戏库和 Hades II 启动/退出上测过，启动面板、设置页、长时间直播未专门测。
+- 编码器卡住时（run116 的情形）的自动结束只用杀掉查看器的方式触发过「失败」路径，3 s 不收帧的判定没有实际触发过。

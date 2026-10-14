@@ -15,6 +15,7 @@
 #include "scrcpy_capture/encoder_session.h"
 #include "scrcpy_capture/snapshot_session.h"
 #include "spatial/xr/XrImguiVulkanLayer.h"
+#include "xr_panel_feed.h"
 
 #include <android/bitmap.h>
 #include <android/data_space.h>
@@ -50,6 +51,18 @@ bool Available() { return false; }
 std::string HandleCommand(const std::string &, const std::vector<std::string> &, const std::string &) {
     return "status: unavailable\nerror: this build has no scrcpy capture SDK\n";
 }
+
+namespace panel {
+bool Attach() { return false; }
+void Detach() {}
+int Tick(uint32_t, uint32_t) { return 0; }
+ANativeWindow *Window() { return nullptr; }
+uint32_t EncodedWidth() { return 0; }
+uint32_t EncodedHeight() { return 0; }
+void Presented() {}
+bool StillTarget(std::string *, std::string *) { return false; }
+void StillDone(const std::string &, uint32_t, uint32_t, const std::string &) {}
+}  // namespace panel
 
 struct XrCapture::Impl {};
 XrCapture::XrCapture(vulkan::Context &) {}
@@ -92,6 +105,11 @@ std::atomic<int> gSelected{kCanvas};
 // The running session's generation, 0 without one; stills belong to one generation.
 std::atomic<uint64_t> gGeneration{0};
 std::atomic<uint64_t> gLastGeneration{0};
+// Who holds gGeneration: the immersive session or the 2D window producer.
+constexpr int kProducerNone = 0;
+constexpr int kProducerSession = 1;
+constexpr int kProducerPanel = 2;
+std::atomic<int> gProducer{kProducerNone};
 
 // Recording requests (capture_video) and what the session reports back.
 struct Control {
@@ -142,8 +160,15 @@ SnapshotSession &Shots() {
 }
 
 const char *SourceKey(int source) { return source == kXr ? "xr" : "canvas"; }
-const char *SourceName(int source) { return source == kXr ? "steampsp.xr_composite" : "steampsp.canvas"; }
-const char *ViewName(int source) { return source == kXr ? "xr_eyes" : "canvas"; }
+// The 2D window producer has one picture whatever source is selected.
+const char *SourceName(int source) {
+    if (gProducer.load() == kProducerPanel) return "steampsp.panel";
+    return source == kXr ? "steampsp.xr_composite" : "steampsp.canvas";
+}
+const char *ViewName(int source) {
+    if (gProducer.load() == kProducerPanel) return "panel";
+    return source == kXr ? "xr_eyes" : "canvas";
+}
 
 bool EnsureDirectory(const std::string &directory) {
     return !directory.empty() && (mkdir(directory.c_str(), 0700) == 0 || errno == EEXIST);
@@ -234,7 +259,7 @@ std::string ScreenshotCommand(const std::vector<std::string> &args, const std::s
     auto &session = Shots();
     if (args[0] == "request") {
         const uint64_t generation = gGeneration.load();
-        if (generation == 0) return "status: failed\nerror: no immersive Vulkan composite session\n";
+        if (generation == 0) return "status: failed\nerror: no capture producer (no immersive session or SteamPSP window in front)\n";
         if (!EnsureDirectory(directory)) return "status: failed\nerror: captures directory unavailable\n";
         const std::string error = session.Request(
             {args[1], directory + "/snapshot-" + args[1] + ".png", generation, withEye ? args[2] : "both"});
@@ -274,7 +299,9 @@ std::string VideoCommand(const std::vector<std::string> &args, const std::string
     const bool startFile = action == "start" && rest.size() == 1;
     const bool startLive = action == "start_live" && rest.size() == 2 && SnapshotSession::ValidToken(rest[1]);
     if (startFile || startLive) {
-        if (gGeneration.load() == 0) return "status: failed\nerror: no immersive Vulkan composite session\n";
+        if (gGeneration.load() == 0) {
+            return "status: failed\nerror: no capture producer (no immersive session or SteamPSP window in front)\n";
+        }
         if (startFile && !EnsureDirectory(directory)) return "status: failed\nerror: captures directory unavailable\n";
         if (!state.wanted) {
             state.wanted = true;
@@ -516,6 +543,273 @@ std::string HandleCommand(const std::string &command, const std::vector<std::str
     return "status: bad-arguments\nerror: unknown capture command\n";
 }
 
+namespace panel {
+namespace {
+
+// A post into the encoder running this long means the codec stopped taking frames.
+constexpr uint64_t kFeedStallNs = 3'000'000'000ull;
+
+struct Panel {
+    uint64_t generation = 0;  // nonzero while attached
+    EncoderSession encoder;
+    std::unique_ptr<Feed> feed;     // HWUI renders into its window while recording
+    std::unique_ptr<Feed> retired;  // the last feed, freed on the next tick, once Kotlin let go of it
+    bool recording = false;
+    uint64_t revision = 0;
+    uint32_t width = 0;  // the window the recording started with
+    uint32_t height = 0;
+    uint32_t encWidth = 0;
+    uint32_t encHeight = 0;
+    uint64_t intervalNs = 0;
+    uint64_t nextNs = 0;
+    uint64_t frames = 0;
+    std::optional<SnapshotRequest> shot;
+};
+
+Panel &Self() {
+    static Panel panel;
+    return panel;
+}
+
+bool Owns(const Panel &panel) { return panel.generation != 0 && gGeneration.load() == panel.generation; }
+
+// Ends the encoder; returns whether the Surface Kotlin holds went away.
+bool CloseRecording(Panel &panel) {
+    const bool had = panel.feed != nullptr;
+    if (panel.feed) panel.feed->RequestStop();
+    // Stopping the codec abandons its input Surface, which ends a post blocked in it.
+    panel.encoder.Stop();
+    if (panel.feed) {
+        panel.feed->Stop();
+        panel.retired = std::move(panel.feed);
+    }
+    panel.recording = false;
+    auto &state = State();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    state.encoder = panel.encoder.Stats();
+    return had;
+}
+
+void EndRequests(Panel &panel) {
+    Shots().Close(panel.generation);
+    panel.shot.reset();
+    auto &state = State();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (state.wanted) {
+        state.wanted = false;
+        ++state.revision;
+    }
+    if (state.phase == "recording" || state.phase == "pending" || state.phase == "stopping") {
+        state.phase = panel.encoder.Stats().failed ? "failed" : "stopped";
+        state.error = panel.encoder.Error();
+    }
+}
+
+}  // namespace
+
+bool Attach() {
+    Panel &panel = Self();
+    if (Owns(panel)) return true;
+    uint64_t none = 0;
+    const uint64_t generation = gLastGeneration.fetch_add(1) + 1;
+    if (!gGeneration.compare_exchange_strong(none, generation)) return false;  // a session holds it
+    gProducer.store(kProducerPanel);
+    panel.generation = generation;
+    panel.revision = State().revision.load();
+    panel.frames = 0;
+    LOGI("capture: 2D window producer attached (generation %llu)", static_cast<unsigned long long>(generation));
+    return true;
+}
+
+void Detach() {
+    Panel &panel = Self();
+    // Kotlin let go of the feed's window before this.
+    CloseRecording(panel);
+    panel.retired.reset();
+    if (panel.generation == 0) return;
+    if (Owns(panel)) {
+        EndRequests(panel);
+        uint64_t mine = panel.generation;
+        if (gGeneration.compare_exchange_strong(mine, 0)) gProducer.store(kProducerNone);
+    }
+    panel.generation = 0;
+}
+
+int Tick(uint32_t width, uint32_t height) {
+    Panel &panel = Self();
+    panel.retired.reset();
+    if (panel.generation == 0) return 0;
+    if (!Owns(panel)) {
+        // An immersive session took the slot: stop and wait to be attached again.
+        const bool changed = CloseRecording(panel);
+        panel.generation = 0;
+        return changed ? kSurfaceChanged : 0;
+    }
+    int flags = 0;
+    auto &state = State();
+    const uint64_t revision = state.revision.load();
+    const bool resized = panel.recording && (width != panel.width || height != panel.height);
+    if (revision != panel.revision || resized) {
+        bool wanted = false;
+        bool live = false;
+        std::string token;
+        std::string directory;
+        uint32_t bitRate = 0;
+        uint32_t maxSize = 0;
+        uint32_t maxFps = 0;
+        uint32_t iFrameInterval = 0;
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            wanted = state.wanted;
+            live = state.live;
+            token = state.token;
+            directory = state.directory;
+            bitRate = state.videoBitRate;
+            maxSize = state.maxSize;
+            maxFps = state.maxFps;
+            iFrameInterval = state.iFrameInterval;
+        }
+        if (CloseRecording(panel)) flags |= kSurfaceChanged;
+        panel.revision = revision;
+        if (!wanted) {
+            if (revision != 0) SetPhase(panel.encoder.Stats().failed ? "failed" : "stopped", panel.encoder.Error());
+        } else if (width >= 16 && height >= 16) {
+            uint32_t encWidth = width & ~1u;
+            uint32_t encHeight = height & ~1u;
+            const uint32_t longest = std::max(encWidth, encHeight);
+            if (maxSize != 0 && longest > maxSize) {
+                const double scale = static_cast<double>(maxSize) / longest;
+                encWidth = std::max(16u, static_cast<uint32_t>(std::lround(encWidth * scale)) & ~1u);
+                encHeight = std::max(16u, static_cast<uint32_t>(std::lround(encHeight * scale)) & ~1u);
+            }
+            // A 2D UI: 30 fps unless capture_config says otherwise.
+            const uint32_t fps = maxFps != 0 ? maxFps : 30u;
+            const std::string path =
+                live ? std::string{} : directory + "/embedded-" + std::to_string(NowNs()) + ".h264";
+            EncoderConfig config;
+            config.width = static_cast<int>(encWidth);
+            config.height = static_cast<int>(encHeight);
+            config.fps = static_cast<int>(fps);
+            config.bitrate = bitRate != 0 ? static_cast<int>(bitRate) : 12'000'000;
+            config.i_frame_interval = iFrameInterval != 0 ? static_cast<int>(iFrameInterval) : 2;
+            config.output_path = path;
+            config.live_token = live ? token : std::string{};
+            config.realtime = true;
+            std::string error;
+            auto feed = std::make_unique<Feed>();
+            if (!panel.encoder.Start(config, &error) ||
+                !feed->Start(panel.encoder.InputWindow(), encWidth, encHeight, &error)) {
+                panel.encoder.Stop();
+                SetPhase("failed", error);
+                LOGE("capture: 2D window recording failed to start: %s", error.c_str());
+            } else {
+                panel.feed = std::move(feed);
+                panel.recording = true;
+                panel.width = width;
+                panel.height = height;
+                panel.encWidth = encWidth;
+                panel.encHeight = encHeight;
+                panel.intervalNs = 1'000'000'000ull / fps;
+                panel.nextNs = 0;
+                flags |= kSurfaceChanged;
+                {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    state.layout = scrcpy::capture::LayoutName(1);
+                    state.width = encWidth;
+                    state.height = encHeight;
+                    state.encodedFps = fps;
+                    state.path = path;
+                    state.submitted = 0;
+                    state.skipped = 0;
+                    state.encoder = {};
+                }
+                SetPhase("recording", {});
+                LOGI("capture: 2D window recording %ux%u at %u fps (%s) from a %ux%u window", encWidth, encHeight, fps,
+                     live ? "live" : "file", width, height);
+            }
+        }
+    }
+    if (panel.recording) {
+        // A failed codec or a stalled post ends the recording; the app itself never waits on it.
+        const EncoderStats encoder = panel.encoder.Stats();
+        const FeedStats feed = panel.feed->Stats();
+        std::string failure;
+        if (encoder.failed) {
+            failure = panel.encoder.Error();
+        } else if (encoder.eos) {
+            failure = "the encoder ended the stream";
+        } else if (!panel.feed->Error().empty()) {
+            failure = panel.feed->Error();
+        } else if (feed.busyNs > kFeedStallNs) {
+            failure = "the encoder stopped taking frames";
+        }
+        if (!failure.empty()) {
+            LOGE("capture: 2D window recording failed: %s (rendered %llu, fed %llu, dropped %llu, encoded %llu)",
+                 failure.c_str(), static_cast<unsigned long long>(feed.rendered),
+                 static_cast<unsigned long long>(feed.fed), static_cast<unsigned long long>(feed.dropped),
+                 static_cast<unsigned long long>(encoder.encoded_samples));
+            if (CloseRecording(panel)) flags |= kSurfaceChanged;
+            SetPhase("failed", failure);
+        } else {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            state.skipped = feed.dropped;
+            state.encoder = encoder;
+        }
+    }
+    const uint64_t now = NowNs();
+    if (panel.recording) {
+        flags |= kActive;
+        if (now >= panel.nextNs) {
+            flags |= kDraw;
+            // Along the ideal timeline, so 30 fps on 72 Hz vsyncs alternates two and three periods
+            // instead of always waiting three (24 fps); after a gap it starts again from now.
+            const bool onTime = panel.nextNs != 0 && now - panel.nextNs < panel.intervalNs;
+            panel.nextNs = (onTime ? panel.nextNs : now) + panel.intervalNs;
+        }
+    }
+    ++panel.frames;
+    if (!panel.shot) panel.shot = Shots().Take(panel.generation, panel.frames, now);
+    if (panel.shot) flags |= kStill | kActive;
+    const std::string phase = Shots().Status().phase;
+    if (phase == "pending" || phase == "capturing") flags |= kActive;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (state.wanted) flags |= kActive;
+    }
+    return flags;
+}
+
+ANativeWindow *Window() {
+    Panel &panel = Self();
+    return panel.recording && panel.feed ? panel.feed->Window() : nullptr;
+}
+
+uint32_t EncodedWidth() { return Self().encWidth; }
+uint32_t EncodedHeight() { return Self().encHeight; }
+
+void Presented() {
+    auto &state = State();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    ++state.submitted;
+}
+
+bool StillTarget(std::string *token, std::string *path) {
+    Panel &panel = Self();
+    if (!panel.shot) return false;
+    *token = panel.shot->token;
+    *path = panel.shot->path;
+    return true;
+}
+
+void StillDone(const std::string &token, uint32_t width, uint32_t height, const std::string &error) {
+    Panel &panel = Self();
+    if (panel.shot && panel.shot->token == token) panel.shot.reset();
+    Shots().Complete(token, width, height, error, 1);
+    LOGI("capture: 2D window still %ux%u %s", width, height, error.empty() ? "written" : error.c_str());
+}
+
+}  // namespace panel
+
 struct XrCapture::Impl {
     // A copy of one layer's image: what the compose samples.
     struct Slot {
@@ -564,7 +858,9 @@ struct XrCapture::Impl {
 
     explicit Impl(vulkan::Context &context) : ctx(context), vk(context.vk()) {
         generation = gLastGeneration.fetch_add(1) + 1;
+        // An immersive session always takes the producer slot (the 2D window producer notices).
         gGeneration.store(generation);
+        gProducer.store(kProducerSession);
         const auto instanceFunction = [this](const char *name) {
             return vk.vkGetInstanceProcAddr(ctx.instance(), name);
         };
@@ -595,7 +891,8 @@ struct XrCapture::Impl {
     }
 
     ~Impl() {
-        gGeneration.store(0);
+        uint64_t mine = generation;
+        if (gGeneration.compare_exchange_strong(mine, 0)) gProducer.store(kProducerNone);
         Shots().Close(generation);
         {
             // The session's end ends its recording.
@@ -1162,6 +1459,7 @@ struct XrCapture::Impl {
     uint32_t encHeight = 0;
     uint64_t encodeIntervalNs = 0;  // max_fps spacing, 0 for every other XR frame
     uint64_t nextEncodeNs = 0;
+    uint64_t beginNs = 0;  // this frame's begin()
     uint32_t eyes = 3;     // eyes this frame needs
     bool legacy = false;
     bool realtime = false;
@@ -1219,6 +1517,7 @@ bool XrCapture::begin(uint32_t eyeWidth, uint32_t eyeHeight, int64_t displayPeri
     }
     // Every other XR frame; a frame whose acquire failed retries on the next one.
     const uint64_t now = NowNs();
+    p.beginNs = now;
     const bool due = (p.legacy ? p.frames % 2 == 0 : p.frames >= p.nextEncodeFrame) && now >= p.nextEncodeNs;
     // A canvas recording learns the canvas's shape from one compose before its encoder starts.
     const bool learn = wanted && !p.recActive && selected == kCanvas && p.canvasWidth == 0 && due;
@@ -1629,8 +1928,12 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
         if (submitted) {
             p.notePresented();
             p.nextEncodeFrame = p.frames + 2;
-            // A few milliseconds early, so a frame at the interval is not pushed to the next XR frame.
-            if (p.encodeIntervalNs != 0) p.nextEncodeNs = NowNs() + p.encodeIntervalNs - 5'000'000ull;
+            // Along the ideal timeline, so 30 fps at 72 Hz alternates two and three XR frames instead
+            // of always waiting three (24 fps); after a gap it starts again from this frame.
+            if (p.encodeIntervalNs != 0) {
+                const bool onTime = p.nextEncodeNs != 0 && p.beginNs - p.nextEncodeNs < p.encodeIntervalNs;
+                p.nextEncodeNs = (onTime ? p.nextEncodeNs : p.beginNs) + p.encodeIntervalNs;
+            }
         }
     }
     // Acquired for a recording of another shape (it restarts next frame), or the submit failed:

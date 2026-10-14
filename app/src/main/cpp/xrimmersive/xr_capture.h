@@ -21,6 +21,7 @@
 
 #include "xr_vulkan.h"
 
+#include <android/native_window.h>
 #include <openxr/openxr.h>
 
 #include <array>
@@ -42,6 +43,32 @@ bool Available();
 // any thread.
 std::string HandleCommand(const std::string &command, const std::vector<std::string> &args,
                           const std::string &capturesDir);
+
+// The 2D window producer: SteamPSP's own window in front and no immersive session (the library,
+// the launch panel, dialogs). Kotlin (XrPanelCapture) renders the resumed activity and its dialog
+// windows into Window() on due frames, an image reader that a thread of ours feeds to the encoder
+// (xr_panel_feed.h), and renders stills itself. It shares the commands and the state with the
+// session; whichever is active holds the producer slot, and an immersive session always takes it
+// over. Main thread only.
+namespace panel {
+constexpr int kDraw = 1;            // draw a frame into Window() now
+constexpr int kStill = 2;           // a still is waiting: StillTarget()
+constexpr int kActive = 4;          // a recording or still is wanted: tick every frame
+constexpr int kSurfaceChanged = 8;  // Window() is a different Surface (or none) from now on
+// Takes the producer slot unless an immersive session holds it.
+bool Attach();
+void Detach();
+// Once per frame (or every 100 ms while idle) with the window's size in pixels.
+int Tick(uint32_t width, uint32_t height);
+// The window to render into while recording, else null; borrowed.
+ANativeWindow *Window();
+uint32_t EncodedWidth();
+uint32_t EncodedHeight();
+// After a frame was posted to Window().
+void Presented();
+bool StillTarget(std::string *token, std::string *path);
+void StillDone(const std::string &token, uint32_t width, uint32_t height, const std::string &error);
+}  // namespace panel
 
 // The images a submitted layer can show.
 enum class Source : uint32_t { Screen = 0, Projection = 1, Hud = 2, Keyboard = 3 };

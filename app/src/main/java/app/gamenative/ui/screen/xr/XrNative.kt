@@ -126,6 +126,22 @@ object XrNative {
      */
     external fun nativeCaptureCommand(command: String, args: Array<String>, capturesDir: String): String
 
+    /** Whether this build links the scrcpy capture SDK (internal debug APKs). */
+    external fun nativeCaptureAvailable(): Boolean
+
+    // The capture SDK's 2D window producer (app.gamenative.xrgame.XrPanelCapture); main thread.
+    external fun nativePanelAttach(): Boolean
+    external fun nativePanelDetach()
+    /** Flags: 1 draw a frame now, 2 a still is waiting, 4 tick every frame, 8 the Surface changed. */
+    external fun nativePanelTick(width: Int, height: Int): Int
+    external fun nativePanelSurface(): android.view.Surface?
+    /** Encoded width in the high 32 bits, height in the low. */
+    external fun nativePanelEncodedSize(): Long
+    external fun nativePanelPresented()
+    /** Token and file path of the waiting still, or null. */
+    external fun nativePanelStillTarget(): Array<String>?
+    external fun nativePanelStillDone(token: String, width: Int, height: Int, error: String)
+
     /**
      * Synthetic controller state (DebugBus input) merged into the real controllers for
      * [durationMs] (0 releases): [buttons] in XrGamepadBridge's layout plus bit 16 for Menu, and

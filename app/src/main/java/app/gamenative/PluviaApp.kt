@@ -150,6 +150,10 @@ class PluviaApp : SplitCompatApplication() {
         Thread {
             PowerManager.initialize(this)
         }.start()
+
+        // Debug XRGame builds with the scrcpy capture SDK: stills/recordings of SteamPSP's own window
+        // while no immersive session runs.
+        app.gamenative.xrgame.XrPanelCapture.install(this)
     }
 
     /**

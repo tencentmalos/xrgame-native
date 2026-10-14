@@ -2,6 +2,7 @@
 #include <android/bitmap.h>
 #include <android/hardware_buffer_jni.h>
 #include <android/log.h>
+#include <android/native_window_jni.h>
 
 #include <algorithm>
 #include <atomic>
@@ -344,6 +345,71 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeCaptureCommand(JNIEnv *env, jcla
     }
     const std::string out = xrimmersive::capture::HandleCommand(text(command), arguments, text(capturesDir));
     return env->NewStringUTF(out.c_str());
+}
+
+JNIEXPORT jboolean JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeCaptureAvailable(JNIEnv *, jclass) {
+    return xrimmersive::capture::Available() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelAttach(JNIEnv *, jclass) {
+    return xrimmersive::capture::panel::Attach() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelDetach(JNIEnv *, jclass) {
+    xrimmersive::capture::panel::Detach();
+}
+
+JNIEXPORT jint JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelTick(JNIEnv *, jclass, jint width, jint height) {
+    return xrimmersive::capture::panel::Tick(static_cast<uint32_t>(std::max(width, 0)),
+                                             static_cast<uint32_t>(std::max(height, 0)));
+}
+
+JNIEXPORT jobject JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelSurface(JNIEnv *env, jclass) {
+    ANativeWindow *window = xrimmersive::capture::panel::Window();
+    return window != nullptr ? ANativeWindow_toSurface(env, window) : nullptr;
+}
+
+JNIEXPORT jlong JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelEncodedSize(JNIEnv *, jclass) {
+    return (static_cast<jlong>(xrimmersive::capture::panel::EncodedWidth()) << 32) |
+           static_cast<jlong>(xrimmersive::capture::panel::EncodedHeight());
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelPresented(JNIEnv *, jclass) {
+    xrimmersive::capture::panel::Presented();
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelStillTarget(JNIEnv *env, jclass) {
+    std::string token;
+    std::string path;
+    if (!xrimmersive::capture::panel::StillTarget(&token, &path)) return nullptr;
+    jobjectArray result = env->NewObjectArray(2, env->FindClass("java/lang/String"), nullptr);
+    env->SetObjectArrayElement(result, 0, env->NewStringUTF(token.c_str()));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(path.c_str()));
+    return result;
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativePanelStillDone(JNIEnv *env, jclass, jstring token, jint width,
+                                                             jint height, jstring error) {
+    const auto text = [env](jstring value) {
+        std::string out;
+        const char *chars = value != nullptr ? env->GetStringUTFChars(value, nullptr) : nullptr;
+        if (chars != nullptr) {
+            out = chars;
+            env->ReleaseStringUTFChars(value, chars);
+        }
+        return out;
+    };
+    xrimmersive::capture::panel::StillDone(text(token), static_cast<uint32_t>(std::max(width, 0)),
+                                           static_cast<uint32_t>(std::max(height, 0)), text(error));
 }
 
 JNIEXPORT void JNICALL

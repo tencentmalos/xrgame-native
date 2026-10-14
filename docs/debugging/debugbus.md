@@ -175,7 +175,7 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 | 命令 | 作用与边界 |
 | --- | --- |
 | `capture_source [canvas\|xr\|status]` | `canvas`：会话自己画的图，2D 大屏的 quad 图（mono），或 Windows VR 两只眼的投影图并排（`stereo_sbs`）。`xr`：佩戴者看到的画面去掉镜头畸变：把本会话提交的图层（投影、大屏 quad/曲面、叠加层、状态层、键盘）按眼做光线求交合成，两眼并排；截图为运行时推荐眼尺寸（Swan 每眼 2592x2400），录像和直播默认为其一半（1296x1200）。直通和 Pico 系统自己的图层不在其中（直通处为黑）。截图或录像进行中拒绝切换 |
-| `capture_screenshot request TOKEN [left\|right\|both]` / `status\|cancel TOKEN` | 无损 PNG，全尺寸（`xr` 为推荐眼尺寸，VR 的 `canvas` 为投影 swapchain 尺寸，大屏 `canvas` 为大屏图层尺寸），TOKEN 为 32 位小写十六进制。下一帧取图，写到 `files/captures/snapshot-TOKEN.png`，用 `run-as` 取回。截图帧用单独的全尺寸图像，写完后释放；录像跳过这一帧。需要正在运行的沉浸式 Vulkan 合成会话 |
+| `capture_screenshot request TOKEN [left\|right\|both]` / `status\|cancel TOKEN` | 无损 PNG，全尺寸（`xr` 为推荐眼尺寸，VR 的 `canvas` 为投影 swapchain 尺寸，大屏 `canvas` 为大屏图层尺寸，2D 窗口为窗口尺寸），TOKEN 为 32 位小写十六进制。下一帧取图，写到 `files/captures/snapshot-TOKEN.png`，用 `run-as` 取回。截图帧用单独的全尺寸图像，写完后释放；录像跳过这一帧。需要沉浸式 Vulkan 合成会话，或前台的 SteamPSP 窗口（见下） |
 | `capture_video start [EYE]` / `start_live TOKEN [EYE]` / `stop` / `status` | MediaCodec H.264：文件模式写 `files/captures/embedded-<ns>.h264` 和 `.frames.csv`；live 模式走 `scapture.TOKEN` 本地 socket。默认每隔一个 XR 帧编码一次（72 Hz 下 36 fps，90 Hz 下 45 fps），12 Mbps，关键帧间隔 2 s；编码器没有空闲图像时这一帧不编码、下一个 XR 帧重试，不阻塞 XR 线程。`status` 给出 `skipped_busy`（编码器没还图像）、`skipped_pending`（我们的上一次提交未完成）、`compose_latency_ms_avg/max`、`encoder_images`、`realtime`。会话结束即停止录像 |
 | `capture_config [video_bit_rate=8M] [max_size=1024] [max_fps=30] [i_frame_interval=2] \| reset \| status` | 与 scrcpy 的 `--video-bit-rate`/`--max-size`/`--max-fps` 对应，0 表示默认；对之后开始的录像和直播生效，截图不受影响。`max_size` 限制编码画面的长边（编码前线性缩小），`max_fps` 低于默认节奏时按时间间隔编码。`capturectl.py`、`liveview.py` 和 scrcpy MCP `record_app_video` 的同名参数通过它设置，用完恢复原值 |
 
@@ -187,6 +187,16 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 - 编码器的输入 Surface 走 Vulkan swapchain（合成设备在带 SDK 的构建里打开 `VK_KHR_android_surface`/`VK_KHR_swapchain`），acquire 超时为 0。Swan 上编码器（`c2.qti.avc.encoder`，硬件）要求至少 18 张图，我们建 20 张。
 - 编码器按实时任务配置（`priority=0`、`operating-rate` 为编码帧率的两倍、`latency=1`、无 B 帧）：Alyx 场景里编码器自己的输入预处理在 GPU 满载时会压住图像。单眼录像和直播只合成、拷贝那一只眼。
 - A/B 开关：`debug.xrgame.capture.legacy=1` 回到最初的流程（只在偶数帧编码、少一张备用图、两眼都合成），`debug.xrgame.capture.realtime=0` 关掉实时配置，`debug.xrgame.capture.spare=N` 改备用图数。
+- `max_fps` 按理想时间线排帧：72 Hz 下 30 fps 交替隔两帧、三帧，平均 30 fps（不再固定隔三帧成 24 fps）。
+
+进游戏前的 2D 窗口（游戏库、启动面板、对话框）也能截取：没有沉浸式会话、SteamPSP 自己的窗口在前台时，
+`XrPanelCapture`（Kotlin）接管同一组命令，`producer` 为 `steampsp.panel`，`view` 为 `panel`，
+`capture_source` 的选择对它不起作用。画面是前台 activity 的窗口加上其上的对话框窗口
+（`WindowInspector`，含遮罩），不含 Pico 环境和系统浮层。录像默认按窗口尺寸、30 fps，`capture_config` 同样生效；
+截图为窗口全尺寸。沉浸式会话开始时它让出生产者位置，回到 SteamPSP 窗口时重新接上，`liveview.py --follow`
+据此自动跟随。
+- 我们自己的 `HardwareRenderer` 把窗口画进一个 `AImageReader`，`xr_panel_feed.cpp` 的线程只取最新一张，经 GLES blit 送进编码器的输入 Surface，旧帧直接丢弃。HWUI 绝不直接画进编码器 Surface：RenderThread 是全进程共用的，编码器一旦不收帧，`dequeueBuffer` 会卡住整个 app 的界面和 DebugBus（run116 的实际故障）。
+- 编码器失败、提前结束或 3 s 不收帧时结束这次录制，`status` 为 `failed` 并给出原因；app 不受影响。
 
 构建：`-PxrGameCaptureSdk=<…/capture-sdk/native>` 或环境变量 `XRGAME_CAPTURE_SDK`（只作用于 debug 构建），
 `BUILD_INFO.json` 的 `captureSdk` 记录其源文件哈希和 `XRGAME_CAPTURE_SDK_REVISION`。SDK 源码不进本仓库。
