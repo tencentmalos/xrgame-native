@@ -62,6 +62,7 @@ object XrGameEgress {
         "steamcloud-sgp.oss-accelerate.aliyuncs.com",
         "steamcloudhk2.blob.core.windows.net",
         "steamcloud-tyo.s3.dualstack.ap-northeast-1.amazonaws.com",
+        "steamcloud-sg.s3.dualstack.ap-southeast-1.amazonaws.com",
     )
 
     fun steamCloudClient(base: OkHttpClient, authorizedUrl: String): OkHttpClient {

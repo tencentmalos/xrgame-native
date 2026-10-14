@@ -29,6 +29,21 @@ class XrGameEgressTest {
         }
     }
 
+    @Test fun singaporeCloudStorageIsAllowedOnlyForItsAuthenticatedHttpsOrigin() {
+        // Handed out by Steam Cloud on 2026-10-13; blocking it broke an Alyx upload batch.
+        val host = "steamcloud-sg.s3.dualstack.ap-southeast-1.amazonaws.com"
+        val base = OkHttpClient()
+        val client = XrGameEgress.steamCloudClient(base, "https://$host/signed-save")
+        assertFalse(XrGameEgress.isAllowed(host))
+        assertEquals(XrGameEgress.componentProxySelector().select(URI("https://$host/save")),
+            client.proxySelector.select(URI("https://$host/save")))
+        for (url in listOf("https://other.s3.dualstack.ap-southeast-1.amazonaws.com/save",
+            "https://$host.evil.example/save", "http://$host/save")) {
+            assertEquals(9, (client.proxySelector.select(URI(url)).single().address() as InetSocketAddress).port)
+            assertSame(base, XrGameEgress.steamCloudClient(base, url))
+        }
+    }
+
     @Test fun steamCloudStorageExceptionIsLimitedToOneAuthenticatedReplyOrigin() {
         val host = "steamcloud-hkg.oss-accelerate.aliyuncs.com"
         val base = OkHttpClient()

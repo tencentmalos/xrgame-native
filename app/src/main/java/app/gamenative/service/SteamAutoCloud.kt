@@ -617,6 +617,8 @@ object SteamAutoCloud {
                 ).await()
 
                 var uploadBatchSuccess = true
+                // XRGame: files Steam reported as duplicates; checked against the cloud below.
+                val duplicateFiles = mutableListOf<UserFileInfo>()
 
                 // XRGame: the name a file has in the cloud, as the uploads below send it.
                 val cloudFilename: (UserFileInfo) -> String = { file ->
@@ -675,6 +677,14 @@ object SteamAutoCloud {
                             timestamp = Date(file.timestamp),
                             uploadBatchId = uploadBatchResponse.batchID,
                         )
+                        // For bytes the cloud already holds, Steam answers DuplicateRequest without
+                        // blocks rather than OK. There is no upload to commit; the file counts as
+                        // synced once the cloud manifest shows the same SHA after the batch.
+                        if (begin.result == EResult.DuplicateRequest && begin.blocks.isEmpty() && !begin.encryptFile) {
+                            Timber.i("Steam Cloud reports %s as a duplicate; verifying after the batch", file.prefixPath)
+                            duplicateFiles += file
+                            return@forEachIndexed
+                        }
                         if (begin.result != EResult.OK || begin.encryptFile) {
                             // Refused (or encryption requested, which this path cannot provide):
                             // nothing to commit, and the batch must not count as synced.
@@ -868,6 +878,27 @@ object SteamAutoCloud {
                     batchId = uploadBatchResponse.batchID,
                     batchEResult = if (uploadBatchSuccess) EResult.OK else EResult.Fail,
                 ).await()
+
+                // XRGame: a duplicate only counts as synced if the cloud now lists that file with
+                // the same SHA; otherwise the batch fails as before and nothing is recorded.
+                if (uploadBatchSuccess && duplicateFiles.isNotEmpty()) {
+                    val cloudFiles = steamCloud.getAppFileListChange(appInfo.id, 0).await()
+                    val cloudShaByPath = cloudFiles.files.associate {
+                        getFullFilePath(it, cloudFiles).toString().lowercase() to it.shaFile
+                    }
+                    val unverified = duplicateFiles.filterNot { file ->
+                        file.sha.contentEquals(cloudShaByPath[file.getAbsPath(prefixToPath).toString().lowercase()])
+                    }
+                    if (unverified.isEmpty()) {
+                        Timber.i("Steam Cloud holds all %d duplicate file(s)", duplicateFiles.size)
+                    } else {
+                        Timber.w(
+                            "Steam Cloud duplicate(s) not in the cloud manifest: %s",
+                            unverified.joinToString { it.prefixPath },
+                        )
+                        uploadBatchSuccess = false
+                    }
+                }
 
                 if (totalFiles > 0) {
                     onProgress?.invoke("Upload complete", 1.0f)
@@ -1134,8 +1165,48 @@ object SteamAutoCloud {
                         }
                     }
 
-                    if (rehydratedSilently) {
-                        // nothing to do — cache is now consistent with cloud
+                    // XRGame: only a cloud change that is not ours is a conflict.
+                    var uploadedOwnChanges = false
+                    if (BuildConfig.XRGAME && hasLocalChanges && !hasUncachedLocalFiles && !rehydratedSilently) {
+                        val cloudFiles = if (appFileListChange.isOnlyDelta) {
+                            steamCloud.getAppFileListChange(appInfo.id, 0).await()
+                        } else {
+                            appFileListChange
+                        }
+                        if (!cloudFiles.isOnlyDelta) {
+                            val shaByPath: (List<UserFileInfo>) -> Map<String, ByteArray> = { files ->
+                                files.associate { it.getAbsPath(prefixToPath).toString().lowercase() to it.sha }
+                            }
+                            val cloudShaByPath = cloudFiles.files.associate {
+                                getFullFilePath(it, cloudFiles).toString().lowercase() to it.shaFile
+                            }
+                            val matchesCloud: (Map<String, ByteArray>) -> Boolean = { files ->
+                                files.keys == cloudShaByPath.keys &&
+                                    files.all { (path, sha) -> sha.contentEquals(cloudShaByPath[path]) }
+                            }
+                            val cachedFiles = steamInstance.fileChangeListsDao.getByAppId(appInfo.id)?.userFileInfo.orEmpty()
+
+                            if (matchesCloud(shaByPath(allLocalUserFiles))) {
+                                Timber.i("Behind the cloud, but local files match it by SHA; adopting change %d", cloudAppChangeNumber)
+                                with(steamInstance) {
+                                    db.withTransaction {
+                                        fileChangeListsDao.insert(appInfo.id, allLocalUserFiles)
+                                        changeNumbersDao.insert(appInfo.id, cloudAppChangeNumber)
+                                    }
+                                }
+                                syncResult = SyncResult.UpToDate
+                                filesManaged = allLocalUserFiles.size
+                                rehydratedSilently = true
+                            } else if (cachedFiles.isNotEmpty() && matchesCloud(shaByPath(cachedFiles))) {
+                                Timber.i("Behind the cloud only through this device's own batches; uploading local changes")
+                                uploadUserFiles(parentScope).await()
+                                uploadedOwnChanges = true
+                            }
+                        }
+                    }
+
+                    if (rehydratedSilently || uploadedOwnChanges) {
+                        // nothing to do — cache is now consistent with cloud, or local changes were uploaded
                     } else if (!hasLocalChanges) {
                         // we can safely download the new changes since no changes have been
                         // made locally

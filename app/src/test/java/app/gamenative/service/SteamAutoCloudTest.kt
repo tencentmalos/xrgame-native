@@ -2419,6 +2419,94 @@ class SteamAutoCloudTest {
         )
     }
 
+    /** A cloud entry for a file in the test save directory. */
+    private fun cloudSaveFile(name: String, content: ByteArray): AppFileInfo {
+        val file = mock<AppFileInfo>()
+        whenever(file.filename).thenReturn(name)
+        whenever(file.shaFile).thenReturn(sha1(content))
+        whenever(file.pathPrefixIndex).thenReturn(0)
+        whenever(file.hasPathPrefixIndex).thenReturn(true)
+        whenever(file.timestamp).thenReturn(Date())
+        whenever(file.rawFileSize).thenReturn(content.size)
+        return file
+    }
+
+    private val savePathPrefixes = listOf("%WinMyDocuments%/My Games/TestGame/Steam/76561198025127569/SaveGames")
+
+    /** Cloud entries for every file in the test save directory, with the given content overrides. */
+    private fun cloudSaveFiles(overrides: Map<String, ByteArray> = emptyMap()): List<AppFileInfo> =
+        saveFilesDir.listFiles()!!.filter { it.isFile }.sortedBy { it.name }.map { file ->
+            cloudSaveFile(file.name, overrides[file.name] ?: file.readBytes())
+        }
+
+    // XRGame: the cloud is ahead, but it already holds exactly the local files (for example after
+    // uploads whose batch was counted as failed). Nothing to ask and nothing to transfer.
+    @Test
+    fun xrgame_synced_localChanged_cloudAheadWithSameContent_adoptsCloudChangeNumber() = runBlocking {
+        org.junit.Assume.assumeTrue(app.gamenative.BuildConfig.XRGAME)
+        val localCn = 5L
+        cacheCurrentLocalFiles(localCn)
+
+        val modified = "modified after offline play".toByteArray()
+        File(saveFilesDir, "SaveData_0.sav").writeBytes(modified)
+
+        every { mockSteamCloud.getAppFileListChange(any(), any(), any()) } returns
+            CompletableFuture.completedFuture(
+                makeCloudFileChangeList(
+                    cloudChangeNumber = localCn + 2,
+                    files = cloudSaveFiles(),
+                    pathPrefixes = savePathPrefixes,
+                ),
+            )
+
+        val result = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = makePrefixToPath(),
+        ).await()!!
+
+        assertEquals(SyncResult.UpToDate, result.syncResult)
+        assertEquals(0, result.filesUploaded)
+        assertEquals(0, result.filesDownloaded)
+        assertEquals(localCn + 2, db.appChangeNumbersDao().getByAppId(steamAppId)!!.changeNumber)
+    }
+
+    // XRGame: the cloud number moved, but its files are still those of our last sync, so only this
+    // device's own (failed) batches moved it. Local changes upload instead of asking.
+    @Test
+    fun xrgame_synced_localChanged_cloudAheadOnlyByOwnBatches_uploads() = runBlocking {
+        org.junit.Assume.assumeTrue(app.gamenative.BuildConfig.XRGAME)
+        val localCn = 5L
+        cacheCurrentLocalFiles(localCn)
+
+        File(saveFilesDir, "SaveData_0.sav").writeBytes("modified after offline play".toByteArray())
+
+        every { mockSteamCloud.getAppFileListChange(any(), any(), any()) } returns
+            CompletableFuture.completedFuture(
+                makeCloudFileChangeList(
+                    cloudChangeNumber = localCn + 3,
+                    files = cloudSaveFiles(mapOf("SaveData_0.sav" to "savedata0 content".toByteArray())),
+                    pathPrefixes = savePathPrefixes,
+                ),
+            )
+
+        val result = SteamAutoCloud.syncUserFiles(
+            appInfo = db.steamAppDao().findApp(steamAppId)!!,
+            clientId = clientId,
+            steamInstance = mockSteamService,
+            steamCloud = mockSteamCloud,
+            preferredSave = SaveLocation.None,
+            prefixToPath = makePrefixToPath(),
+        ).await()!!
+
+        assertEquals(SyncResult.Success, result.syncResult)
+        assertTrue("Should upload the local change", result.uploadsCompleted)
+        assertTrue(result.filesUploaded > 0)
+    }
+
     // ── Scenario 5: User didn't play locally, but another device uploaded new saves ──
     // No local changes to lose — safe to download.
     @Test
