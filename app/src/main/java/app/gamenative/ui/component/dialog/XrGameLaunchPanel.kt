@@ -535,6 +535,21 @@ private fun LaunchOptions(
             onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withTextureQuality(data.envVars, qualities[it]))) },
         )
     }
+    if (!vrGame) {
+        // shadPS4's render scale, done in the D3D translation layers. VR games size their eye
+        // images with the VR render resolution above instead.
+        main += {
+            val scales = XrGameQualitySettings.RENDER_SCALES
+            val scale = XrGameQualitySettings.renderScale(data.envVars)
+            ChoiceRow(
+                label = stringResource(R.string.xrgame_launch_d3d_render_scale),
+                choices = scales.map { "$it%" },
+                selected = scales.indexOf(scale),
+                note = if (scale != scales[0]) stringResource(R.string.xrgame_launch_d3d_render_scale_note) else null,
+                onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withRenderScale(data.envVars, scales[it]))) },
+            )
+        }
+    }
 
     val extra = mutableListOf<OptionItem>()
     if (mode == Mode.XR && vrGame) {
@@ -582,17 +597,6 @@ private fun LaunchOptions(
             selected = steps.indices.minBy { kotlin.math.abs(steps[it] - budget) },
             note = stringResource(R.string.xrgame_launch_memory_budget_note),
             onSelect = { onData(data.copy(dxwrapperConfig = XrGameMemoryBudget.withBudget(data.dxwrapperConfig, steps[it]))) },
-        )
-    }
-    extra += {
-        val scales = XrGameQualitySettings.RENDER_SCALES
-        val scale = XrGameQualitySettings.renderScale(data.envVars)
-        ChoiceRow(
-            label = stringResource(R.string.xrgame_launch_shadow_scale),
-            choices = scales.map { "$it%" },
-            selected = scales.indexOf(scale),
-            note = if (scale != scales[0]) stringResource(R.string.xrgame_launch_shadow_scale_note) else null,
-            onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withRenderScale(data.envVars, scales[it]))) },
         )
     }
     extra += toggle(R.string.xrgame_async_present, XrGamePresentSettings.asyncCopyEnabled(data.envVars)) {

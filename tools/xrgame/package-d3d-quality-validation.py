@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Package the texture quality / shadow render scale builds of DXVK and vkd3d-proton.
+"""Package the texture quality / render scale builds of DXVK and vkd3d-proton.
 
 Starts from the validated private archives (DXVK xrg4, vkd3d-proton xrg1), replaces the rebuilt
-DLLs and adds the quality patch. Source pins, patch hashes and binary hashes are checked against
-the build outputs. The results are private validation components, not release artifacts.
+DLLs and adds the quality patches. Source pins, patch hashes and binary hashes are checked against
+the build outputs. --only packages one of the two, so the other keeps its published archive.
+The results are private validation components, not release artifacts.
 """
 import argparse
 import hashlib
@@ -15,15 +16,18 @@ import tarfile
 
 DXVK_PIN = 'a6764047e587178283fcde4073ae6e1410af594f'
 VKD3D_PIN = '212991fc2c266bc0d59f4c4ce8f80f7126508d71'
-DXVK_VERSION = '11.0-a676404-arm64ec-xrg5'
-VKD3D_VERSION = '11.0-212991f-arm64ec-xrg2'
+DXVK_VERSION = '11.0-a676404-arm64ec-xrg6'
+DXVK_VERSION_CODE = 6
+VKD3D_VERSION = '11.0-212991f-arm64ec-xrg3'
+VKD3D_VERSION_CODE = 3
 DXVK_BASE_SHA256 = 'e1a2b0581fb95effe566ef2f4f3b1f906ae3455c9e62e88b9abf1a77a3ec2e39'
 VKD3D_BASE_SHA256 = 'e50a148e0abbcd3321a1bf6cc3912b9463298b47ded1a0c35eeedbe3f7cb0b42'
 DXVK_PATCHES = ('dxvk-present-deferred-clears.patch', 'dxvk-waitable-frame-latency.patch',
                 'dxvk-present-gpu-completion.patch', 'dxvk-xrgame-resource-scale.patch')
-VKD3D_PATCH = 'vkd3d-xrgame-resource-scale.patch'
+VKD3D_PATCHES = ('vkd3d-xrgame-resource-scale.patch', 'dxil-spirv-xrgame-render-scale.patch')
 DESCRIPTION = 'XRGame private build: XRGAME_TEXTURE_QUALITY and XRGAME_RENDER_SCALE; defaults unchanged'
-VALIDATION = 'Private validation build; see docs/validation/swan-d3d-texture-quality-20261013.md.'
+VALIDATION = ('Private validation build; see docs/validation/swan-d3d-texture-quality-20261013.md and '
+              'docs/validation/swan-d3d-render-scale-20261013.md.')
 MTIME = 1791849600
 
 
@@ -96,7 +100,7 @@ def package_dxvk(args, here, inspect):
         payload[name] = data
     recipes = {'tools/xrgame/patches/' + name: sha(data) for name, data in patches.items()}
     recipes['tools/xrgame/build-dxvk-validation.sh'] = sha((here / 'build-dxvk-validation.sh').read_bytes())
-    finish(original, payload, 5, DXVK_VERSION, DXVK_BASE_SHA256, recipes, here)
+    finish(original, payload, DXVK_VERSION_CODE, DXVK_VERSION, DXVK_BASE_SHA256, recipes, here)
     return write_archive(args.output / f'dxvk-{DXVK_VERSION}.wcp', original, inspect, 'dxvk')
 
 
@@ -104,32 +108,37 @@ def package_vkd3d(args, here, inspect):
     original = read_base(args.vkd3d_base, VKD3D_BASE_SHA256, inspect, 'vkd3d')
     if json.loads(original['xrgame-build.json'])['sourcePins']['vkd3d-proton'] != VKD3D_PIN:
         raise ValueError('Wrong vkd3d-proton base source pin')
-    patch = (here / 'patches' / VKD3D_PATCH).read_bytes()
-    payload = {VKD3D_PATCH: patch}
+    patches = {name: (here / 'patches' / name).read_bytes() for name in VKD3D_PATCHES}
+    payload = dict(patches)
     for name in ('d3d12.dll', 'd3d12core.dll'):
         payload[name] = (args.vkd3d_build / 'arm64ec' / name).read_bytes()
-    recipes = {'tools/xrgame/patches/' + VKD3D_PATCH: sha(patch),
-               'tools/xrgame/build-d3d.sh': sha((here / 'build-d3d.sh').read_bytes())}
-    inventory = finish(original, payload, 2, VKD3D_VERSION, VKD3D_BASE_SHA256, recipes, here)
-    # build-d3d.sh applies the patch to a copy of the pinned tree; the build directory carries
-    # the patch digest, so record it next to the binaries.
-    inventory['qualityPatchSha256'] = sha(patch)
+    recipes = {'tools/xrgame/patches/' + name: sha(data) for name, data in patches.items()}
+    recipes['tools/xrgame/build-d3d.sh'] = sha((here / 'build-d3d.sh').read_bytes())
+    inventory = finish(original, payload, VKD3D_VERSION_CODE, VKD3D_VERSION, VKD3D_BASE_SHA256, recipes, here)
+    # build-d3d.sh applies the patches to a copy of the pinned tree; the build directory carries
+    # their digest, so record them next to the binaries.
+    inventory['qualityPatchSha256'] = sha(patches['vkd3d-xrgame-resource-scale.patch'])
+    inventory['dxilSpirvPatchSha256'] = sha(patches['dxil-spirv-xrgame-render-scale.patch'])
     original['xrgame-build.json'] = encoded(inventory)
     return write_archive(args.output / f'vkd3d-proton-{VKD3D_VERSION}.wcp', original, inspect, 'vkd3d')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dxvk-base', type=Path, required=True)
-    parser.add_argument('--dxvk-build', type=Path, required=True)
-    parser.add_argument('--vkd3d-base', type=Path, required=True)
-    parser.add_argument('--vkd3d-build', type=Path, required=True)
+    parser.add_argument('--dxvk-base', type=Path)
+    parser.add_argument('--dxvk-build', type=Path)
+    parser.add_argument('--vkd3d-base', type=Path)
+    parser.add_argument('--vkd3d-build', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--only', choices=('dxvk', 'vkd3d'))
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
     inspect = runpy.run_path(str(here / 'verify-runtime-packages.py'))['inspect']
-    results = {'dxvk': dict(package_dxvk(args, here, inspect), id=DXVK_VERSION),
-               'vkd3d': dict(package_vkd3d(args, here, inspect), id=VKD3D_VERSION)}
+    results = {}
+    if args.only != 'vkd3d':
+        results['dxvk'] = dict(package_dxvk(args, here, inspect), id=DXVK_VERSION)
+    if args.only != 'dxvk':
+        results['vkd3d'] = dict(package_vkd3d(args, here, inspect), id=VKD3D_VERSION)
     print(json.dumps(results, indent=2))
 
 

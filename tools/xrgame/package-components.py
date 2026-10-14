@@ -197,8 +197,8 @@ def main():
         finish(fex, 'fexcore-' + version + '.wcp', 'fexcore', version, 'MIT', ['FEX'])
 
         for name, kind, version, license_id in [
-            ('dxvk', 'DXVK', '11.0-a676404-arm64ec-xrg5', 'Zlib'),
-            ('vkd3d-proton', 'VKD3D', '11.0-212991f-arm64ec-xrg2', 'LGPL-2.1-or-later'),
+            ('dxvk', 'DXVK', '11.0-a676404-arm64ec-xrg6', 'Zlib'),
+            ('vkd3d-proton', 'VKD3D', '11.0-212991f-arm64ec-xrg3', 'LGPL-2.1-or-later'),
         ]:
             tree = work / name
             tree.mkdir()
@@ -234,9 +234,11 @@ def main():
                 shutil.copy2(completion_patch, tree / completion_patch.name)
                 shutil.copy2(quality_patch, tree / quality_patch.name)
             else:
-                # build-d3d.sh applies this patch to a copy of the pinned vkd3d-proton tree.
-                quality_patch = project / 'tools/xrgame/patches/vkd3d-xrgame-resource-scale.patch'
-                shutil.copy2(quality_patch, tree / quality_patch.name)
+                # build-d3d.sh applies these patches to a copy of the pinned vkd3d-proton tree
+                # and its dxil-spirv subproject.
+                for patch_name in ('vkd3d-xrgame-resource-scale.patch', 'dxil-spirv-xrgame-render-scale.patch'):
+                    quality_patch = project / 'tools/xrgame/patches' / patch_name
+                    shutil.copy2(quality_patch, tree / quality_patch.name)
             finish(tree, name + '-' + version + '.wcp', name if name == 'dxvk' else 'vkd3d',
                    version, license_id, [name])
 

@@ -1,5 +1,5 @@
 diff --git a/src/d3d11/d3d11_context.cpp b/src/d3d11/d3d11_context.cpp
-index 6f1f22bd..5190b441 100644
+index 6f1f22bd..f1ebe23f 100644
 --- a/src/d3d11/d3d11_context.cpp
 +++ b/src/d3d11/d3d11_context.cpp
 @@ -836,6 +836,14 @@ namespace dxvk {
@@ -17,16 +17,25 @@ index 6f1f22bd..5190b441 100644
      const DXGI_VK_FORMAT_INFO dstFormatInfo = m_parent->LookupFormat(dstDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
      const DXGI_VK_FORMAT_INFO srcFormatInfo = m_parent->LookupFormat(srcDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
  
+@@ -3444,7 +3452,7 @@ namespace dxvk {
+     }
+ 
+     EmitCs([
+-      cPushConstants = DxvkBuiltInPushData(sampleCount, m_maxTessFactor)
++      cPushConstants = DxvkBuiltInPushData(sampleCount, m_maxTessFactor, m_state.om.xrgameScale)
+     ] (DxvkContext* ctx) {
+       ctx->pushData(VK_SHADER_STAGE_ALL_GRAPHICS,
+         0u, sizeof(cPushConstants), &cPushConstants);
 @@ -3493,6 +3501,32 @@ namespace dxvk {
              uint32_t(std::max(sr.left, sr.right) - sr.left),
              uint32_t(std::max(sr.top, sr.bottom) - sr.top) };
          }
 +
-+        // XRGame: the bound depth target is scaled, so the application's
-+        // coordinates are scaled with it.
++        // XRGame: the bound render targets are scaled, so the application's
++        // coordinates are scaled with them.
 +        if (unlikely(m_state.om.xrgameScale)) {
-+          uint32_t percent = m_state.om.xrgameScale;
-+          float scale = float(percent) / 100.0f;
++          uint32_t eighths = m_state.om.xrgameScale;
++          float scale = float(eighths) / 8.0f;
 +
 +          dst->viewport.x      *= scale;
 +          dst->viewport.y      *= scale;
@@ -36,10 +45,10 @@ index 6f1f22bd..5190b441 100644
 +          if (enableScissorTest && i < m_state.rs.numScissors) {
 +            const auto& sr = m_state.rs.scissors[i];
 +
-+            int32_t x0 = int32_t((int64_t(sr.left) * percent) / 100);
-+            int32_t y0 = int32_t((int64_t(sr.top)  * percent) / 100);
-+            int32_t x1 = int32_t((int64_t(std::max(sr.left, sr.right))  * percent + 99) / 100);
-+            int32_t y1 = int32_t((int64_t(std::max(sr.top,  sr.bottom)) * percent + 99) / 100);
++            int32_t x0 = int32_t((int64_t(sr.left) * eighths) / 8);
++            int32_t y0 = int32_t((int64_t(sr.top)  * eighths) / 8);
++            int32_t x1 = int32_t((int64_t(std::max(sr.left, sr.right))  * eighths + 7) / 8);
++            int32_t y1 = int32_t((int64_t(std::max(sr.top,  sr.bottom)) * eighths + 7) / 8);
 +
 +            dst->scissor.offset = VkOffset2D { x0, y0 };
 +            dst->scissor.extent = VkExtent2D {
@@ -50,40 +59,178 @@ index 6f1f22bd..5190b441 100644
        }
      } else {
        // The backend can't handle a viewport count of zero,
-@@ -3696,6 +3730,32 @@ namespace dxvk {
+@@ -3691,8 +3725,46 @@ namespace dxvk {
+       ctx->bindRenderTargets(Forwarder::move(cAttachments), 0u);
+     });
+ 
+-    // If necessary, update push constant for the sample count
+-    if (m_state.om.sampleCount != sampleCount) {
++    // XRGame: rendering into targets reduced by the render scale scales viewports
++    // and scissors, and pixel shaders get the scale through the built-in push data
++    // to take SV_Position back to the application's coordinates. Targets of
++    // different scales bound together render at the scale of the scaled ones.
++    uint32_t xrgameScale = 0u;
++    bool xrgameUnscaled = false;
++    bool xrgameMixed = false;
++
++    auto addXrGameScale = [&] (uint32_t scale) {
++      if (!scale)
++        xrgameUnscaled = true;
++      else if (xrgameScale && xrgameScale != scale)
++        xrgameMixed = true;
++      else
++        xrgameScale = scale;
++    };
++
++    for (UINT i = 0; i < m_state.om.rtvs.size(); i++) {
++      if (m_state.om.rtvs[i] != nullptr)
++        addXrGameScale(m_state.om.rtvs[i]->XrGameScaleEighths());
++    }
++
++    if (m_state.om.dsv != nullptr)
++      addXrGameScale(m_state.om.dsv->XrGameScaleEighths());
++
++    if (unlikely(xrgameScale && (xrgameUnscaled || xrgameMixed))) {
++      static std::atomic<bool> s_logged = { false };
++
++      if (!s_logged.exchange(true))
++        Logger::warn("XRGame: render targets of different render scales are bound together");
++    }
++
++    bool xrgameChanged = m_state.om.xrgameScale != xrgameScale;
++    m_state.om.xrgameScale = xrgameScale;
++
++    if (unlikely(xrgameChanged))
++      ApplyViewportState();
++
++    // If necessary, update push constant for the sample count and render scale
++    if (m_state.om.sampleCount != sampleCount || xrgameChanged) {
        m_state.om.sampleCount = sampleCount;
        ApplyRasterizerSampleCount();
      }
+@@ -4033,6 +4105,9 @@ namespace dxvk {
+     VkExtent3D extent3D = View->mipLevelExtent(0);
+     VkExtent2D extent2D = { extent3D.width, extent3D.height };
+ 
++    // XRGame: rectangles are in the size the application created the image with
++    VkExtent3D appExtent = XrGameAppExtent(View);
 +
-+    // XRGame: rendering into a scaled depth target scales viewports and scissors
-+    uint32_t xrgameScale = m_state.om.dsv != nullptr ? m_state.om.dsv->XrGameScalePercent() : 0u;
-+
-+    if (unlikely(xrgameScale)) {
-+      static std::atomic<bool> s_logged = { false };
-+
-+      for (UINT i = 0; i < m_state.om.rtvs.size(); i++) {
-+        if (m_state.om.rtvs[i] != nullptr) {
-+          if (!s_logged.exchange(true)) {
-+            VkExtent3D dsvExtent = m_state.om.dsv->GetImageView()->mipLevelExtent(0);
-+            VkExtent3D rtvExtent = m_state.om.rtvs[i]->GetImageView()->mipLevelExtent(0);
-+
-+            Logger::warn(str::format("XRGame: a depth target scaled by the render scale setting (",
-+              dsvExtent.width, "x", dsvExtent.height, ") is bound with a ",
-+              rtvExtent.width, "x", rtvExtent.height, " render target"));
-+          }
-+          break;
+     // Figure out which plane we're clearing for subsampling
+     const DxvkPlaneFormatInfo* plane = nullptr;
+     auto imageFormatInfo = View->image()->formatInfo();
+@@ -4067,6 +4142,13 @@ namespace dxvk {
+       for (uint32_t i = 0; i < NumRects; i++) {
+         D3D11_RECT subsampledRect = pRects[i];
+ 
++        if (unlikely(appExtent.width != extent3D.width || appExtent.height != extent3D.height)) {
++          subsampledRect.left   = LONG((int64_t(subsampledRect.left)   * extent3D.width)  / appExtent.width);
++          subsampledRect.top    = LONG((int64_t(subsampledRect.top)    * extent3D.height) / appExtent.height);
++          subsampledRect.right  = LONG((int64_t(subsampledRect.right)  * extent3D.width  + appExtent.width  - 1) / appExtent.width);
++          subsampledRect.bottom = LONG((int64_t(subsampledRect.bottom) * extent3D.height + appExtent.height - 1) / appExtent.height);
 +        }
-+      }
-+    }
 +
-+    if (unlikely(m_state.om.xrgameScale != xrgameScale)) {
-+      m_state.om.xrgameScale = xrgameScale;
-+      ApplyViewportState();
-+    }
+         if (plane) {
+           subsampledRect.left   /= plane->blockSize.width;
+           subsampledRect.top    /= plane->blockSize.height;
+@@ -4084,6 +4166,97 @@ namespace dxvk {
    }
  
  
-@@ -4279,6 +4339,55 @@ namespace dxvk {
++  template<typename ContextType>
++  bool D3D11CommonContext<ContextType>::XrGameBlitImage(
++          D3D11CommonTexture*               pDstTexture,
++    const VkImageSubresourceLayers*         pDstLayers,
++          VkOffset3D                        DstOffset,
++          D3D11CommonTexture*               pSrcTexture,
++    const VkImageSubresourceLayers*         pSrcLayers,
++          VkOffset3D                        SrcOffset,
++          VkExtent3D                        SrcExtent) {
++    // XRGame: a copy between images of different render scales stretches the
++    // region with a blit. Staging images, depth images and multisampled images
++    // are not handled.
++    if (!pDstTexture->HasImage() || !pSrcTexture->HasImage()
++     || pDstTexture->XrGameMipDrop() || pSrcTexture->XrGameMipDrop()
++     || pDstLayers->layerCount != pSrcLayers->layerCount)
++      return false;
++
++    Rc<DxvkImage> dstImage = pDstTexture->GetImage();
++    Rc<DxvkImage> srcImage = pSrcTexture->GetImage();
++
++    if ((dstImage->formatInfo()->aspectMask | srcImage->formatInfo()->aspectMask) != VK_IMAGE_ASPECT_COLOR_BIT
++     || dstImage->info().sampleCount != VK_SAMPLE_COUNT_1_BIT
++     || srcImage->info().sampleCount != VK_SAMPLE_COUNT_1_BIT)
++      return false;
++
++    auto dstFeatures = m_device->adapter()->getFormatFeatures(dstImage->info().format);
++    auto srcFeatures = m_device->adapter()->getFormatFeatures(srcImage->info().format);
++
++    if (!(dstFeatures.optimal & VK_FORMAT_FEATURE_2_BLIT_DST_BIT)
++     || !(srcFeatures.optimal & VK_FORMAT_FEATURE_2_BLIT_SRC_BIT))
++      return false;
++
++    // Map the region from the application's mip size onto the image's
++    auto mapRegion = [] (D3D11CommonTexture* texture, uint32_t mip,
++        VkOffset3D offset, VkExtent3D extent, std::array<VkOffset3D, 2>& out) {
++      VkExtent3D app = texture->MipLevelExtent(mip);
++      VkExtent3D img = texture->GetImage()->mipLevelExtent(mip);
++
++      out[0] = VkOffset3D {
++        int32_t((uint64_t(offset.x) * img.width)  / app.width),
++        int32_t((uint64_t(offset.y) * img.height) / app.height), 0 };
++      out[1] = VkOffset3D {
++        int32_t(std::min<uint64_t>(img.width,  (uint64_t(offset.x + extent.width)  * img.width  + app.width  - 1u) / app.width)),
++        int32_t(std::min<uint64_t>(img.height, (uint64_t(offset.y + extent.height) * img.height + app.height - 1u) / app.height)), 1 };
++    };
++
++    std::array<VkOffset3D, 2> dstOffsets = { };
++    std::array<VkOffset3D, 2> srcOffsets = { };
++
++    mapRegion(pDstTexture, pDstLayers->mipLevel, DstOffset, SrcExtent, dstOffsets);
++    mapRegion(pSrcTexture, pSrcLayers->mipLevel, SrcOffset, SrcExtent, srcOffsets);
++
++    bool isInteger = dstImage->formatInfo()->flags.any(DxvkFormatFlag::SampledUInt, DxvkFormatFlag::SampledSInt)
++                  || srcImage->formatInfo()->flags.any(DxvkFormatFlag::SampledUInt, DxvkFormatFlag::SampledSInt);
++
++    for (uint32_t i = 0; i < pDstLayers->layerCount; i++) {
++      DxvkImageViewKey dstKey;
++      dstKey.viewType = VK_IMAGE_VIEW_TYPE_2D;
++      dstKey.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
++      dstKey.format = dstImage->info().format;
++      dstKey.aspects = VK_IMAGE_ASPECT_COLOR_BIT;
++      dstKey.mipIndex = pDstLayers->mipLevel;
++      dstKey.mipCount = 1u;
++      dstKey.layerIndex = pDstLayers->baseArrayLayer + i;
++      dstKey.layerCount = 1u;
++
++      DxvkImageViewKey srcKey = dstKey;
++      srcKey.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
++      srcKey.format = srcImage->info().format;
++      srcKey.mipIndex = pSrcLayers->mipLevel;
++      srcKey.layerIndex = pSrcLayers->baseArrayLayer + i;
++
++      EmitCs([
++        cDstImage   = dstImage,
++        cSrcImage   = srcImage,
++        cDstKey     = dstKey,
++        cSrcKey     = srcKey,
++        cDstOffsets = dstOffsets,
++        cSrcOffsets = srcOffsets,
++        cFilter     = isInteger ? VK_FILTER_NEAREST : VK_FILTER_LINEAR
++      ] (DxvkContext* ctx) {
++        ctx->blitImageView(
++          cDstImage->createView(cDstKey), cDstOffsets.data(),
++          cSrcImage->createView(cSrcKey), cSrcOffsets.data(), cFilter);
++      });
++    }
++
++    return true;
++  }
++
++
+   template<typename ContextType>
+   void D3D11CommonContext<ContextType>::ClearBufferView(
+           Rc<DxvkBufferView>                View,
+@@ -4279,6 +4452,73 @@ namespace dxvk {
      VkExtent3D dstExtent = util::computeBlockExtent(blockCount, dstFormatInfo->blockSize);
      dstExtent = util::snapExtent3D(DstOffset, dstExtent, dstMipExtent);
  
@@ -102,12 +249,15 @@ index 6f1f22bd..5190b441 100644
 +      static std::atomic<bool> s_loggedScale = { false };
 +      static std::atomic<bool> s_loggedLevel = { false };
 +
-+      uint32_t scale = pDstTexture->XrGameScalePercent();
++      uint32_t scale = pDstTexture->XrGameScaleEighths();
 +
-+      if (scale || pSrcTexture->XrGameScalePercent()) {
-+        if (scale != pSrcTexture->XrGameScalePercent()) {
++      if (scale || pSrcTexture->XrGameScaleEighths()) {
++        if (scale != pSrcTexture->XrGameScaleEighths()) {
++          if (XrGameBlitImage(pDstTexture, pDstLayers, DstOffset, pSrcTexture, pSrcLayers, SrcOffset, SrcExtent))
++            return;
++
 +          if (!s_loggedScale.exchange(true))
-+            Logger::warn("XRGame: copy between scaled and unscaled depth images is skipped");
++            Logger::warn("XRGame: copy between images of different render scales is skipped");
 +          return;
 +        }
 +
@@ -122,7 +272,22 @@ index 6f1f22bd..5190b441 100644
 +        srcImageExtent.height = std::min(
 +          XrGameScaleEnd(SrcOffset.y + SrcExtent.height, scale) - srcImageOffset.y,
 +          XrGameScaleEnd(DstOffset.y + SrcExtent.height, scale) - dstImageOffset.y);
++
++        // Ends round up, the images round down; stay inside both
++        if (pSrcTexture->HasImage() && pDstTexture->HasImage()) {
++          VkExtent3D srcImageMip = pSrcTexture->GetImage()->mipLevelExtent(srcImageLayers.mipLevel);
++          VkExtent3D dstImageMip = pDstTexture->GetImage()->mipLevelExtent(dstImageLayers.mipLevel);
++
++          srcImageExtent.width = std::min(srcImageExtent.width, uint32_t(std::max(0,
++            std::min(int32_t(srcImageMip.width) - srcImageOffset.x, int32_t(dstImageMip.width) - dstImageOffset.x))));
++          srcImageExtent.height = std::min(srcImageExtent.height, uint32_t(std::max(0,
++            std::min(int32_t(srcImageMip.height) - srcImageOffset.y, int32_t(dstImageMip.height) - dstImageOffset.y))));
++        }
++
 +        dstImageExtent = srcImageExtent;
++
++        if (!srcImageExtent.width || !srcImageExtent.height)
++          return;
 +      }
 +
 +      // Nothing to write if the destination level does not exist
@@ -139,7 +304,7 @@ index 6f1f22bd..5190b441 100644
      // It is possible for any of the given images to be a staging image with
      // no actual image, so we need to account for all possibilities here.
      bool dstIsImage = pDstTexture->HasImage();
-@@ -4288,11 +4397,11 @@ namespace dxvk {
+@@ -4288,11 +4528,11 @@ namespace dxvk {
        EmitCs([
          cDstImage  = pDstTexture->GetImage(),
          cSrcImage  = pSrcTexture->GetImage(),
@@ -156,7 +321,7 @@ index 6f1f22bd..5190b441 100644
        ] (DxvkContext* ctx) {
          // CopyResource can only copy between different images, and
          // CopySubresourceRegion can only copy data from one single
-@@ -4343,13 +4452,13 @@ namespace dxvk {
+@@ -4343,13 +4583,13 @@ namespace dxvk {
  
            if (dstIsImage) {
              VkImageSubresourceLayers dstLayer = { dstAspectMask,
@@ -173,7 +338,7 @@ index 6f1f22bd..5190b441 100644
                cDstFormat  = pDstTexture->GetPackedFormat(),
                cSrcBuffer  = pSrcTexture->GetMappedBuffer(srcSubresource),
                cSrcLayout  = pSrcTexture->GetSubresourceLayout(srcAspectMask, srcSubresource),
-@@ -4363,14 +4472,14 @@ namespace dxvk {
+@@ -4363,14 +4603,14 @@ namespace dxvk {
              });
            } else if (srcIsImage) {
              VkImageSubresourceLayers srcLayer = { srcAspectMask,
@@ -191,16 +356,16 @@ index 6f1f22bd..5190b441 100644
                cDstBuffer  = pDstTexture->GetMappedBuffer(dstSubresource),
                cDstLayout  = pDstTexture->GetSubresourceLayout(dstAspectMask, dstSubresource),
                cDstOffset  = pDstTexture->ComputeMappedOffset(dstSubresource, j, DstOffset),
-@@ -5675,9 +5784,18 @@ namespace dxvk {
+@@ -5675,9 +5915,18 @@ namespace dxvk {
        pDstSubresource->arrayLayer, pDstTexture->Desc()->MipLevels);
  
      if (dstIsImage) {
 +      VkImageSubresourceLayers dstLayers = vk::makeSubresourceLayers(*pDstSubresource);
 +
-+      // XRGame: levels the image leaves out take no data, and scaled depth
-+      // images cannot take the application's full-size data.
++      // XRGame: levels the image leaves out take no data, and images reduced
++      // by the render scale cannot take the application's full-size data.
 +      if (unlikely(pDstTexture->XrGameReduced())) {
-+        if (pDstTexture->XrGameScalePercent() || !pDstTexture->XrGameMapMip(dstLayers.mipLevel))
++        if (pDstTexture->XrGameScaleEighths() || !pDstTexture->XrGameMapMip(dstLayers.mipLevel))
 +          return;
 +      }
 +
@@ -211,30 +376,67 @@ index 6f1f22bd..5190b441 100644
          cDstOffset        = DstOffset,
          cDstExtent        = DstExtent,
          cStagingSlice     = std::move(StagingBuffer),
-@@ -5840,6 +5958,14 @@ namespace dxvk {
+@@ -5836,10 +6085,12 @@ namespace dxvk {
+     VkExtent3D dsvExtent = { 0u, 0u, 0u };
+     VkExtent3D rtvExtent = { 0u, 0u, 0u };
+ 
++    // XRGame: sizes are compared as the application created the images,
++    // not as the render scale reduced them.
+     if (pDepthStencilView != nullptr) {
        refView = static_cast<D3D11DepthStencilView*>(
          pDepthStencilView)->GetImageView();
-       dsvExtent = refView->mipLevelExtent(0);
-+
-+      // XRGame: compare the size the application created, not the scaled image
-+      uint32_t xrgameScale = static_cast<D3D11DepthStencilView*>(pDepthStencilView)->XrGameScalePercent();
-+
-+      if (unlikely(xrgameScale)) {
-+        dsvExtent.width  = uint32_t((uint64_t(dsvExtent.width)  * 100u) / xrgameScale);
-+        dsvExtent.height = uint32_t((uint64_t(dsvExtent.height) * 100u) / xrgameScale);
-+      }
+-      dsvExtent = refView->mipLevelExtent(0);
++      dsvExtent = XrGameAppExtent(refView);
      }
  
      for (uint32_t i = 0; i < NumViews; i++) {
+@@ -5848,7 +6099,7 @@ namespace dxvk {
+           ppRenderTargetViews[i])->GetImageView();
+ 
+         if (!rtvExtent.width)
+-          rtvExtent = curView->mipLevelExtent(0);
++          rtvExtent = XrGameAppExtent(curView);
+ 
+         if (refView != nullptr) {
+           // Render target views must all have the same sample count,
+@@ -5863,7 +6114,7 @@ namespace dxvk {
+             return false;
+ 
+           // Color targets must all be the same size
+-          VkExtent3D curExtent = curView->mipLevelExtent(0);
++          VkExtent3D curExtent = XrGameAppExtent(curView);
+ 
+           if (curExtent.width  != rtvExtent.width
+            || curExtent.height != rtvExtent.height)
+diff --git a/src/d3d11/d3d11_context.h b/src/d3d11/d3d11_context.h
+index 76de0ebd..d58cd411 100644
+--- a/src/d3d11/d3d11_context.h
++++ b/src/d3d11/d3d11_context.h
+@@ -960,6 +960,15 @@ namespace dxvk {
+             VkOffset3D                        SrcOffset,
+             VkExtent3D                        SrcExtent);
+ 
++    bool XrGameBlitImage(
++            D3D11CommonTexture*               pDstTexture,
++      const VkImageSubresourceLayers*         pDstLayers,
++            VkOffset3D                        DstOffset,
++            D3D11CommonTexture*               pSrcTexture,
++      const VkImageSubresourceLayers*         pSrcLayers,
++            VkOffset3D                        SrcOffset,
++            VkExtent3D                        SrcExtent);
++
+     void CopyTiledResourceData(
+             ID3D11Resource*                   pResource,
+       const D3D11_TILED_RESOURCE_COORDINATE*  pRegionCoordinate,
 diff --git a/src/d3d11/d3d11_context_state.h b/src/d3d11/d3d11_context_state.h
-index b2f7a47e..1b04fe51 100644
+index b2f7a47e..acf0fc2c 100644
 --- a/src/d3d11/d3d11_context_state.h
 +++ b/src/d3d11/d3d11_context_state.h
 @@ -205,6 +205,9 @@ namespace dxvk {
      UINT  minUav         = D3D11_1_UAV_SLOT_COUNT;
      UINT  maxUav         = 0u;
  
-+    /// XRGame render scale of the bound depth target, 0 if not scaled
++    /// XRGame render scale of the bound render targets in eighths, 0 if not scaled
 +    UINT  xrgameScale    = 0u;
 +
      void reset() {
@@ -250,16 +452,16 @@ index b2f7a47e..1b04fe51 100644
    };
    
 diff --git a/src/d3d11/d3d11_initializer.cpp b/src/d3d11/d3d11_initializer.cpp
-index 902b9695..ac034dfe 100644
+index 902b9695..ca14da19 100644
 --- a/src/d3d11/d3d11_initializer.cpp
 +++ b/src/d3d11/d3d11_initializer.cpp
 @@ -164,6 +164,12 @@ namespace dxvk {
      VkFormat packedFormat = m_parent->LookupPackedFormat(desc->Format, pTexture->GetFormatMode()).Format;
      auto formatInfo = lookupFormatInfo(packedFormat);
  
-+    // XRGame: a scaled depth image cannot take the application's full-size data.
-+    if (pTexture->XrGameScalePercent() && pInitialData != nullptr && pInitialData->pSysMem != nullptr) {
-+      Logger::warn("XRGame: initial data of a scaled depth image is dropped");
++    // XRGame: an image reduced by the render scale cannot take the application's full-size data.
++    if (pTexture->XrGameScaleEighths() && pInitialData != nullptr && pInitialData->pSysMem != nullptr) {
++      Logger::warn("XRGame: initial data of an image scaled by the render scale is dropped");
 +      pInitialData = nullptr;
 +    }
 +
@@ -282,10 +484,10 @@ index 902b9695..ac034dfe 100644
              m_transferCommands += 1;
  
 diff --git a/src/d3d11/d3d11_texture.cpp b/src/d3d11/d3d11_texture.cpp
-index 19dd03fc..3820a4f5 100644
+index 19dd03fc..d14fa3b5 100644
 --- a/src/d3d11/d3d11_texture.cpp
 +++ b/src/d3d11/d3d11_texture.cpp
-@@ -3,10 +3,71 @@
+@@ -3,10 +3,76 @@
  #include "d3d11_gdi.h"
  #include "d3d11_texture.h"
  
@@ -308,7 +510,7 @@ index 19dd03fc..3820a4f5 100644
 +     */
 +    struct XrGameQualityConfig {
 +      uint32_t mipCap      = 0u;
-+      uint32_t renderScale = 100u;
++      uint32_t renderScale = 8u;
 +    };
 +
 +    const XrGameQualityConfig& GetXrGameQualityConfig() {
@@ -324,13 +526,18 @@ index 19dd03fc..3820a4f5 100644
 +        else
 +          quality = "high";
 +
++        // The steps of shadPS4's internal scale, in eighths
 +        if (scale == "75")
-+          config.renderScale = 75u;
++          config.renderScale = 6u;
 +        else if (scale == "50")
-+          config.renderScale = 50u;
++          config.renderScale = 4u;
++        else if (scale == "37.5")
++          config.renderScale = 3u;
++        else if (scale == "25")
++          config.renderScale = 2u;
 +
 +        Logger::info(str::format("XRGame texture quality ", quality,
-+          ", shadow render scale ", config.renderScale, "%"));
++          ", render scale ", config.renderScale, "/8"));
 +        return config;
 +      }();
 +
@@ -357,15 +564,19 @@ index 19dd03fc..3820a4f5 100644
    
    D3D11CommonTexture::D3D11CommonTexture(
            ID3D11Resource*             pInterface,
-@@ -211,6 +272,18 @@ namespace dxvk {
+@@ -211,6 +277,22 @@ namespace dxvk {
        }
      }
  
 +    // XRGame memory reductions. Only device-local images that the application
 +    // can neither map nor share, and whose tiling it cannot query, qualify.
++    // Swapchain back buffers do (presentation stretches them), GDI ones do not.
++    constexpr DXGI_USAGE xrgameBackBufferUsage = DXGI_USAGE_BACK_BUFFER
++      | DXGI_USAGE_DISCARD_ON_PRESENT | DXGI_USAGE_READ_ONLY;
++
 +    if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_NONE
 +     && Dimension == D3D11_RESOURCE_DIMENSION_TEXTURE2D
-+     && !vkImage && !m_11on12.Resource && !DxgiUsage
++     && !vkImage && !m_11on12.Resource && !(DxgiUsage & ~xrgameBackBufferUsage)
 +     && hSharedHandle == INVALID_HANDLE_VALUE
 +     && !(m_desc.MiscFlags & (sharingFlags | D3D11_RESOURCE_MISC_TILED
 +                            | D3D11_RESOURCE_MISC_GDI_COMPATIBLE | D3D11_RESOURCE_MISC_GENERATE_MIPS))
@@ -376,7 +587,7 @@ index 19dd03fc..3820a4f5 100644
      // Skip image creation if possible
      if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_STAGING)
        return;
-@@ -514,6 +587,71 @@ namespace dxvk {
+@@ -514,6 +596,76 @@ namespace dxvk {
    }
  
  
@@ -406,18 +617,20 @@ index 19dd03fc..3820a4f5 100644
 +      }
 +    }
 +
-+    // Shadow render scale: large depth arrays. Single large square maps are
-+    // left alone; in Half-Life: Alyx they were also bound with full-size render
-+    // targets. The main depth buffer matches the swapchain and is not an array.
-+    if (config.renderScale < 100u && levels == 1u
-+     && (bind & D3D11_BIND_DEPTH_STENCIL)
-+     && !(bind & (D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS))) {
-+      uint32_t shortSide = std::min(m_desc.Width, m_desc.Height);
++    // Render scale, as shadPS4's internal scale: render and depth targets whose
++    // shorter side is above 64 texels. Shaders map texel coordinates and size
++    // queries of these images, and SV_Position while rendering into them. The
++    // D3D11 mip chain has to fit the smaller image.
++    if (config.renderScale < 8u && (bind & (D3D11_BIND_RENDER_TARGET | D3D11_BIND_DEPTH_STENCIL))
++     && std::min(m_desc.Width, m_desc.Height) > 64u) {
++      uint32_t width  = XrGameScaleExtent(m_desc.Width,  config.renderScale);
++      uint32_t height = XrGameScaleExtent(m_desc.Height, config.renderScale);
 +
-+      if (m_desc.ArraySize > 1u && shortSide >= 1024u) {
++      if (levels <= 32u - bit::lzcnt(std::max(width, height))) {
 +        m_xrgameScale = config.renderScale;
-+        ImageInfo.extent.width  = XrGameScaleEnd(m_desc.Width,  m_xrgameScale);
-+        ImageInfo.extent.height = XrGameScaleEnd(m_desc.Height, m_xrgameScale);
++        ImageInfo.extent.width  = width;
++        ImageInfo.extent.height = height;
++        ImageInfo.xrgameRequestedExtent = VkExtent2D { m_desc.Width, m_desc.Height };
 +      }
 +    }
 +
@@ -433,10 +646,13 @@ index 19dd03fc..3820a4f5 100644
 +    uint64_t saved = (s_saved[kind] += full - reduced);
 +
 +    if (kind) {
-+      Logger::info(str::format("XRGame render scale ", m_xrgameScale, "%: depth image ",
-+        m_desc.Width, "x", m_desc.Height, "x", m_desc.ArraySize, " -> ",
-+        ImageInfo.extent.width, "x", ImageInfo.extent.height, ", ", count, " images, ",
-+        saved >> 20, " MiB saved"));
++      if (count <= 16u || !(count % 64u)) {
++        Logger::info(str::format("XRGame render scale ", m_xrgameScale, "/8: ", count,
++          " targets scaled, ", saved >> 20, " MiB saved (latest ",
++          (Aspects & VK_IMAGE_ASPECT_COLOR_BIT) ? "color " : "depth ",
++          m_desc.Width, "x", m_desc.Height, "x", m_desc.ArraySize, " -> ",
++          ImageInfo.extent.width, "x", ImageInfo.extent.height, ")"));
++      }
 +    } else if (count == 1u || !(count % 64u)) {
 +      Logger::info(str::format("XRGame texture quality: ", count, " textures reduced, ",
 +        saved >> 20, " MiB saved (latest ", m_desc.Width, "x", m_desc.Height, ", ",
@@ -449,32 +665,54 @@ index 19dd03fc..3820a4f5 100644
      const DxvkImageCreateInfo*  pImageInfo,
            VkImageTiling         Tiling) const {
 diff --git a/src/d3d11/d3d11_texture.h b/src/d3d11/d3d11_texture.h
-index 589603cf..7a56ecae 100644
+index 589603cf..c94c9b72 100644
 --- a/src/d3d11/d3d11_texture.h
 +++ b/src/d3d11/d3d11_texture.h
-@@ -54,6 +54,21 @@ namespace dxvk {
+@@ -54,6 +54,43 @@ namespace dxvk {
    };
  
  
 +  /**
 +   * \brief XRGame render scale helpers
 +   *
-+   * Start coordinates round down and end coordinates round up, so a
-+   * full-size region covers the whole scaled image.
++   * The scale is in eighths, as shadPS4's internal scale. Scaled images are
++   * max(1, size * eighths / 8) texels long. Start coordinates round down and
++   * end coordinates round up, so a full-size region covers the whole image.
 +   */
-+  inline uint32_t XrGameScaleStart(uint32_t Value, uint32_t Percent) {
-+    return uint32_t((uint64_t(Value) * Percent) / 100u);
++  inline uint32_t XrGameScaleExtent(uint32_t Value, uint32_t Eighths) {
++    return std::max(1u, uint32_t((uint64_t(Value) * Eighths) / 8u));
 +  }
 +
-+  inline uint32_t XrGameScaleEnd(uint32_t Value, uint32_t Percent) {
-+    return uint32_t((uint64_t(Value) * Percent + 99u) / 100u);
++  inline uint32_t XrGameScaleStart(uint32_t Value, uint32_t Eighths) {
++    return uint32_t((uint64_t(Value) * Eighths) / 8u);
++  }
++
++  inline uint32_t XrGameScaleEnd(uint32_t Value, uint32_t Eighths) {
++    return uint32_t((uint64_t(Value) * Eighths + 7u) / 8u);
++  }
++
++  /**
++   * \brief Size of mip 0 of a view as the application created it
++   *
++   * Differs from the view's extent when the render scale reduced the image.
++   */
++  inline VkExtent3D XrGameAppExtent(const Rc<DxvkImageView>& View) {
++    VkExtent3D extent = View->mipLevelExtent(0);
++    VkExtent2D requested = View->image()->info().xrgameRequestedExtent;
++
++    if (unlikely(requested.width)) {
++      extent.width  = std::max(1u, requested.width  >> View->info().mipIndex);
++      extent.height = std::max(1u, requested.height >> View->info().mipIndex);
++    }
++
++    return extent;
 +  }
 +
 +
    /**
     * \brief Packed subresource layout
     */
-@@ -148,6 +163,40 @@ namespace dxvk {
+@@ -148,6 +185,40 @@ namespace dxvk {
          VkExtent3D { m_desc.Width, m_desc.Height, m_desc.Depth }, Level);
      }
  
@@ -492,7 +730,7 @@ index 589603cf..7a56ecae 100644
 +     * \brief XRGame render scale of shadow-like depth images
 +     * \returns The scale in percent, or 0 if the image is not scaled
 +     */
-+    uint32_t XrGameScalePercent() const {
++    uint32_t XrGameScaleEighths() const {
 +      return m_xrgameScale;
 +    }
 +
@@ -515,7 +753,7 @@ index 589603cf..7a56ecae 100644
      /**
       * \brief Special DXGI usage flags
       *
-@@ -588,6 +637,13 @@ namespace dxvk {
+@@ -588,6 +659,13 @@ namespace dxvk {
  
      void*                         m_mapPtr = nullptr;
  
@@ -530,19 +768,19 @@ index 589603cf..7a56ecae 100644
              UINT                  Subresource);
      
 diff --git a/src/d3d11/d3d11_view_dsv.cpp b/src/d3d11/d3d11_view_dsv.cpp
-index ba6523ed..9a4db50e 100644
+index ba6523ed..33beb2a2 100644
 --- a/src/d3d11/d3d11_view_dsv.cpp
 +++ b/src/d3d11/d3d11_view_dsv.cpp
 @@ -104,6 +104,7 @@ namespace dxvk {
  
      // Create the underlying image view object
      m_view = GetCommonTexture(pResource)->GetImage()->createView(viewInfo);
-+    m_xrgameScale = GetCommonTexture(pResource)->XrGameScalePercent();
++    m_xrgameScale = GetCommonTexture(pResource)->XrGameScaleEighths();
    }
    
    
 diff --git a/src/d3d11/d3d11_view_dsv.h b/src/d3d11/d3d11_view_dsv.h
-index 1b4c71e0..4b3c78f2 100644
+index 1b4c71e0..70a09adc 100644
 --- a/src/d3d11/d3d11_view_dsv.h
 +++ b/src/d3d11/d3d11_view_dsv.h
 @@ -64,6 +64,14 @@ namespace dxvk {
@@ -550,10 +788,10 @@ index 1b4c71e0..4b3c78f2 100644
      }
  
 +    /**
-+     * \brief XRGame render scale of the depth image in percent
++     * \brief XRGame render scale of the depth image in eighths
 +     * \returns The scale, or 0 if the image is not scaled
 +     */
-+    uint32_t XrGameScalePercent() const {
++    uint32_t XrGameScaleEighths() const {
 +      return m_xrgameScale;
 +    }
 +
@@ -569,6 +807,46 @@ index 1b4c71e0..4b3c78f2 100644
      D3DDestructionNotifier            m_destructionNotifier;
  
      VkImageLayout GetViewLayout() const;
+diff --git a/src/d3d11/d3d11_view_rtv.cpp b/src/d3d11/d3d11_view_rtv.cpp
+index 4f6a4c03..556871b4 100644
+--- a/src/d3d11/d3d11_view_rtv.cpp
++++ b/src/d3d11/d3d11_view_rtv.cpp
+@@ -115,6 +115,7 @@ namespace dxvk {
+     
+     // Create the underlying image view object
+     m_view = texture->GetImage()->createView(viewInfo);
++    m_xrgameScale = texture->XrGameScaleEighths();
+   }
+   
+   
+diff --git a/src/d3d11/d3d11_view_rtv.h b/src/d3d11/d3d11_view_rtv.h
+index 377da30b..30fe4923 100644
+--- a/src/d3d11/d3d11_view_rtv.h
++++ b/src/d3d11/d3d11_view_rtv.h
+@@ -51,6 +51,14 @@ namespace dxvk {
+       return m_view;
+     }
+     
++    /**
++     * \brief XRGame render scale of the image in eighths
++     * \returns The scale, or 0 if the image is not scaled
++     */
++    uint32_t XrGameScaleEighths() const {
++      return m_xrgameScale;
++    }
++
+     UINT GetSampleCount() const {
+       return UINT(m_view->image()->info().sampleCount);
+     }
+@@ -80,6 +88,8 @@ namespace dxvk {
+     D3D11_RENDER_TARGET_VIEW_DESC1    m_desc;
+     D3D11_VK_VIEW_INFO                m_info;
+     Rc<DxvkImageView>                 m_view;
++
++    uint32_t                          m_xrgameScale = 0u;
+     D3D10RenderTargetView             m_d3d10;
+ 
+     D3DDestructionNotifier            m_destructionNotifier;
 diff --git a/src/d3d11/d3d11_view_srv.cpp b/src/d3d11/d3d11_view_srv.cpp
 index 78f4830a..20cbb86d 100644
 --- a/src/d3d11/d3d11_view_srv.cpp
@@ -599,3 +877,670 @@ index 78f4830a..20cbb86d 100644
        // Create the underlying image view object
        m_imageView = texture->GetImage()->createView(viewInfo);
      }
+diff --git a/src/dxvk/dxvk_context.cpp b/src/dxvk/dxvk_context.cpp
+index 187e1aeb..257846a8 100644
+--- a/src/dxvk/dxvk_context.cpp
++++ b/src/dxvk/dxvk_context.cpp
+@@ -6704,6 +6704,25 @@ namespace dxvk {
+ 
+         VkDeviceAddress va = 0u;
+ 
++        // XRGame render scale tag of an image the shader maps coordinates for
++        if (binding.getDescriptorType() == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
++         || binding.getDescriptorType() == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
++          uint32_t tag = 0u;
++
++          if (res.imageView) {
++            VkExtent2D requested = res.imageView->image()->info().xrgameRequestedExtent;
++
++            if (unlikely(requested.width)) {
++              uint32_t mip = res.imageView->info().mipIndex;
++              tag = std::max(1u, requested.width >> mip)
++                  | std::max(1u, requested.height >> mip) << 16u;
++            }
++          }
++
++          std::memcpy(&m_state.pc.resourceData[binding.getBlockOffset()], &tag, sizeof(tag));
++          continue;
++        }
++
+         if (binding.isUniformBuffer()) {
+           const auto& slice = m_uniformBuffers[binding.getResourceIndex()];
+ 
+diff --git a/src/dxvk/dxvk_image.h b/src/dxvk/dxvk_image.h
+index 16f0e15a..134246ec 100644
+--- a/src/dxvk/dxvk_image.h
++++ b/src/dxvk/dxvk_image.h
+@@ -77,6 +77,10 @@ namespace dxvk {
+ 
+     // Debug name
+     const char* debugName = nullptr;
++
++    // XRGame render scale: the size the application created the image with
++    // when the image itself is smaller, zero otherwise
++    VkExtent2D xrgameRequestedExtent = { 0u, 0u };
+   };
+   
+   
+diff --git a/src/dxvk/dxvk_pipelayout.cpp b/src/dxvk/dxvk_pipelayout.cpp
+index 8ed23227..ea7ff9ec 100644
+--- a/src/dxvk/dxvk_pipelayout.cpp
++++ b/src/dxvk/dxvk_pipelayout.cpp
+@@ -651,8 +651,14 @@ namespace dxvk {
+       if (binding.getDescriptorType() == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+         throw DxvkError("Combined image/sampler descriptors not supported");
+ 
++      // XRGame render scale tags are push data copied from image views and
++      // carry no access of their own
++      bool isScaleTag = !binding.usesDescriptor()
++        && (binding.getDescriptorType() == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
++         || binding.getDescriptorType() == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
++
+       if (binding.getDescriptorCount()) {
+-        if (binding.getDescriptorType() != VK_DESCRIPTOR_TYPE_SAMPLER) {
++        if (binding.getDescriptorType() != VK_DESCRIPTOR_TYPE_SAMPLER && !isScaleTag) {
+           if (binding.getAccess() & vk::AccessWriteMask) {
+             appendDescriptors(m_readWriteResources, binding, srcMapping);
+ 
+diff --git a/src/dxvk/dxvk_pipelayout.h b/src/dxvk/dxvk_pipelayout.h
+index a8facbeb..5e24c993 100644
+--- a/src/dxvk/dxvk_pipelayout.h
++++ b/src/dxvk/dxvk_pipelayout.h
+@@ -448,6 +448,11 @@ namespace dxvk {
+         case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+           return sizeof(VkDeviceAddress);
+ 
++        // XRGame render scale tag of an image: requested width | height << 16
++        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
++        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
++          return sizeof(uint32_t);
++
+         default:
+           return 0u;
+       }
+diff --git a/src/dxvk/dxvk_shader.h b/src/dxvk/dxvk_shader.h
+index 9be0cd78..2e7f0712 100644
+--- a/src/dxvk/dxvk_shader.h
++++ b/src/dxvk/dxvk_shader.h
+@@ -29,11 +29,16 @@ namespace dxvk {
+     static constexpr uint32_t MaxTessFactorOffset = SampleCountOffset + SampleCountBits;
+     static constexpr uint32_t MaxTessFactorBits = 8u;
+ 
++    /// XRGame render scale of the bound render targets in eighths, 0 if not scaled
++    static constexpr uint32_t RenderScaleOffset = MaxTessFactorOffset + MaxTessFactorBits;
++    static constexpr uint32_t RenderScaleBits = 4u;
++
+     DxvkBuiltInPushData() = default;
+ 
+-    explicit DxvkBuiltInPushData(uint32_t sampleCount, uint32_t maxTessFactor)
++    explicit DxvkBuiltInPushData(uint32_t sampleCount, uint32_t maxTessFactor, uint32_t renderScale = 0u)
+     : builtIns((sampleCount   << SampleCountOffset)
+-             | (maxTessFactor << MaxTessFactorOffset)) { }
++             | (maxTessFactor << MaxTessFactorOffset)
++             | (renderScale   << RenderScaleOffset)) { }
+ 
+     uint32_t builtIns = 0u;
+   };
+diff --git a/src/dxvk/dxvk_shader_cache.cpp b/src/dxvk/dxvk_shader_cache.cpp
+index f35d602d..fa7a0154 100644
+--- a/src/dxvk/dxvk_shader_cache.cpp
++++ b/src/dxvk/dxvk_shader_cache.cpp
+@@ -186,7 +186,7 @@ namespace dxvk {
+ 
+     LutHeader header = { };
+     header.magic = { 'D', 'X', 'V', 'K' };
+-    header.versionString = DXVK_VERSION;
++    header.versionString = std::string(DXVK_VERSION) + DxvkXrGameRenderScale::get().cacheSuffix;
+ 
+     if (!writeHeader(m_lutFile, header)) {
+       Logger::warn(str::format("Failed to write cache header: ", path + m_filePaths.lutFile));
+@@ -209,9 +209,12 @@ namespace dxvk {
+       return false;
+     }
+ 
+-    if (header.versionString != DXVK_VERSION) {
++    // XRGame: shaders lowered with the render scale rewrite get their own cache version
++    std::string versionString = std::string(DXVK_VERSION) + DxvkXrGameRenderScale::get().cacheSuffix;
++
++    if (header.versionString != versionString) {
+       Logger::warn(str::format("Cache was created with DXVK version ", header.versionString,
+-        ", but current version is ", DXVK_VERSION, ". Discarding old cache."));
++        ", but current version is ", versionString, ". Discarding old cache."));
+       return false;
+     }
+ 
+diff --git a/src/dxvk/dxvk_shader_ir.cpp b/src/dxvk/dxvk_shader_ir.cpp
+index aefdac5e..1b5e3d4b 100644
+--- a/src/dxvk/dxvk_shader_ir.cpp
++++ b/src/dxvk/dxvk_shader_ir.cpp
+@@ -6,6 +6,8 @@
+ 
+ #include "dxvk_shader_ir.h"
+ 
++#include "../util/util_env.h"
++
+ namespace dxvk {
+ 
+   size_t DxvkIrShaderCreateInfo::hash() const {
+@@ -173,6 +175,39 @@ namespace dxvk {
+    *
+    * Also generates pipeline layout information from lowered resources.
+    */
++  const DxvkXrGameRenderScale& DxvkXrGameRenderScale::get() {
++    static const DxvkXrGameRenderScale s_settings = [] {
++      DxvkXrGameRenderScale settings;
++
++      std::string scale = env::getEnvVar("XRGAME_RENDER_SCALE");
++      bool enabled = scale == "75" || scale == "50" || scale == "37.5" || scale == "25";
++
++      if (!enabled)
++        return settings;
++
++      uint32_t debug = 0u;
++      std::string debugEnv = env::getEnvVar("XRGAME_RENDER_SCALE_DEBUG");
++
++      if (!debugEnv.empty())
++        debug = uint32_t(std::strtoul(debugEnv.c_str(), nullptr, 0));
++
++      settings.fragCoord    = !(debug & 1u) && !(debug & 2u);
++      settings.texelMapping = !(debug & 1u) && !(debug & 4u);
++      settings.sizeQuery    = !(debug & 1u) && !(debug & 8u);
++
++      if (settings.fragCoord || settings.images())
++        settings.cacheSuffix = str::format("+xrgame-rs1-", debug);
++
++      Logger::info(str::format("XRGame render scale shaders: SV_Position ", settings.fragCoord ? "on" : "off",
++        ", texel coordinates ", settings.texelMapping ? "on" : "off",
++        ", size queries ", settings.sizeQuery ? "on" : "off"));
++      return settings;
++    }();
++
++    return s_settings;
++  }
++
++
+   class DxvkIrLowerBindingModelPass {
+ 
+   public:
+@@ -264,6 +299,10 @@ namespace dxvk {
+       }
+ 
+       rewriteSamplers();
++
++      if (DxvkXrGameRenderScale::get().images())
++        rewriteScaledImages();
++
+       rewriteUavCounters();
+ 
+       if (m_sharedPushDataOffset) {
+@@ -322,6 +361,17 @@ namespace dxvk {
+       dxbc_spv::ir::SsaDef dcl = { };
+     };
+ 
++    struct ScaledImageInfo {
++      dxbc_spv::ir::SsaDef dcl = { };
++      bool isUav = false;
++    };
++
++    struct ScaleTag {
++      dxbc_spv::ir::SsaDef scaled = { };
++      dxbc_spv::ir::SsaDef width = { };
++      dxbc_spv::ir::SsaDef height = { };
++    };
++
+     struct ResourceKey {
+       dxbc_spv::ir::OpCode opCode = { };
+       uint32_t registerSpace = 0u;
+@@ -373,6 +423,9 @@ namespace dxvk {
+ 
+     small_vector<SamplerInfo,     16u>  m_samplers;
+     small_vector<UavCounterInfo,  64u>  m_uavCounters;
++    small_vector<ScaledImageInfo, 16u>  m_scaledImages;
++
++    dxbc_spv::ir::SsaDef          m_fragCoordScaleFunction = { };
+ 
+     std::unordered_map<ResourceKey, ResourceAlias, DxvkHash, DxvkEq> m_resources;
+ 
+@@ -520,6 +573,8 @@ namespace dxvk {
+       if (dxbc_spv::ir::resourceIsMultisampled(resourceKind))
+         binding.flags.set(DxvkDescriptorFlag::Multisampled);
+ 
++      addScaledImageCandidate(op->getDef(), resourceKind, regCount, false);
++
+       auto& resourceAlias = getResourceAlias(op->getOpCode(), regSpace, regIndex, binding.descriptorType);
+ 
+       if (!resourceAlias.hasAlias)
+@@ -560,6 +615,8 @@ namespace dxvk {
+         binding.accessOp = determineAccessOpForUav(op);
+       }
+ 
++      addScaledImageCandidate(op->getDef(), resourceKind, regCount, true);
++
+       auto& resourceAlias = getResourceAlias(op->getOpCode(), regSpace, regIndex, binding.descriptorType);
+ 
+       if (!resourceAlias.hasAlias)
+@@ -614,6 +671,10 @@ namespace dxvk {
+       if (builtIn == dxbc_spv::ir::BuiltIn::eIsFullyCovered)
+         m_metadata.flags.set(DxvkShaderFlag::UsesFragmentCoverage);
+ 
++      if (builtIn == dxbc_spv::ir::BuiltIn::ePosition && m_stage == dxbc_spv::ir::ShaderStage::ePixel
++       && DxvkXrGameRenderScale::get().fragCoord)
++        rewriteFragCoord(op->getDef());
++
+       return ++op;
+     }
+ 
+@@ -1279,6 +1340,379 @@ namespace dxvk {
+     }
+ 
+ 
++    /**
++     * XRGame render scale. Render and depth targets may live in images smaller
++     * than the application created them (shadPS4's internal scale). Each 2D image
++     * that the shader loads from, stores to, does atomics on or queries the size
++     * of gets a push data tag: the requested width | height << 16 at the view's
++     * top mip, 0 when the image is not scaled. Integer texel coordinates are then
++     * mapped to floor((c + 0.5) * actual / requested) and size queries return the
++     * requested size. SV_Position is divided by the scale of the bound render
++     * targets, which the built-in push data carries.
++     */
++    void addScaledImageCandidate(dxbc_spv::ir::SsaDef dcl, dxbc_spv::ir::ResourceKind kind, uint32_t count, bool isUav) {
++      if (count != 1u)
++        return;
++
++      if (kind != dxbc_spv::ir::ResourceKind::eImage2D
++       && kind != dxbc_spv::ir::ResourceKind::eImage2DArray)
++        return;
++
++      auto& e = m_scaledImages.emplace_back();
++      e.dcl = dcl;
++      e.isUav = isUav;
++    }
++
++
++    bool imageNeedsScaleTag(dxbc_spv::ir::SsaDef dcl) {
++      small_vector<dxbc_spv::ir::SsaDef, 64u> descriptors;
++      m_builder.getUses(dcl, descriptors);
++
++      for (auto descriptor : descriptors) {
++        if (m_builder.getOp(descriptor).getOpCode() != dxbc_spv::ir::OpCode::eDescriptorLoad)
++          continue;
++
++        small_vector<dxbc_spv::ir::SsaDef, 64u> uses;
++        m_builder.getUses(descriptor, uses);
++
++        for (auto use : uses) {
++          switch (m_builder.getOp(use).getOpCode()) {
++            case dxbc_spv::ir::OpCode::eImageLoad:
++            case dxbc_spv::ir::OpCode::eImageStore:
++            case dxbc_spv::ir::OpCode::eImageAtomic:
++            case dxbc_spv::ir::OpCode::eImageQuerySize:
++              return true;
++
++            default:
++              break;
++          }
++        }
++      }
++
++      return false;
++    }
++
++
++    void rewriteScaledImages() {
++      small_vector<ScaledImageInfo, 16u> used;
++
++      for (const auto& e : m_scaledImages) {
++        if (imageNeedsScaleTag(e.dcl))
++          used.push_back(e);
++      }
++
++      if (used.empty())
++        return;
++
++      size_t maxPushDataSize = m_stage == dxbc_spv::ir::ShaderStage::eCompute
++        ? MaxTotalPushDataSize - MaxReservedPushDataSize
++        : MaxPerStagePushDataSize;
++
++      // The resource mask covers 32 dwords of the local block
++      maxPushDataSize = std::min<size_t>(maxPushDataSize, 32u * sizeof(uint32_t));
++
++      m_localPushDataOffset = align(m_localPushDataOffset, sizeof(uint32_t));
++
++      size_t space = m_localPushDataOffset < maxPushDataSize ? maxPushDataSize - m_localPushDataOffset : 0u;
++      uint32_t count = std::min<uint32_t>(used.size(), space / sizeof(uint32_t));
++
++      if (count < used.size()) {
++        static std::atomic<bool> s_logged = { false };
++
++        if (!s_logged.exchange(true)) {
++          Logger::warn(str::format("XRGame: no push data space for ", used.size() - count,
++            " render scale tags, those images keep application coordinates"));
++        }
++      }
++
++      if (!count)
++        return;
++
++      dxbc_spv::ir::Type pushDataType = { };
++
++      for (uint32_t i = 0u; i < count; i++)
++        pushDataType.addStructMember(dxbc_spv::ir::ScalarType::eU32);
++
++      auto pushDataVar = m_builder.add(dxbc_spv::ir::Op::DclPushData(
++        pushDataType, m_entryPoint, m_localPushDataOffset, m_stage));
++
++      for (uint32_t i = 0u; i < count; i++) {
++        const auto& dclOp = m_builder.getOp(used[i].dcl);
++
++        auto regSpace = uint32_t(dclOp.getOperand(1u));
++        auto regIndex = uint32_t(dclOp.getOperand(2u));
++
++        DxvkBindingInfo binding = { };
++        binding.resourceIndex = m_shader.determineResourceIndex(m_stage, used[i].isUav
++          ? dxbc_spv::ir::ScalarType::eUav : dxbc_spv::ir::ScalarType::eSrv, regSpace, regIndex);
++        binding.descriptorType = used[i].isUav
++          ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
++        binding.blockOffset = MaxSharedPushDataSize + m_localPushDataOffset;
++        binding.flags.set(DxvkDescriptorFlag::PushData);
++
++        addBinding(binding);
++
++        m_localPushDataResourceMask |= 1u << (m_localPushDataOffset / sizeof(uint32_t));
++        m_localPushDataOffset += sizeof(uint32_t);
++
++        std::string debugName = "xrgame_scale_" + getDebugName(used[i].dcl);
++        addDebugMemberName(pushDataVar, i, debugName);
++
++        rewriteScaledImageUses(used[i].dcl, pushDataVar, i);
++      }
++    }
++
++
++    void rewriteScaledImageUses(dxbc_spv::ir::SsaDef dcl, dxbc_spv::ir::SsaDef pushDataVar, uint32_t member) {
++      small_vector<dxbc_spv::ir::SsaDef, 64u> descriptors;
++      m_builder.getUses(dcl, descriptors);
++
++      for (auto descriptor : descriptors) {
++        if (m_builder.getOp(descriptor).getOpCode() != dxbc_spv::ir::OpCode::eDescriptorLoad)
++          continue;
++
++        small_vector<dxbc_spv::ir::SsaDef, 64u> uses;
++        m_builder.getUses(descriptor, uses);
++
++        const auto& settings = DxvkXrGameRenderScale::get();
++
++        for (auto use : uses) {
++          switch (m_builder.getOp(use).getOpCode()) {
++            case dxbc_spv::ir::OpCode::eImageLoad:
++              if (settings.texelMapping)
++                rewriteScaledImageCoord(use, pushDataVar, member, 3u, 1u, 5u);
++              break;
++
++            case dxbc_spv::ir::OpCode::eImageStore:
++            case dxbc_spv::ir::OpCode::eImageAtomic:
++              if (settings.texelMapping)
++                rewriteScaledImageCoord(use, pushDataVar, member, 2u, -1u, -1u);
++              break;
++
++            case dxbc_spv::ir::OpCode::eImageQuerySize:
++              if (settings.sizeQuery)
++                rewriteScaledImageQuery(use, pushDataVar, member);
++              break;
++
++            default:
++              break;
++          }
++        }
++      }
++    }
++
++
++    ScaleTag loadScaleTag(dxbc_spv::ir::SsaDef ref, dxbc_spv::ir::SsaDef pushDataVar, uint32_t member, dxbc_spv::ir::SsaDef mip) {
++      using namespace dxbc_spv::ir;
++
++      // A push data block with a single member is a plain scalar and takes no member index
++      SsaDef memberIndex = { };
++
++      if (m_builder.getOp(pushDataVar).getType().isStructType())
++        memberIndex = m_builder.makeConstant(member);
++
++      auto tag = m_builder.addBefore(ref, Op::PushDataLoad(ScalarType::eU32, pushDataVar, memberIndex));
++
++      ScaleTag result = { };
++      result.scaled = m_builder.addBefore(ref, Op::INe(ScalarType::eBool, tag, m_builder.makeConstant(0u)));
++      result.width = m_builder.addBefore(ref, Op::IAnd(ScalarType::eU32, tag, m_builder.makeConstant(0xffffu)));
++      result.height = m_builder.addBefore(ref, Op::UShr(ScalarType::eU32, tag, m_builder.makeConstant(16u)));
++
++      if (mip) {
++        result.width = m_builder.addBefore(ref, Op::UShr(ScalarType::eU32, result.width, mip));
++        result.height = m_builder.addBefore(ref, Op::UShr(ScalarType::eU32, result.height, mip));
++      }
++
++      // Unscaled images have a zero tag; keep the divisor valid either way
++      result.width = m_builder.addBefore(ref, Op::UMax(ScalarType::eU32, result.width, m_builder.makeConstant(1u)));
++      result.height = m_builder.addBefore(ref, Op::UMax(ScalarType::eU32, result.height, m_builder.makeConstant(1u)));
++      return result;
++    }
++
++
++    dxbc_spv::ir::SsaDef mapScaledCoord(dxbc_spv::ir::SsaDef ref, dxbc_spv::ir::SsaDef coord,
++        dxbc_spv::ir::SsaDef actual, dxbc_spv::ir::SsaDef requested, dxbc_spv::ir::SsaDef scaled) {
++      using namespace dxbc_spv::ir;
++
++      // floor((c + 0.5) * actual / requested); out-of-bounds coordinates stay out of bounds
++      auto signedCoord = m_builder.addBefore(ref, Op::Cast(ScalarType::eI32, coord));
++      auto value = m_builder.addBefore(ref, Op::ConvertItoF(ScalarType::eF32, signedCoord));
++      value = m_builder.addBefore(ref, Op::FAdd(ScalarType::eF32, value, m_builder.makeConstant(0.5f)));
++
++      auto actualF = m_builder.addBefore(ref, Op::ConvertItoF(ScalarType::eF32, actual));
++      auto requestedF = m_builder.addBefore(ref, Op::ConvertItoF(ScalarType::eF32, requested));
++
++      value = m_builder.addBefore(ref, Op::FMul(ScalarType::eF32, value, actualF));
++      value = m_builder.addBefore(ref, Op::FDiv(ScalarType::eF32, value, requestedF));
++      value = m_builder.addBefore(ref, Op::FRound(ScalarType::eF32, value, RoundMode::eNegativeInf));
++
++      auto mapped = m_builder.addBefore(ref, Op::ConvertFtoI(ScalarType::eI32, value));
++      mapped = m_builder.addBefore(ref, Op::Cast(ScalarType::eU32, mapped));
++
++      return m_builder.addBefore(ref, Op::Select(ScalarType::eU32, scaled, mapped, coord));
++    }
++
++
++    void rewriteScaledImageCoord(dxbc_spv::ir::SsaDef use, dxbc_spv::ir::SsaDef pushDataVar,
++        uint32_t member, uint32_t coordOperand, uint32_t mipOperand, uint32_t offsetOperand) {
++      using namespace dxbc_spv::ir;
++
++      auto useOp = Op(m_builder.getOp(use));
++
++      auto descriptor = SsaDef(useOp.getOperand(0u));
++      auto coord = SsaDef(useOp.getOperand(coordOperand));
++      auto mip = mipOperand != -1u ? SsaDef(useOp.getOperand(mipOperand)) : SsaDef();
++      auto offset = offsetOperand != -1u ? SsaDef(useOp.getOperand(offsetOperand)) : SsaDef();
++
++      if (!coord)
++        return;
++
++      auto coordType = m_builder.getOp(coord).getType();
++
++      if (!coordType.isBasicType() || coordType.getBaseType(0u).getVectorSize() != 2u)
++        return;
++
++      auto coordScalar = coordType.getBaseType(0u).getBaseType();
++
++      if (coordScalar != ScalarType::eU32 && coordScalar != ScalarType::eI32)
++        return;
++
++      // Actual size of the image at the accessed mip
++      auto sizeType = Type()
++        .addStructMember(ScalarType::eU32, 2u)
++        .addStructMember(ScalarType::eU32);
++
++      auto sizeInfo = m_builder.addBefore(use, Op::ImageQuerySize(sizeType, descriptor, mip));
++      auto tag = loadScaleTag(use, pushDataVar, member, mip);
++
++      std::array<SsaDef, 2u> components = { };
++
++      for (uint32_t i = 0u; i < 2u; i++) {
++        auto c = m_builder.addBefore(use, Op::CompositeExtract(coordScalar, coord, m_builder.makeConstant(i)));
++
++        if (coordScalar != ScalarType::eU32)
++          c = m_builder.addBefore(use, Op::Cast(ScalarType::eU32, c));
++
++        // Immediate offsets count texels of the requested size
++        if (offset) {
++          auto o = m_builder.addBefore(use, Op::CompositeExtract(ScalarType::eI32, offset, m_builder.makeConstant(i)));
++          o = m_builder.addBefore(use, Op::Cast(ScalarType::eU32, o));
++          c = m_builder.addBefore(use, Op::IAdd(ScalarType::eU32, c, o));
++        }
++
++        auto actual = m_builder.addBefore(use, Op::CompositeExtract(ScalarType::eU32, sizeInfo, m_builder.makeConstant(0u, i)));
++        c = mapScaledCoord(use, c, actual, i ? tag.height : tag.width, tag.scaled);
++
++        if (coordScalar != ScalarType::eU32)
++          c = m_builder.addBefore(use, Op::Cast(coordScalar, c));
++
++        components[i] = c;
++      }
++
++      auto newCoord = m_builder.addBefore(use, Op::CompositeConstruct(coordType, components[0u], components[1u]));
++
++      useOp.setOperand(coordOperand, newCoord);
++
++      if (offset)
++        useOp.setOperand(offsetOperand, SsaDef());
++
++      m_builder.rewriteOp(use, std::move(useOp));
++    }
++
++
++    void rewriteScaledImageQuery(dxbc_spv::ir::SsaDef use, dxbc_spv::ir::SsaDef pushDataVar, uint32_t member) {
++      using namespace dxbc_spv::ir;
++
++      auto queryOp = Op(m_builder.getOp(use));
++      auto queryType = queryOp.getType();
++
++      if (!queryType.isStructType() || queryType.getBaseType(0u).getVectorSize() != 2u)
++        return;
++
++      auto mip = SsaDef(queryOp.getOperand(1u));
++      auto sizeInfo = m_builder.addBefore(use, Op(queryOp));
++      auto tag = loadScaleTag(use, pushDataVar, member, mip);
++
++      auto sizeType = Type(queryType.getBaseType(0u));
++      auto layers = m_builder.addBefore(use, Op::CompositeExtract(Type(queryType.getBaseType(1u)), sizeInfo, m_builder.makeConstant(1u)));
++
++      std::array<SsaDef, 2u> components = { };
++
++      for (uint32_t i = 0u; i < 2u; i++) {
++        auto actual = m_builder.addBefore(use, Op::CompositeExtract(ScalarType::eU32, sizeInfo, m_builder.makeConstant(0u, i)));
++        components[i] = m_builder.addBefore(use, Op::Select(ScalarType::eU32, tag.scaled, i ? tag.height : tag.width, actual));
++      }
++
++      auto size = m_builder.addBefore(use, Op::CompositeConstruct(sizeType, components[0u], components[1u]));
++      m_builder.rewriteOp(use, Op::CompositeConstruct(queryType, size, layers));
++    }
++
++
++    dxbc_spv::ir::SsaDef getFragCoordScaleFunction() {
++      using namespace dxbc_spv::ir;
++
++      if (m_fragCoordScaleFunction)
++        return m_fragCoordScaleFunction;
++
++      // 8 / eighths of the bound render targets, 1 when they are not scaled
++      auto ref = m_builder.getCode().first->getDef();
++
++      auto helper = m_builder.addBefore(ref, Op::Function(ScalarType::eF32));
++      auto cursor = m_builder.setCursor(helper);
++
++      m_builder.add(Op::Label());
++
++      auto value = m_builder.add(Op::PushDataLoad(ScalarType::eU32, defineBuiltInPushData(), SsaDef()));
++      value = m_builder.add(Op::UBitExtract(ScalarType::eU32, value,
++        m_builder.makeConstant(DxvkBuiltInPushData::RenderScaleOffset),
++        m_builder.makeConstant(DxvkBuiltInPushData::RenderScaleBits)));
++
++      auto unscaled = m_builder.add(Op::IEq(ScalarType::eBool, value, m_builder.makeConstant(0u)));
++      value = m_builder.add(Op::Select(ScalarType::eU32, unscaled, m_builder.makeConstant(8u), value));
++      value = m_builder.add(Op::ConvertItoF(ScalarType::eF32, value));
++      value = m_builder.add(Op::FDiv(ScalarType::eF32, m_builder.makeConstant(8.0f), value));
++
++      m_builder.add(Op::Return(ScalarType::eF32, value));
++      m_builder.add(Op::FunctionEnd());
++      m_builder.setCursor(cursor);
++
++      m_builder.add(Op::DebugName(helper, "xrgame_frag_coord_scale"));
++
++      m_fragCoordScaleFunction = helper;
++      return helper;
++    }
++
++
++    void rewriteFragCoord(dxbc_spv::ir::SsaDef dcl) {
++      using namespace dxbc_spv::ir;
++
++      small_vector<SsaDef, 64u> uses;
++      m_builder.getUses(dcl, uses);
++
++      for (auto use : uses) {
++        auto loadOp = Op(m_builder.getOp(use));
++
++        if (loadOp.getOpCode() != OpCode::eInputLoad || loadOp.getType() != ScalarType::eF32)
++          continue;
++
++        auto address = SsaDef(loadOp.getOperand(1u));
++
++        if (!address || !m_builder.getOp(address).isConstant())
++          continue;
++
++        auto component = uint32_t(m_builder.getOp(address).getOperand(0u));
++
++        if (component > 1u)
++          continue;
++
++        auto load = m_builder.addBefore(use, std::move(loadOp));
++        auto factor = m_builder.addBefore(use, Op::FunctionCall(ScalarType::eF32, getFragCoordScaleFunction()));
++
++        m_builder.rewriteOp(use, Op::FMul(ScalarType::eF32, load, factor));
++      }
++    }
++
++
+     void addBinding(const DxvkBindingInfo& binding) {
+       DxvkShaderDescriptor descriptor(binding, m_metadata.stage);
+       m_layout.addBindings(1u, &descriptor);
+diff --git a/src/dxvk/dxvk_shader_ir.h b/src/dxvk/dxvk_shader_ir.h
+index 9def83f5..d5eb0418 100644
+--- a/src/dxvk/dxvk_shader_ir.h
++++ b/src/dxvk/dxvk_shader_ir.h
+@@ -16,6 +16,29 @@
+ 
+ namespace dxvk {
+ 
++  /**
++   * \brief XRGame render scale settings for shader lowering
++   *
++   * Read once from XRGAME_RENDER_SCALE. Shaders only get the render scale
++   * rewrite while the scale is below 100%. XRGAME_RENDER_SCALE_DEBUG bits
++   * leave parts out for diagnosis: 1 all of it, 2 SV_Position, 4 texel
++   * coordinates of loads, stores and atomics, 8 size queries.
++   */
++  struct DxvkXrGameRenderScale {
++    bool fragCoord    = false;
++    bool texelMapping = false;
++    bool sizeQuery    = false;
++
++    /// Suffix of the shader cache version, empty while shaders are unchanged
++    std::string cacheSuffix;
++
++    bool images() const {
++      return texelMapping || sizeQuery;
++    }
++
++    static const DxvkXrGameRenderScale& get();
++  };
++
+   /**
+    * \brief IR shader properties
+    *

@@ -1,41 +1,218 @@
+diff --git a/include/vkd3d_shader.h b/include/vkd3d_shader.h
+index c40923b1..3f9e2dd1 100644
+--- a/include/vkd3d_shader.h
++++ b/include/vkd3d_shader.h
+@@ -326,6 +326,12 @@ struct vkd3d_shader_interface_info
+     unsigned int root_parameter_mapping_count;
+     const void *root_signature_blob;
+     size_t root_signature_blob_size;
++
++    /* XRGame render scale: binding of the raw VA aux buffer that holds the texture tags,
++     * NULL when rendering is not scaled. */
++    const struct vkd3d_shader_descriptor_binding *xrgame_aux_binding;
++    /* Byte offset of the current pass scale in the push constants, 0 when there is none. */
++    uint32_t xrgame_pass_scale_offset;
+ };
+ 
+ struct vkd3d_shader_descriptor_table
+diff --git a/libs/vkd3d-shader/dxil.c b/libs/vkd3d-shader/dxil.c
+index bdad5e8d..2d48d309 100644
+--- a/libs/vkd3d-shader/dxil.c
++++ b/libs/vkd3d-shader/dxil.c
+@@ -23,6 +23,7 @@
+ #include "vkd3d_shader_private.h"
+ #include "vkd3d_utf8.h"
+ #include "vkd3d_string.h"
++#include "vkd3d_platform.h"
+ #include <inttypes.h>
+ #include <stdio.h>
+ #include <dxil_spirv_c.h>
+@@ -236,6 +237,24 @@ static dxil_spv_bool dxil_remap_inner(
+     return DXIL_SPV_FALSE;
+ }
+ 
++/* XRGAME_RENDER_SCALE_DEBUG (see vkd3d_xrgame_config): bit 2 leaves SV_Position alone (0x100 here),
++ * bit 4 the texel coordinates and bit 8 the size queries. */
++static unsigned int vkd3d_shader_xrgame_render_scale_flags(void)
++{
++    unsigned int debug = 0, flags = 0;
++    char env[16];
++
++    if (vkd3d_get_env_var("XRGAME_RENDER_SCALE_DEBUG", env, sizeof(env)))
++        debug = strtoul(env, NULL, 0);
++    if (debug & 2)
++        flags |= 0x100u;
++    if (debug & 4)
++        flags |= DXIL_SPV_XRGAME_RENDER_SCALE_NO_TEXEL_MAPPING;
++    if (debug & 8)
++        flags |= DXIL_SPV_XRGAME_RENDER_SCALE_NO_SIZE_QUERY;
++    return flags;
++}
++
+ static dxil_spv_bool dxil_remap(const struct vkd3d_dxil_remap_userdata *remap,
+         enum vkd3d_shader_descriptor_type descriptor_type, const struct dxil_spv_d3d_binding *d3d_binding,
+         struct dxil_spv_vulkan_binding *vk_binding, unsigned int resource_flags)
+@@ -1350,6 +1369,15 @@ int vkd3d_shader_compile_dxil(const struct vkd3d_shader_code *dxbc,
+             num_root_descriptors++;
+     }
+ 
++    /* XRGame render scale: the pass scale word follows the descriptor table offsets. */
++    if (shader_interface_info->xrgame_aux_binding && shader_interface_info->xrgame_pass_scale_offset &&
++            shader_interface_info->stage == VK_SHADER_STAGE_FRAGMENT_BIT)
++    {
++        max_size = shader_interface_info->xrgame_pass_scale_offset / sizeof(uint32_t) + 1;
++        if (max_size > root_constant_words)
++            root_constant_words = max_size;
++    }
++
+     /* Root constants come after root descriptors. Offset the counts. */
+     if (root_constant_words < num_root_descriptors * 2)
+         root_constant_words = num_root_descriptors * 2;
+@@ -1359,6 +1387,31 @@ int vkd3d_shader_compile_dxil(const struct vkd3d_shader_code *dxbc,
+             spirv->meta.hash, NULL, raw_va_binding_count || num_root_descriptors)))
+         goto end;
+ 
++    /* XRGame render scale. The tags live in the raw VA aux buffer, which embedded descriptors do not have. */
++    if (shader_interface_info->xrgame_aux_binding &&
++            !(shader_interface_info->flags & VKD3D_SHADER_INTERFACE_RAW_VA_ALIAS_DESCRIPTOR_BUFFER))
++    {
++        struct dxil_spv_option_xrgame_render_scale helper;
++
++        memset(&helper, 0, sizeof(helper));
++        helper.base.type = DXIL_SPV_OPTION_XRGAME_RENDER_SCALE;
++        helper.enabled = DXIL_SPV_TRUE;
++        helper.aux_desc_set = shader_interface_info->xrgame_aux_binding->set;
++        helper.aux_binding = shader_interface_info->xrgame_aux_binding->binding;
++        helper.pass_scale_word = UINT32_MAX;
++        helper.flags = vkd3d_shader_xrgame_render_scale_flags();
++        if (shader_interface_info->xrgame_pass_scale_offset &&
++                shader_interface_info->stage == VK_SHADER_STAGE_FRAGMENT_BIT &&
++                !(helper.flags & 0x100u))
++        {
++            helper.pass_scale_word = shader_interface_info->xrgame_pass_scale_offset / sizeof(uint32_t) -
++                    2 * num_root_descriptors;
++        }
++
++        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
++            WARN("dxil-spirv does not support XRGAME_RENDER_SCALE.\n");
++    }
++
+     remap_userdata.shader_interface_info = shader_interface_info;
+     remap_userdata.shader_interface_local_info = NULL;
+     remap_userdata.num_root_descriptors = num_root_descriptors;
 diff --git a/libs/vkd3d/command.c b/libs/vkd3d/command.c
-index e30a09a6..e3c6fcc2 100644
+index e30a09a6..0071bbd8 100644
 --- a/libs/vkd3d/command.c
 +++ b/libs/vkd3d/command.c
-@@ -3358,9 +3358,24 @@ static D3D12_RECT d3d12_get_image_rect(struct d3d12_resource *resource, const Vk
+@@ -3358,9 +3358,58 @@ static D3D12_RECT d3d12_get_image_rect(struct d3d12_resource *resource, const Vk
      rect.top = 0;
      rect.right = mip_extent.width;
      rect.bottom = mip_extent.height;
 +
-+    if (resource->xrgame_scale_percent)
++    if (resource->xrgame_scale_eighths)
 +    {
-+        rect.right = vkd3d_xrgame_scale_extent(rect.right, resource->xrgame_scale_percent);
-+        rect.bottom = vkd3d_xrgame_scale_extent(rect.bottom, resource->xrgame_scale_percent);
++        mip_extent = d3d12_resource_xrgame_image_mip_extent(resource, subresource->mipLevel);
++        rect.right = mip_extent.width;
++        rect.bottom = mip_extent.height;
 +    }
 +
      return rect;
  }
  
-+static void vkd3d_xrgame_scale_rect(D3D12_RECT *rect, uint32_t percent)
++/* XRGame render scale: maps D3D12 rectangles on Vulkan mip `vk_mip` of a scaled resource onto
++ * its image. Returns `rects` unchanged for unscaled resources, else `scaled` (or a heap copy the
++ * caller frees when there are more rectangles than fit). */
++static const D3D12_RECT *d3d12_resource_xrgame_scale_rects(const struct d3d12_resource *resource,
++        uint32_t vk_mip, UINT rect_count, const D3D12_RECT *rects, D3D12_RECT *scaled, UINT scaled_size,
++        D3D12_RECT **allocated)
 +{
-+    rect->left = (LONG)(((int64_t)rect->left * percent) / 100);
-+    rect->top = (LONG)(((int64_t)rect->top * percent) / 100);
-+    rect->right = (LONG)(((int64_t)rect->right * percent + 99) / 100);
-+    rect->bottom = (LONG)(((int64_t)rect->bottom * percent + 99) / 100);
++    VkImageSubresourceLayers layers;
++    VkExtent3D guest, host;
++    int32_t start, end;
++    D3D12_RECT *out;
++    UINT i;
++
++    *allocated = NULL;
++    if (!rect_count || !resource->xrgame_scale_eighths)
++        return rects;
++
++    out = scaled;
++    if (rect_count > scaled_size && !(out = *allocated = vkd3d_malloc(rect_count * sizeof(*out))))
++        return rects;
++
++    memset(&layers, 0, sizeof(layers));
++    layers.aspectMask = resource->format->vk_aspect_mask;
++    layers.mipLevel = vk_mip + resource->xrgame_mip_drop;
++    layers.layerCount = 1;
++    guest = d3d12_resource_desc_get_vk_subresource_extent(&resource->desc, resource->format, &layers);
++    host = d3d12_resource_xrgame_image_mip_extent(resource, vk_mip);
++
++    for (i = 0; i < rect_count; i++)
++    {
++        vkd3d_xrgame_map_span(max(rects[i].left, 0), max(rects[i].right, 0), guest.width, host.width, &start, &end);
++        out[i].left = start;
++        out[i].right = end;
++        vkd3d_xrgame_map_span(max(rects[i].top, 0), max(rects[i].bottom, 0), guest.height, host.height, &start, &end);
++        out[i].top = start;
++        out[i].bottom = end;
++    }
++
++    return out;
 +}
 +
  static bool d3d12_image_copy_writes_full_subresource(struct d3d12_resource *resource,
          const VkExtent3D *extent, const VkImageSubresourceLayers *subresource)
  {
-@@ -6799,6 +6814,7 @@ static void d3d12_command_list_reset_api_state(struct d3d12_command_list *list,
+@@ -6799,6 +6848,7 @@ static void d3d12_command_list_reset_api_state(struct d3d12_command_list *list,
      list->fb_width = limits->maxFramebufferWidth;
      list->fb_height = limits->maxFramebufferHeight;
      list->fb_layer_count = limits->maxFramebufferLayers;
-+    list->xrgame_fb_scale_percent = 0;
++    list->xrgame_fb_scale_eighths = 0;
  
      list->xfb_buffer_count = 0u;
  
-@@ -7909,10 +7925,42 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
+@@ -7335,6 +7385,7 @@ static void d3d12_command_list_update_descriptor_table_offsets(struct d3d12_comm
+     uint32_t table_offsets[D3D12_MAX_ROOT_COST];
+     unsigned int root_parameter_index;
+     uint64_t descriptor_table_mask;
++    unsigned int push_count;
+ 
+     assert(root_signature->descriptor_table_count);
+     descriptor_table_mask = root_signature->descriptor_table_mask;
+@@ -7375,13 +7426,18 @@ static void d3d12_command_list_update_descriptor_table_offsets(struct d3d12_comm
+ #endif
+     }
+ 
++    /* XRGame render scale: the pass scale follows the table offsets. */
++    push_count = root_signature->descriptor_table_count;
++    if (root_signature->xrgame_pass_scale_offset)
++        table_offsets[push_count++] = list->xrgame_fb_scale_eighths;
++
+     /* Set descriptor offsets */
+     if (push_stages)
+     {
+         VK_CALL(vkCmdPushConstants(list->cmd.vk_command_buffer,
+                 layout, push_stages,
+                 root_signature->descriptor_table_offset,
+-                root_signature->descriptor_table_count * sizeof(uint32_t),
++                push_count * sizeof(uint32_t),
+                 table_offsets));
+     }
+ 
+@@ -7604,6 +7660,12 @@ static void d3d12_command_list_fetch_root_parameter_uniform_block_data(struct d3
+         dst_data->root_constants[first_table_offset + table->table_index] =
+                 bindings->descriptor_tables[root_parameter_index];
+     }
++
++    if (root_signature->xrgame_pass_scale_offset)
++    {
++        dst_data->root_constants[root_signature->xrgame_pass_scale_offset / sizeof(uint32_t)] =
++                list->xrgame_fb_scale_eighths;
++    }
+ }
+ 
+ void d3d12_command_list_fetch_root_parameter_data(struct d3d12_command_list *list,
+@@ -7909,10 +7971,43 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
  
      if (dyn_state->viewport_count)
      {
@@ -44,11 +221,11 @@ index e30a09a6..e3c6fcc2 100644
 +        const VkViewport *viewports = dyn_state->viewports;
 +        const VkRect2D *scissors = dyn_state->scissors;
 +
-+        /* XRGame: the bound depth image is scaled, so the application's coordinates are too. */
-+        if (list->xrgame_fb_scale_percent)
++        /* XRGame: the bound render targets are scaled, so the application's coordinates are too. */
++        if (list->xrgame_fb_scale_eighths)
 +        {
-+            float scale = list->xrgame_fb_scale_percent / 100.0f;
-+            uint32_t percent = list->xrgame_fb_scale_percent;
++            uint32_t eighths = list->xrgame_fb_scale_eighths;
++            float scale = eighths / 8.0f;
 +            int32_t end;
 +
 +            for (i = 0; i < dyn_state->viewport_count; i++)
@@ -59,11 +236,12 @@ index e30a09a6..e3c6fcc2 100644
 +                xrgame_viewports[i].width *= scale;
 +                xrgame_viewports[i].height *= scale;
 +
-+                xrgame_scissors[i].offset.x = (int32_t)(((int64_t)dyn_state->scissors[i].offset.x * percent) / 100);
-+                xrgame_scissors[i].offset.y = (int32_t)(((int64_t)dyn_state->scissors[i].offset.y * percent) / 100);
-+                end = (int32_t)((((int64_t)dyn_state->scissors[i].offset.x + dyn_state->scissors[i].extent.width) * percent + 99) / 100);
++                /* Starts round down and ends round up, as shadPS4 does. */
++                xrgame_scissors[i].offset.x = (int32_t)(((int64_t)dyn_state->scissors[i].offset.x * eighths) / 8);
++                xrgame_scissors[i].offset.y = (int32_t)(((int64_t)dyn_state->scissors[i].offset.y * eighths) / 8);
++                end = (int32_t)((((int64_t)dyn_state->scissors[i].offset.x + dyn_state->scissors[i].extent.width) * eighths + 7) / 8);
 +                xrgame_scissors[i].extent.width = max(end, xrgame_scissors[i].offset.x) - xrgame_scissors[i].offset.x;
-+                end = (int32_t)((((int64_t)dyn_state->scissors[i].offset.y + dyn_state->scissors[i].extent.height) * percent + 99) / 100);
++                end = (int32_t)((((int64_t)dyn_state->scissors[i].offset.y + dyn_state->scissors[i].extent.height) * eighths + 7) / 8);
 +                xrgame_scissors[i].extent.height = max(end, xrgame_scissors[i].offset.y) - xrgame_scissors[i].offset.y;
 +            }
 +
@@ -79,7 +257,7 @@ index e30a09a6..e3c6fcc2 100644
          }
  
          if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_SCISSOR)
-@@ -7930,8 +7978,8 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
+@@ -7930,8 +8025,8 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
  
              for (i = 0; i < dyn_state->viewport_count; i++)
              {
@@ -90,49 +268,135 @@ index e30a09a6..e3c6fcc2 100644
  
                  /* Need to take possible negative viewport height into account */
                  top_left.x = max(scissor->offset.x, (int)(max(0.0f, viewport->x)));
-@@ -9639,6 +9687,71 @@ static bool validate_d3d12_box(const D3D12_BOX *box)
+@@ -9639,6 +9734,157 @@ static bool validate_d3d12_box(const D3D12_BOX *box)
              && box->back > box->front;
  }
  
-+static void vkd3d_xrgame_scale_image_copy(VkImageCopy2 *copy, uint32_t percent)
++/* The span of one copy dimension on each image: D3D12 texels mapped through each image's own
++ * ratio of image size to D3D12 size. */
++static void vkd3d_xrgame_copy_spans(const struct d3d12_resource *resource, const VkImageSubresourceLayers *layers,
++        const VkOffset3D *offset, const VkExtent3D *extent, VkOffset3D *start, VkOffset3D *end)
 +{
-+    uint32_t src_x, src_y, dst_x, dst_y, width, height;
++    VkExtent3D guest, host;
 +
-+    /* Offsets round down and ends round up, so a full copy covers the whole scaled image. */
-+    src_x = ((uint64_t)copy->srcOffset.x * percent) / 100u;
-+    src_y = ((uint64_t)copy->srcOffset.y * percent) / 100u;
-+    dst_x = ((uint64_t)copy->dstOffset.x * percent) / 100u;
-+    dst_y = ((uint64_t)copy->dstOffset.y * percent) / 100u;
-+    width = min(vkd3d_xrgame_scale_extent(copy->srcOffset.x + copy->extent.width, percent) - src_x,
-+            vkd3d_xrgame_scale_extent(copy->dstOffset.x + copy->extent.width, percent) - dst_x);
-+    height = min(vkd3d_xrgame_scale_extent(copy->srcOffset.y + copy->extent.height, percent) - src_y,
-+            vkd3d_xrgame_scale_extent(copy->dstOffset.y + copy->extent.height, percent) - dst_y);
++    guest = d3d12_resource_desc_get_vk_subresource_extent(&resource->desc, resource->format, layers);
++    host = d3d12_resource_xrgame_image_mip_extent(resource, layers->mipLevel);
++    if (!resource->xrgame_scale_eighths)
++        host = guest;
 +
-+    copy->srcOffset.x = src_x;
-+    copy->srcOffset.y = src_y;
-+    copy->dstOffset.x = dst_x;
-+    copy->dstOffset.y = dst_y;
-+    copy->extent.width = width;
-+    copy->extent.height = height;
++    vkd3d_xrgame_map_span(offset->x, offset->x + extent->width, guest.width, host.width, &start->x, &end->x);
++    vkd3d_xrgame_map_span(offset->y, offset->y + extent->height, guest.height, host.height, &start->y, &end->y);
++    start->z = offset->z;
++    end->z = offset->z + extent->depth;
++}
++
++/* Same render scale on both images: the copy keeps its size relation, mapped onto both images. */
++static void vkd3d_xrgame_scale_image_copy(VkImageCopy2 *copy, const struct d3d12_resource *src_resource,
++        const struct d3d12_resource *dst_resource)
++{
++    VkOffset3D src_start, src_end, dst_start, dst_end;
++
++    vkd3d_xrgame_copy_spans(src_resource, &copy->srcSubresource, &copy->srcOffset, &copy->extent, &src_start, &src_end);
++    vkd3d_xrgame_copy_spans(dst_resource, &copy->dstSubresource, &copy->dstOffset, &copy->extent, &dst_start, &dst_end);
++
++    copy->srcOffset = src_start;
++    copy->dstOffset = dst_start;
++    copy->extent.width = max(0, min(src_end.x - src_start.x, dst_end.x - dst_start.x));
++    copy->extent.height = max(0, min(src_end.y - src_start.y, dst_end.y - dst_start.y));
++}
++
++/* Different render scales on the two images: a scaled blit, linear for colour and nearest for
++ * depth. Rare, so it flushes pending copies and uses full memory barriers around the blit. */
++static void d3d12_command_list_xrgame_blit_copy(struct d3d12_command_list *list,
++        struct d3d12_resource *dst_resource, struct d3d12_resource *src_resource, const VkImageCopy2 *copy)
++{
++    const struct vkd3d_vk_device_procs *vk_procs = &list->device->vk_procs;
++    struct d3d12_command_list_barrier_batch barriers;
++    VkImageLayout src_layout, dst_layout;
++    VkBlitImageInfo2 blit_info;
++    VkImageBlit2 region;
++    bool depth;
++
++    depth = !!(dst_resource->format->vk_aspect_mask & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT));
++    if (!(list->vk_queue_flags & VK_QUEUE_GRAPHICS_BIT) ||
++            !(src_resource->format->vk_format_features & VK_FORMAT_FEATURE_2_BLIT_SRC_BIT) ||
++            !(dst_resource->format->vk_format_features & VK_FORMAT_FEATURE_2_BLIT_DST_BIT) ||
++            (depth && src_resource->format->vk_format != dst_resource->format->vk_format))
++    {
++        FIXME_ONCE("Copy between images of different render scales cannot be blitted, skipping.\n");
++        return;
++    }
++
++    memset(&region, 0, sizeof(region));
++    region.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
++    region.srcSubresource = copy->srcSubresource;
++    region.dstSubresource = copy->dstSubresource;
++    vkd3d_xrgame_copy_spans(src_resource, &copy->srcSubresource, &copy->srcOffset, &copy->extent,
++            &region.srcOffsets[0], &region.srcOffsets[1]);
++    vkd3d_xrgame_copy_spans(dst_resource, &copy->dstSubresource, &copy->dstOffset, &copy->extent,
++            &region.dstOffsets[0], &region.dstOffsets[1]);
++
++    d3d12_command_list_end_transfer_batch(list);
++    d3d12_command_list_track_resource_usage(list, src_resource, true);
++    d3d12_command_list_track_resource_usage(list, dst_resource, true);
++
++    src_layout = d3d12_resource_pick_layout(src_resource, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
++    dst_layout = d3d12_resource_pick_layout(dst_resource, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
++
++    d3d12_command_list_barrier_batch_init(&barriers);
++    d3d12_command_list_transition_image_layout(list, &barriers, src_resource->res.vk_image, &copy->srcSubresource,
++            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, src_resource->common_layout,
++            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, src_layout);
++    d3d12_command_list_transition_image_layout(list, &barriers, dst_resource->res.vk_image, &copy->dstSubresource,
++            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
++            dst_resource->common_layout, VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, dst_layout);
++    d3d12_command_list_barrier_batch_end(list, &barriers);
++
++    memset(&blit_info, 0, sizeof(blit_info));
++    blit_info.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
++    blit_info.srcImage = src_resource->res.vk_image;
++    blit_info.srcImageLayout = src_layout;
++    blit_info.dstImage = dst_resource->res.vk_image;
++    blit_info.dstImageLayout = dst_layout;
++    blit_info.regionCount = 1;
++    blit_info.pRegions = &region;
++    blit_info.filter = depth || !(src_resource->format->vk_format_features &
++            VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT) ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
++    VK_CALL(vkCmdBlitImage2(list->cmd.vk_command_buffer, &blit_info));
++
++    d3d12_command_list_barrier_batch_init(&barriers);
++    d3d12_command_list_transition_image_layout(list, &barriers, src_resource->res.vk_image, &copy->srcSubresource,
++            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_NONE, src_layout,
++            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, src_resource->common_layout);
++    d3d12_command_list_transition_image_layout(list, &barriers, dst_resource->res.vk_image, &copy->dstSubresource,
++            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, dst_layout,
++            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
++            dst_resource->common_layout);
++    d3d12_command_list_barrier_batch_end(list, &barriers);
 +}
 +
 +/* XRGame: copies address D3D12 mip levels and texels, but the Vulkan image may leave out top
-+ * levels (texture quality) or be scaled (shadow render scale). The extents were computed in
-+ * D3D12 terms, which stay valid for kept levels since those have the same sizes.
-+ * Returns false when the copy has to be dropped. */
-+static bool d3d12_command_list_xrgame_remap_copy(const struct d3d12_resource *src_resource,
-+        const struct d3d12_resource *dst_resource, struct vkd3d_image_copy_info *info)
++ * levels (texture quality) or be scaled (render scale). The extents were computed in D3D12
++ * terms, which stay valid for kept levels since those have the same sizes.
++ * Returns false when the copy is dropped or was already recorded as a blit. */
++static bool d3d12_command_list_xrgame_remap_copy(struct d3d12_command_list *list,
++        struct d3d12_resource *src_resource, struct d3d12_resource *dst_resource, struct vkd3d_image_copy_info *info)
 +{
-+    if (src_resource->xrgame_scale_percent || dst_resource->xrgame_scale_percent)
++    if (src_resource->xrgame_scale_eighths || dst_resource->xrgame_scale_eighths)
 +    {
-+        if (info->batch_type != VKD3D_BATCH_TYPE_COPY_IMAGE ||
-+                src_resource->xrgame_scale_percent != dst_resource->xrgame_scale_percent)
++        if (info->batch_type != VKD3D_BATCH_TYPE_COPY_IMAGE)
 +        {
-+            FIXME_ONCE("Copy with a depth image reduced by the render scale setting, skipping.\n");
++            FIXME_ONCE("Copy between a buffer and an image scaled by the render scale setting, skipping.\n");
 +            return false;
 +        }
 +
-+        vkd3d_xrgame_scale_image_copy(&info->copy.image, src_resource->xrgame_scale_percent);
++        if (src_resource->xrgame_scale_eighths != dst_resource->xrgame_scale_eighths)
++        {
++            d3d12_command_list_xrgame_blit_copy(list, dst_resource, src_resource, &info->copy.image);
++            return false;
++        }
++
++        vkd3d_xrgame_scale_image_copy(&info->copy.image, src_resource, dst_resource);
 +    }
 +
 +    switch (info->batch_type)
@@ -162,30 +426,30 @@ index e30a09a6..e3c6fcc2 100644
  static bool d3d12_command_list_init_copy_texture_region(struct d3d12_command_list *list,
          const D3D12_TEXTURE_COPY_LOCATION *dst,
          UINT dst_x, UINT dst_y, UINT dst_z,
-@@ -9897,6 +10010,11 @@ static bool d3d12_command_list_init_copy_texture_region(struct d3d12_command_lis
+@@ -9897,6 +10143,11 @@ static bool d3d12_command_list_init_copy_texture_region(struct d3d12_command_lis
          out->writes_full_subresource = false;
      }
  
 +    if ((src_resource->xrgame_mip_drop || dst_resource->xrgame_mip_drop ||
-+            src_resource->xrgame_scale_percent || dst_resource->xrgame_scale_percent) &&
-+            !d3d12_command_list_xrgame_remap_copy(src_resource, dst_resource, out))
++            src_resource->xrgame_scale_eighths || dst_resource->xrgame_scale_eighths) &&
++            !d3d12_command_list_xrgame_remap_copy(list, src_resource, dst_resource, out))
 +        return false;
 +
      return true;
  }
  
-@@ -10359,6 +10477,25 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyResource(d3d12_command_list
+@@ -10359,6 +10610,25 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyResource(d3d12_command_list
                      continue;
                  }
  
-+                if (src_resource->xrgame_scale_percent || dst_resource->xrgame_scale_percent)
++                if (src_resource->xrgame_scale_eighths || dst_resource->xrgame_scale_eighths)
 +                {
-+                    if (src_resource->xrgame_scale_percent != dst_resource->xrgame_scale_percent)
++                    if (src_resource->xrgame_scale_eighths != dst_resource->xrgame_scale_eighths)
 +                    {
-+                        FIXME_ONCE("CopyResource between scaled and unscaled depth images, skipping.\n");
-+                        return;
++                        d3d12_command_list_xrgame_blit_copy(list, dst_resource, src_resource, &vk_image_copy);
++                        continue;
 +                    }
-+                    vkd3d_xrgame_scale_image_copy(&vk_image_copy, src_resource->xrgame_scale_percent);
++                    vkd3d_xrgame_scale_image_copy(&vk_image_copy, src_resource, dst_resource);
 +                }
 +
 +                if ((src_resource->xrgame_mip_drop || dst_resource->xrgame_mip_drop) &&
@@ -200,7 +464,7 @@ index e30a09a6..e3c6fcc2 100644
                  /* Copying sampler feedback is only allowed in CopyResource. */
                  if (d3d12_resource_desc_is_sampler_feedback(&src_resource->desc))
                      vk_image_copy.extent = d3d12_resource_desc_get_padded_feedback_extent(&src_resource->desc);
-@@ -10377,7 +10514,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyResource(d3d12_command_list
+@@ -10377,7 +10647,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyResource(d3d12_command_list
                  /* CopyResource() always copies all subresources, so we can safely discard the dst_resource contents. */
                  d3d12_command_list_barrier_batch_init(&barriers);
  
@@ -209,12 +473,12 @@ index e30a09a6..e3c6fcc2 100644
                  {
                      d3d12_command_list_check_and_resolve_pending_transfer_image_write(list, &barriers,
                              dst_resource->res.vk_image, UINT32_MAX);
-@@ -11678,6 +11815,13 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResolveSubresource(d3d12_comman
+@@ -11678,6 +11948,13 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResolveSubresource(d3d12_comman
      dst_resource = impl_from_ID3D12Resource(dst);
      src_resource = impl_from_ID3D12Resource(src);
  
-+    if (dst_resource->xrgame_mip_drop || dst_resource->xrgame_scale_percent ||
-+            src_resource->xrgame_mip_drop || src_resource->xrgame_scale_percent)
++    if (dst_resource->xrgame_mip_drop || dst_resource->xrgame_scale_eighths ||
++            src_resource->xrgame_mip_drop || src_resource->xrgame_scale_eighths)
 +    {
 +        FIXME_ONCE("Resolve with an image reduced by the XRGame quality settings, skipping.\n");
 +        return;
@@ -223,7 +487,7 @@ index e30a09a6..e3c6fcc2 100644
      assert(d3d12_resource_is_texture(dst_resource));
      assert(d3d12_resource_is_texture(src_resource));
  
-@@ -12928,7 +13072,19 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResourceBarrier(d3d12_command_l
+@@ -12928,7 +13205,19 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResourceBarrier(d3d12_command_l
                              transition_src_stage_mask, transition_src_access,
                              transition_dst_stage_mask, transition_dst_access,
                              dsv_decay_mask);
@@ -244,75 +508,118 @@ index e30a09a6..e3c6fcc2 100644
                  }
                  else
                  {
-@@ -13913,6 +14069,7 @@ static void d3d12_command_list_recompute_fb_size(struct d3d12_command_list *list
+@@ -13911,8 +14200,10 @@ static void STDMETHODCALLTYPE d3d12_command_list_SOSetTargets(d3d12_command_list
+ static void d3d12_command_list_recompute_fb_size(struct d3d12_command_list *list)
+ {
      const VkPhysicalDeviceLimits *limits = &list->device->vk_info.device_limits;
++    bool mixed, has_unscaled_target = false;
      const struct d3d12_rtv_desc *rtv_desc;
      VkSampleCountFlagBits sample_count;
-+    uint32_t scale_percent;
++    uint32_t scale_eighths;
      unsigned int i;
  
      /* Honor PSO sample count if no render targets are bound */
-@@ -13947,6 +14104,26 @@ static void d3d12_command_list_recompute_fb_size(struct d3d12_command_list *list
+@@ -13947,6 +14238,43 @@ static void d3d12_command_list_recompute_fb_size(struct d3d12_command_list *list
          sample_count = rtv_desc->sample_count;
      }
  
-+    /* XRGame: rendering into a scaled depth image scales viewports and scissors with it. */
-+    scale_percent = list->dsv.resource ? list->dsv.resource->xrgame_scale_percent : 0;
-+    if (scale_percent)
++    /* XRGame: rendering into scaled targets scales viewports and scissors with them. A pass
++     * that mixes scaled and unscaled targets renders at the smaller size. */
++    scale_eighths = 0;
++    mixed = false;
++    for (i = 0; i <= ARRAY_SIZE(list->rtvs); i++)
 +    {
-+        for (i = 0; i < ARRAY_SIZE(list->rtvs); i++)
++        rtv_desc = i < ARRAY_SIZE(list->rtvs) ? &list->rtvs[i] : &list->dsv;
++        if (!rtv_desc->resource)
++            continue;
++        if (rtv_desc->resource->xrgame_scale_eighths)
 +        {
-+            if (list->rtvs[i].resource)
-+            {
-+                FIXME_ONCE("A depth image scaled by the render scale setting (%ux%u) is bound with a %ux%u render target.\n",
-+                        list->dsv.width, list->dsv.height, list->rtvs[i].width, list->rtvs[i].height);
-+            }
++            mixed |= scale_eighths && scale_eighths != rtv_desc->resource->xrgame_scale_eighths;
++            scale_eighths = rtv_desc->resource->xrgame_scale_eighths;
++        }
++        else
++        {
++            has_unscaled_target = true;
 +        }
 +    }
 +
-+    if (list->xrgame_fb_scale_percent != scale_percent)
++    if (scale_eighths && (mixed || has_unscaled_target))
 +    {
-+        list->xrgame_fb_scale_percent = scale_percent;
++        FIXME_ONCE("Render targets of different render scales are bound together (%ux%u).\n",
++                list->fb_width, list->fb_height);
++    }
++
++    if (list->xrgame_fb_scale_eighths != scale_eighths)
++    {
++        list->xrgame_fb_scale_eighths = scale_eighths;
 +        list->dynamic_state.dirty_flags |= VKD3D_DYNAMIC_STATE_VIEWPORT | VKD3D_DYNAMIC_STATE_SCISSOR;
++
++        /* Pixel shaders read the pass scale; it is pushed with the table offsets. */
++        if (list->graphics_bindings.root_signature &&
++                list->graphics_bindings.root_signature->xrgame_pass_scale_offset)
++            list->graphics_bindings.dirty_flags |= VKD3D_PIPELINE_DIRTY_DESCRIPTOR_TABLE_OFFSETS;
 +    }
 +
      if (list->dynamic_state.rasterization_samples != sample_count)
      {
          list->dynamic_state.rasterization_samples = sample_count;
-@@ -14388,6 +14565,27 @@ static void STDMETHODCALLTYPE d3d12_command_list_ClearDepthStencilView(d3d12_com
-         return;
-     }
+@@ -14269,9 +14597,26 @@ static void d3d12_command_list_defer_attachment_clear(struct d3d12_command_list
+         d3d12_command_list_end_current_render_pass(list, false);
+ }
  
-+    /* XRGame: clear rectangles of a scaled depth image scale with it. */
-+    if (rect_count && dsv_desc->resource->xrgame_scale_percent)
++static void d3d12_command_list_clear_attachment_rects(struct d3d12_command_list *list, struct d3d12_resource *resource,
++        struct vkd3d_view *view, VkImageAspectFlags clear_aspects, const VkClearValue *clear_value, UINT rect_count,
++        const D3D12_RECT *rects);
++
++/* XRGame: clear rectangles of a scaled attachment scale with it. */
+ static void d3d12_command_list_clear_attachment(struct d3d12_command_list *list, struct d3d12_resource *resource,
+         struct vkd3d_view *view, VkImageAspectFlags clear_aspects, const VkClearValue *clear_value, UINT rect_count,
+         const D3D12_RECT *rects)
++{
++    D3D12_RECT scaled[16], *allocated;
++
++    rects = d3d12_resource_xrgame_scale_rects(resource, vk_subresource_layers_from_view(view).mipLevel,
++            rect_count, rects, scaled, ARRAY_SIZE(scaled), &allocated);
++    d3d12_command_list_clear_attachment_rects(list, resource, view, clear_aspects, clear_value, rect_count, rects);
++    vkd3d_free(allocated);
++}
++
++static void d3d12_command_list_clear_attachment_rects(struct d3d12_command_list *list, struct d3d12_resource *resource,
++        struct vkd3d_view *view, VkImageAspectFlags clear_aspects, const VkClearValue *clear_value, UINT rect_count,
++        const D3D12_RECT *rects)
+ {
+     VkImageSubresourceLayers vk_subresource_layers;
+     VkImageSubresourceRange vk_subresource_range;
+@@ -14587,6 +14932,15 @@ static void d3d12_command_list_clear_uav(struct d3d12_command_list *list,
+     uint32_t max_workgroup_count;
+     bool sampler_feedback_clear;
+ 
++    D3D12_RECT xrgame_scaled[16], *xrgame_allocated = NULL;
++
++    /* XRGame: clear rectangles of a scaled UAV image scale with it. */
++    if (args->has_view && d3d12_resource_is_texture(resource))
 +    {
-+        D3D12_RECT scaled_rects[16];
-+        UINT i, j, count;
-+
-+        for (i = 0; i < rect_count; i += count)
-+        {
-+            count = min(rect_count - i, (UINT)ARRAY_SIZE(scaled_rects));
-+            for (j = 0; j < count; j++)
-+            {
-+                scaled_rects[j] = rects[i + j];
-+                vkd3d_xrgame_scale_rect(&scaled_rects[j], dsv_desc->resource->xrgame_scale_percent);
-+            }
-+
-+            d3d12_command_list_clear_attachment(list, dsv_desc->resource, dsv_desc->view,
-+                    clear_aspects, &clear_value, count, scaled_rects);
-+        }
-+        return;
++        rects = d3d12_resource_xrgame_scale_rects(resource, args->u.view->info.texture.miplevel_idx,
++                rect_count, rects, xrgame_scaled, ARRAY_SIZE(xrgame_scaled), &xrgame_allocated);
 +    }
 +
-     d3d12_command_list_clear_attachment(list, dsv_desc->resource, dsv_desc->view,
-             clear_aspects, &clear_value, rect_count, rects);
- }
-@@ -17990,6 +18188,13 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResolveSubresourceRegion(d3d12_
+     d3d12_command_list_track_resource_usage(list, resource, true);
+     d3d12_command_list_end_current_render_pass(list, false);
+     d3d12_command_list_debug_mark_begin_region(list, "ClearUAV");
+@@ -14743,6 +15097,7 @@ static void d3d12_command_list_clear_uav(struct d3d12_command_list *list,
+         list->cmd.clear_uav_pending = true;
+ 
+     d3d12_command_list_debug_mark_end_region(list);
++    vkd3d_free(xrgame_allocated);
+ 
+     VKD3D_BREADCRUMB_RESOURCE(resource);
+     VKD3D_BREADCRUMB_COMMAND(CLEAR_UAV);
+@@ -17990,6 +18345,13 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResolveSubresourceRegion(d3d12_
          return;
      }
  
-+    if (dst_resource->xrgame_mip_drop || dst_resource->xrgame_scale_percent ||
-+            src_resource->xrgame_mip_drop || src_resource->xrgame_scale_percent)
++    if (dst_resource->xrgame_mip_drop || dst_resource->xrgame_scale_eighths ||
++            src_resource->xrgame_mip_drop || src_resource->xrgame_scale_eighths)
 +    {
 +        FIXME_ONCE("Resolve with an image reduced by the XRGame quality settings, skipping.\n");
 +        return;
@@ -321,7 +628,7 @@ index e30a09a6..e3c6fcc2 100644
      assert(d3d12_resource_is_texture(dst_resource));
      assert(d3d12_resource_is_texture(src_resource));
  
-@@ -20656,7 +20861,19 @@ static void d3d12_command_list_process_enhanced_barrier_texture(struct d3d12_com
+@@ -20656,7 +21018,19 @@ static void d3d12_command_list_process_enhanced_barrier_texture(struct d3d12_com
      if (barrier->LayoutBefore == D3D12_BARRIER_LAYOUT_UNDEFINED && !(barrier->Flags & D3D12_TEXTURE_BARRIER_FLAG_DISCARD))
          FIXME("Transitioning away from UNDEFINED, but there is no DISCARD flag. Uncertain what is expected here. vkd3d-proton will force a discard.\n");
  
@@ -343,18 +650,18 @@ index e30a09a6..e3c6fcc2 100644
      discarding_transition = vk_transition.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
              vk_transition.newLayout != VK_IMAGE_LAYOUT_UNDEFINED &&
 diff --git a/libs/vkd3d/device.c b/libs/vkd3d/device.c
-index 6c713c90..8a624e34 100644
+index 6c713c90..5ef60e20 100644
 --- a/libs/vkd3d/device.c
 +++ b/libs/vkd3d/device.c
 @@ -578,6 +578,7 @@ enum vkd3d_application_feature_override
  
  static enum vkd3d_application_feature_override vkd3d_application_feature_override;
  uint64_t vkd3d_config_flags;
-+struct vkd3d_xrgame_config vkd3d_xrgame_config = {VKD3D_XRGAME_TEXTURE_QUALITY_HIGH, 100};
++struct vkd3d_xrgame_config vkd3d_xrgame_config = {VKD3D_XRGAME_TEXTURE_QUALITY_HIGH, 8, 0};
  struct vkd3d_shader_quirk_info vkd3d_shader_quirk_info_template;
  
  struct vkd3d_instance_application_meta
-@@ -1297,6 +1298,31 @@ static const struct vkd3d_debug_option vkd3d_config_options[] =
+@@ -1297,6 +1298,40 @@ static const struct vkd3d_debug_option vkd3d_config_options[] =
      {"no_nvx", VKD3D_CONFIG_FLAG_NO_NVX},
  };
  
@@ -371,22 +678,31 @@ index 6c713c90..8a624e34 100644
 +            vkd3d_xrgame_config.texture_quality = VKD3D_XRGAME_TEXTURE_QUALITY_LOW;
 +    }
 +
++    /* The steps of shadPS4's internal scale. */
 +    if (vkd3d_get_env_var("XRGAME_RENDER_SCALE", env, sizeof(env)))
 +    {
 +        if (!strcmp(env, "75"))
-+            vkd3d_xrgame_config.render_scale_percent = 75;
++            vkd3d_xrgame_config.render_scale_eighths = 6;
 +        else if (!strcmp(env, "50"))
-+            vkd3d_xrgame_config.render_scale_percent = 50;
++            vkd3d_xrgame_config.render_scale_eighths = 4;
++        else if (!strcmp(env, "37.5"))
++            vkd3d_xrgame_config.render_scale_eighths = 3;
++        else if (!strcmp(env, "25"))
++            vkd3d_xrgame_config.render_scale_eighths = 2;
 +    }
 +
-+    INFO("XRGame texture quality %s, shadow render scale %u%%.\n",
-+            quality_names[vkd3d_xrgame_config.texture_quality], vkd3d_xrgame_config.render_scale_percent);
++    if (vkd3d_get_env_var("XRGAME_RENDER_SCALE_DEBUG", env, sizeof(env)))
++        vkd3d_xrgame_config.render_scale_debug = strtoul(env, NULL, 0);
++
++    INFO("XRGame texture quality %s, render scale %u/8, debug %#x.\n",
++            quality_names[vkd3d_xrgame_config.texture_quality], vkd3d_xrgame_config.render_scale_eighths,
++            vkd3d_xrgame_config.render_scale_debug);
 +}
 +
  static void vkd3d_config_flags_init_once(void)
  {
      char config[VKD3D_PATH_MAX];
-@@ -1309,6 +1335,7 @@ static void vkd3d_config_flags_init_once(void)
+@@ -1309,6 +1344,7 @@ static void vkd3d_config_flags_init_once(void)
  
      vkd3d_instance_deduce_config_flags_from_environment();
      vkd3d_instance_apply_global_shader_quirks();
@@ -394,11 +710,21 @@ index 6c713c90..8a624e34 100644
  
      /* If we're going to use vk_debug, make sure we can get debug callbacks. */
      if (vkd3d_config_flags & VKD3D_CONFIG_FLAG_VULKAN_DEBUG)
+@@ -10305,6 +10341,9 @@ static void vkd3d_compute_shader_interface_key(struct d3d12_device *device)
+         key = hash_fnv1_iterate_string(key, env);
+     }
+ 
++    key = hash_fnv1_iterate_u32(key, vkd3d_xrgame_config.render_scale_eighths);
++    key = hash_fnv1_iterate_u32(key, vkd3d_xrgame_config.render_scale_debug);
++
+     device->shader_interface_key = key;
+ }
+ 
 diff --git a/libs/vkd3d/resource.c b/libs/vkd3d/resource.c
-index c36bfe9a..04da6659 100644
+index c36bfe9a..faf4ca55 100644
 --- a/libs/vkd3d/resource.c
 +++ b/libs/vkd3d/resource.c
-@@ -722,6 +722,122 @@ static bool d3d12_device_supports_universal_color_ds_copy(struct d3d12_device *d
+@@ -722,6 +722,129 @@ static bool d3d12_device_supports_universal_color_ds_copy(struct d3d12_device *d
      return true;
  }
  
@@ -420,31 +746,33 @@ index c36bfe9a..04da6659 100644
 +
 +/* Decides from the description and heap alone, so that GetResourceAllocationInfo and the
 + * placed resource that follows it agree on the image size. */
++
 +static void vkd3d_xrgame_get_reduction(const D3D12_HEAP_PROPERTIES *heap_properties, bool shared,
 +        const D3D12_RESOURCE_DESC1 *desc, const struct vkd3d_format *format,
-+        uint32_t *mip_drop, uint32_t *scale_percent)
++        uint32_t *mip_drop, uint32_t *scale_eighths)
 +{
-+    uint32_t cap, levels, size, short_side, width, height;
++    uint32_t cap, levels, size, width, height, eighths;
 +
 +    *mip_drop = 0;
-+    *scale_percent = 0;
++    *scale_eighths = 0;
 +
 +    /* Reserved, CPU-visible and shared resources keep their exact layout. */
 +    if (!heap_properties || is_cpu_accessible_heap(heap_properties) || shared)
 +        return;
 +    if (desc->Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || desc->SampleDesc.Count != 1 ||
-+            desc->Layout != D3D12_TEXTURE_LAYOUT_UNKNOWN || d3d12_resource_desc_is_sampler_feedback(desc))
-+        return;
-+    if (desc->Flags & (D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER |
-+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS))
++            desc->Layout != D3D12_TEXTURE_LAYOUT_UNKNOWN || d3d12_resource_desc_is_sampler_feedback(desc) ||
++            (desc->Flags & D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER) ||
++            (format->vk_aspect_mask & VK_IMAGE_ASPECT_PLANE_0_BIT))
 +        return;
 +
 +    width = desc->Width;
 +    height = desc->Height;
 +    levels = min(desc->MipLevels, max_miplevel_count(desc));
 +
++    /* Texture quality: sampled-only textures with mipmaps. */
 +    if ((cap = vkd3d_xrgame_mip_cap()) && format->vk_aspect_mask == VK_IMAGE_ASPECT_COLOR_BIT && levels >= 2 &&
 +            !(desc->Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL |
++            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS |
 +            D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE)))
 +    {
 +        size = max(width, height);
@@ -452,16 +780,17 @@ index c36bfe9a..04da6659 100644
 +            ++*mip_drop;
 +    }
 +
-+    /* Shadow-like depth: arrays of large layers. Single large square maps are left alone;
-+     * in Half-Life: Alyx they were also bound with full-size render targets. The main depth
-+     * buffer matches the swapchain and is not an array. */
-+    if (vkd3d_xrgame_config.render_scale_percent < 100 && levels == 1 &&
-+            (desc->Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) &&
-+            !(desc->Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET))
++    /* Render scale, as shadPS4's internal scale: render and depth targets whose shorter side is
++     * above 64 texels, swapchain back buffers included (presentation stretches them back). Render
++     * targets that also allow UAV access are scaled too; shaders map their coordinates. The D3D12
++     * mip chain has to fit the smaller image. */
++    eighths = vkd3d_xrgame_config.render_scale_eighths;
++    if (eighths < 8 && min(width, height) > 64 &&
++            (desc->Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)))
 +    {
-+        short_side = min(width, height);
-+        if (desc->DepthOrArraySize > 1 && short_side >= 1024)
-+            *scale_percent = vkd3d_xrgame_config.render_scale_percent;
++        size = max(vkd3d_xrgame_scale_extent(width, eighths), vkd3d_xrgame_scale_extent(height, eighths));
++        if (levels <= vkd3d_log2i(size) + 1)
++            *scale_eighths = eighths;
 +    }
 +}
 +
@@ -496,7 +825,7 @@ index c36bfe9a..04da6659 100644
 +
 +    saved = full_requirements.memoryRequirements.size > reduced_requirements.size ?
 +            full_requirements.memoryRequirements.size - reduced_requirements.size : 0;
-+    kind = resource->xrgame_scale_percent ? 1 : 0;
++    kind = resource->xrgame_scale_eighths ? 1 : 0;
 +
 +    pthread_mutex_lock(&mutex);
 +    count = ++image_count[kind];
@@ -505,10 +834,14 @@ index c36bfe9a..04da6659 100644
 +
 +    if (kind)
 +    {
-+        INFO("XRGame render scale %u%%: depth image %ux%ux%u -> %ux%u, saves %.1f MiB (%u images, %.1f MiB).\n",
-+                resource->xrgame_scale_percent, (unsigned int)resource->desc.Width, resource->desc.Height,
-+                resource->desc.DepthOrArraySize, image_info->extent.width, image_info->extent.height,
-+                saved / (1024.0 * 1024.0), count, total / (1024.0 * 1024.0));
++        if (count <= 16 || !(count % 64))
++        {
++            INFO("XRGame render scale %u/8: %u targets scaled, %.1f MiB saved (latest %s %ux%ux%u -> %ux%u).\n",
++                    resource->xrgame_scale_eighths, count, total / (1024.0 * 1024.0),
++                    (resource->desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) ? "depth" : "color",
++                    (unsigned int)resource->desc.Width, resource->desc.Height, resource->desc.DepthOrArraySize,
++                    image_info->extent.width, image_info->extent.height);
++        }
 +    }
 +    else if (count == 1 || !(count % 64))
 +    {
@@ -521,22 +854,22 @@ index c36bfe9a..04da6659 100644
  static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
          const D3D12_HEAP_PROPERTIES *heap_properties, D3D12_HEAP_FLAGS heap_flags,
          const D3D12_RESOURCE_DESC1 *desc, struct d3d12_resource *resource,
-@@ -736,6 +852,7 @@ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
+@@ -736,6 +859,7 @@ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
      const struct vkd3d_vk_device_procs *vk_procs = &device->vk_procs;
      VkImageCreateInfo *image_info = &create_info->image_info;
      const bool sparse_resource = !heap_properties;
-+    uint32_t mip_drop, scale_percent;
++    uint32_t mip_drop, scale_eighths;
      const struct vkd3d_format *format;
      bool disable_compression;
      bool use_concurrent;
-@@ -916,6 +1033,29 @@ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
+@@ -916,6 +1040,29 @@ static HRESULT vkd3d_get_image_create_info(struct d3d12_device *device,
      }
  
      image_info->mipLevels = min(desc->MipLevels, max_miplevel_count(desc));
 +
 +    vkd3d_xrgame_get_reduction(heap_properties,
 +            !!((resource ? resource->heap_flags : heap_flags) & D3D12_HEAP_FLAG_SHARED),
-+            desc, format, &mip_drop, &scale_percent);
++            desc, format, &mip_drop, &scale_eighths);
 +
 +    if (mip_drop)
 +    {
@@ -545,31 +878,31 @@ index c36bfe9a..04da6659 100644
 +        image_info->mipLevels -= mip_drop;
 +    }
 +
-+    if (scale_percent)
++    if (scale_eighths)
 +    {
-+        image_info->extent.width = vkd3d_xrgame_scale_extent(image_info->extent.width, scale_percent);
-+        image_info->extent.height = vkd3d_xrgame_scale_extent(image_info->extent.height, scale_percent);
++        image_info->extent.width = vkd3d_xrgame_scale_extent(image_info->extent.width, scale_eighths);
++        image_info->extent.height = vkd3d_xrgame_scale_extent(image_info->extent.height, scale_eighths);
 +    }
 +
 +    if (resource)
 +    {
 +        resource->xrgame_mip_drop = mip_drop;
-+        resource->xrgame_scale_percent = scale_percent;
++        resource->xrgame_scale_eighths = scale_eighths;
 +    }
      image_info->samples = vk_samples_from_dxgi_sample_desc(&desc->SampleDesc);
      image_info->tiling = format->vk_image_tiling;
      image_info->initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-@@ -1199,6 +1339,9 @@ static HRESULT vkd3d_create_image(struct d3d12_device *device,
+@@ -1199,6 +1346,9 @@ static HRESULT vkd3d_create_image(struct d3d12_device *device,
  
      resource->format_compatibility_list = create_info.format_compat_list;
  
-+    if (vr >= 0 && (resource->xrgame_mip_drop || resource->xrgame_scale_percent))
++    if (vr >= 0 && (resource->xrgame_mip_drop || resource->xrgame_scale_eighths))
 +        vkd3d_xrgame_note_reduced_image(device, resource, &create_info.image_info, *vk_image);
 +
      return hresult_from_vk_result(vr);
  }
  
-@@ -2821,6 +2964,37 @@ VkImageSubresource d3d12_resource_get_vk_subresource(const struct d3d12_resource
+@@ -2821,6 +2971,37 @@ VkImageSubresource d3d12_resource_get_vk_subresource(const struct d3d12_resource
              all_aspects);
  }
  
@@ -607,7 +940,7 @@ index c36bfe9a..04da6659 100644
  static HRESULT d3d12_validate_resource_flags(D3D12_RESOURCE_FLAGS flags)
  {
      unsigned int unknown_flags = flags & ~(D3D12_RESOURCE_FLAG_NONE
-@@ -6480,6 +6654,26 @@ static struct vkd3d_view *vkd3d_create_texture_uav_view(struct d3d12_device *dev
+@@ -6480,6 +6661,26 @@ static struct vkd3d_view *vkd3d_create_texture_uav_view(struct d3d12_device *dev
      return vkd3d_view_map_create_view(&resource->view_map, device, &key);
  }
  
@@ -634,7 +967,7 @@ index c36bfe9a..04da6659 100644
  static struct vkd3d_view *vkd3d_create_texture_srv_view(struct d3d12_device *device,
          struct d3d12_resource *resource, const D3D12_SHADER_RESOURCE_VIEW_DESC *desc)
  {
-@@ -6577,6 +6771,9 @@ static struct vkd3d_view *vkd3d_create_texture_srv_view(struct d3d12_device *dev
+@@ -6577,6 +6778,9 @@ static struct vkd3d_view *vkd3d_create_texture_srv_view(struct d3d12_device *dev
      if (key.u.texture.miplevel_count == VK_REMAINING_MIP_LEVELS)
          key.u.texture.miplevel_count = resource->desc.MipLevels - key.u.texture.miplevel_idx;
  
@@ -644,11 +977,142 @@ index c36bfe9a..04da6659 100644
      vkd3d_texture_view_desc_fixup(device, &key.u.texture);
  
      if ((vkd3d_config_flags & VKD3D_CONFIG_FLAG_PREALLOCATE_SRV_MIP_CLAMPS) &&
+@@ -6646,6 +6850,37 @@ static void vkd3d_create_texture_srv_embedded(vkd3d_cpu_descriptor_va_t desc_va,
+             d.payload));
+ }
+ 
++/* XRGame render scale: shaders find out from the raw VA aux slot of a texture view whether its image
++ * is scaled, and which size the application asked for: x = width | height << 16 at the view's top mip,
++ * y = VKD3D_XRGAME_TEXTURE_TAG_MAGIC << 8 | scale in eighths. Views at the application's size store 0.
++ * Single descriptor copies carry the slot along because of the RAW_VA_AUX_BUFFER flag. */
++static void vkd3d_xrgame_write_texture_tag(struct d3d12_desc_split *d,
++        const struct d3d12_resource *resource, const struct vkd3d_view *view)
++{
++    VkDeviceAddress *aux = d->heap->raw_va_aux_buffer.host_ptr;
++    uint32_t width, height, mip;
++    uint64_t tag = 0;
++
++    if (vkd3d_xrgame_config.render_scale_eighths >= 8 || !aux)
++        return;
++
++    if (resource->xrgame_scale_eighths && view)
++    {
++        mip = view->info.texture.miplevel_idx + resource->xrgame_mip_drop;
++        width = max(1u, (uint32_t)(resource->desc.Width >> mip));
++        height = max(1u, resource->desc.Height >> mip);
++
++        if (width <= 0xffffu && height <= 0xffffu)
++        {
++            tag = (uint64_t)(width | height << 16) |
++                    (uint64_t)(VKD3D_XRGAME_TEXTURE_TAG_MAGIC << 8 | resource->xrgame_scale_eighths) << 32;
++        }
++    }
++
++    aux[d->offset] = tag;
++    d->view->info.image.flags |= VKD3D_DESCRIPTOR_FLAG_RAW_VA_AUX_BUFFER;
++}
++
+ static void vkd3d_create_texture_srv(vkd3d_cpu_descriptor_va_t desc_va,
+         struct d3d12_device *device, struct d3d12_resource *resource,
+         const D3D12_SHADER_RESOURCE_VIEW_DESC *desc)
+@@ -6684,6 +6919,7 @@ static void vkd3d_create_texture_srv(vkd3d_cpu_descriptor_va_t desc_va,
+ 
+     d.view->info.image.view = view;
+     d.view->info.image.flags = VKD3D_DESCRIPTOR_FLAG_IMAGE_VIEW | VKD3D_DESCRIPTOR_FLAG_NON_NULL;
++    vkd3d_xrgame_write_texture_tag(&d, resource, view);
+     d.types->set_info_mask = 1u << info_index;
+     d.types->single_binding = binding;
+ 
+@@ -7248,6 +7484,7 @@ static void vkd3d_create_texture_uav(vkd3d_cpu_descriptor_va_t desc_va,
+ 
+     d.view->info.image.view = view;
+     d.view->info.image.flags = VKD3D_DESCRIPTOR_FLAG_IMAGE_VIEW | VKD3D_DESCRIPTOR_FLAG_NON_NULL;
++    vkd3d_xrgame_write_texture_tag(&d, resource, view);
+     d.types->set_info_mask = 1u << info_index;
+     d.types->single_binding = binding;
+ 
+diff --git a/libs/vkd3d/state.c b/libs/vkd3d/state.c
+index 577d3b0a..1d463ab6 100644
+--- a/libs/vkd3d/state.c
++++ b/libs/vkd3d/state.c
+@@ -716,6 +716,26 @@ static HRESULT d3d12_root_signature_init_push_constants(struct d3d12_root_signat
+         }
+     }
+ 
++    /* XRGame render scale: pixel shaders need the scale of the current pass to take SV_Position
++     * back to the application's coordinates. It follows the table offsets, so it is pushed with them.
++     * A root signature that already fills the push constant space goes without. */
++    root_signature->xrgame_pass_scale_offset = 0;
++    if (vkd3d_xrgame_config.render_scale_eighths < 8 && root_signature->descriptor_table_count)
++    {
++        if (push_constant_range->size + sizeof(uint32_t) <= min(
++                root_signature->device->device_info.properties2.properties.limits.maxPushConstantsSize,
++                (uint32_t)sizeof(union vkd3d_root_parameter_data)))
++        {
++            root_signature->xrgame_pass_scale_offset = push_constant_range->size;
++            push_constant_range->stageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
++            push_constant_range->size += sizeof(uint32_t);
++        }
++        else
++        {
++            FIXME_ONCE("No push constant space for the XRGame pass scale, SV_Position stays unscaled.\n");
++        }
++    }
++
+     return S_OK;
+ }
+ 
+@@ -2644,6 +2664,11 @@ static void d3d12_pipeline_state_init_shader_interface(struct d3d12_pipeline_sta
+     shader_interface->push_constant_ubo_binding = &root_signature->push_constant_ubo_binding;
+     shader_interface->offset_buffer_binding = &root_signature->offset_buffer_binding;
+     shader_interface->stage = stage;
++    if (vkd3d_xrgame_config.render_scale_eighths < 8 && !(vkd3d_xrgame_config.render_scale_debug & 1))
++    {
++        shader_interface->xrgame_aux_binding = &root_signature->raw_va_aux_buffer_binding;
++        shader_interface->xrgame_pass_scale_offset = root_signature->xrgame_pass_scale_offset;
++    }
+     shader_interface->xfb_info = state->pipeline_type == VKD3D_PIPELINE_TYPE_GRAPHICS &&
+             stage == state->graphics.cached_desc.xfb_stage ?
+             state->graphics.cached_desc.xfb_info : NULL;
+diff --git a/libs/vkd3d/swapchain.c b/libs/vkd3d/swapchain.c
+index ece3a7e2..6f012f79 100644
+--- a/libs/vkd3d/swapchain.c
++++ b/libs/vkd3d/swapchain.c
+@@ -1673,6 +1673,9 @@ static void dxgi_vk_swap_chain_init_blit_pipeline(struct dxgi_vk_swap_chain *cha
+ 
+     key.bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
+     key.filter = chain->desc.Scaling == DXGI_SCALING_NONE ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
++    /* XRGame render scale: back buffers are reduced and get stretched back when presented. */
++    if (vkd3d_xrgame_config.render_scale_eighths < 8)
++        key.filter = VK_FILTER_LINEAR;
+     key.format = chain->present.backbuffer_format;
+ 
+     if (FAILED(hr = vkd3d_meta_get_swapchain_pipeline(&device->meta_ops, &key, &chain->present.pipeline)))
+@@ -2261,14 +2264,17 @@ static void dxgi_vk_swap_chain_record_render_pass(struct dxgi_vk_swap_chain *cha
+ 
+     if (blit_command)
+     {
++        VkExtent3D user_extent;
+         VkImageBlit blit;
+         memset(&blit, 0, sizeof(blit));
+         blit.dstSubresource.layerCount = 1;
+         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+         blit.srcSubresource = blit.dstSubresource;
+ 
+-        blit.srcOffsets[1].x = (int)chain->desc.Width;
+-        blit.srcOffsets[1].y = (int)chain->desc.Height;
++        /* The image may be smaller under the XRGame render scale. */
++        user_extent = d3d12_resource_xrgame_image_mip_extent(user_backbuffer, 0);
++        blit.srcOffsets[1].x = (int)user_extent.width;
++        blit.srcOffsets[1].y = (int)user_extent.height;
+         blit.srcOffsets[1].z = 1;
+ 
+         blit.dstOffsets[1].x = (int)chain->present.backbuffer_width;
 diff --git a/libs/vkd3d/vkd3d_private.h b/libs/vkd3d/vkd3d_private.h
-index 9616a3a4..3ece4e92 100644
+index 9616a3a4..f049f1d5 100644
 --- a/libs/vkd3d/vkd3d_private.h
 +++ b/libs/vkd3d/vkd3d_private.h
-@@ -248,6 +248,28 @@ struct vkd3d_instance
+@@ -248,6 +248,43 @@ struct vkd3d_instance
  
  extern uint64_t vkd3d_config_flags;
  
@@ -664,33 +1128,48 @@ index 9616a3a4..3ece4e92 100644
 +struct vkd3d_xrgame_config
 +{
 +    enum vkd3d_xrgame_texture_quality texture_quality;
-+    uint32_t render_scale_percent;
++    /* Render scale in eighths, as shadPS4's internal scale: 8, 6, 4, 3 or 2. */
++    uint32_t render_scale_eighths;
++    /* XRGAME_RENDER_SCALE_DEBUG, for diagnosis: 1 leaves shaders alone, 2 leaves SV_Position alone,
++     * 4 leaves texel coordinates alone, 8 leaves size queries alone. */
++    uint32_t render_scale_debug;
 +};
 +
 +extern struct vkd3d_xrgame_config vkd3d_xrgame_config;
++/* High bits of the tag a scaled texture view leaves in the raw VA aux slot; shaders compare it. */
++#define VKD3D_XRGAME_TEXTURE_TAG_MAGIC 0x585247u
 +
-+static inline uint32_t vkd3d_xrgame_scale_extent(uint32_t size, uint32_t percent)
++static inline uint32_t vkd3d_xrgame_scale_extent(uint32_t size, uint32_t eighths)
 +{
-+    return max(1u, (uint32_t)(((uint64_t)size * percent + 99u) / 100u));
++    return max(1u, (uint32_t)(((uint64_t)size * eighths) / 8u));
++}
++
++/* Maps the D3D12 span [start, end) of a dimension `guest` texels long onto the `host` texels of a
++ * reduced image: starts round down, ends round up and stay inside the image. */
++static inline void vkd3d_xrgame_map_span(uint32_t start, uint32_t end, uint32_t guest, uint32_t host,
++        int32_t *host_start, int32_t *host_end)
++{
++    *host_start = (int32_t)(((uint64_t)start * host) / guest);
++    *host_end = (int32_t)min((uint64_t)host, ((uint64_t)end * host + guest - 1) / guest);
 +}
 +
  struct vkd3d_queue_timeline_trace_cookie
  {
      unsigned int index;
-@@ -1156,6 +1178,12 @@ struct d3d12_resource
+@@ -1156,6 +1193,12 @@ struct d3d12_resource
  
      VkImageView vrs_view;
  
 +    /* XRGame texture quality: number of top D3D12 mip levels the Vulkan image leaves out.
 +     * D3D12 mip N is Vulkan mip N - xrgame_mip_drop. */
 +    uint32_t xrgame_mip_drop;
-+    /* XRGame render scale of shadow-like depth images in percent, 0 when the image is not scaled. */
-+    uint32_t xrgame_scale_percent;
++    /* XRGame render scale of render and depth targets in eighths, 0 when the image is not scaled. */
++    uint32_t xrgame_scale_eighths;
 +
      struct vkd3d_private_store private_store;
      struct d3d_destruction_notifier destruction_notifier;
  };
-@@ -1204,6 +1232,8 @@ HRESULT d3d12_resource_validate_desc(const D3D12_RESOURCE_DESC1 *desc,
+@@ -1204,6 +1247,8 @@ HRESULT d3d12_resource_validate_desc(const D3D12_RESOURCE_DESC1 *desc,
          struct d3d12_device *device);
  VkImageSubresource d3d12_resource_get_vk_subresource(const struct d3d12_resource *resource,
          uint32_t subresource_idx, bool all_aspects);
@@ -699,30 +1178,69 @@ index 9616a3a4..3ece4e92 100644
  VkImageAspectFlags vk_image_aspect_flags_from_d3d12(
          const struct vkd3d_format *format, uint32_t plane_idx);
  VkImageSubresource vk_image_subresource_from_d3d12(
-@@ -3239,6 +3269,8 @@ struct d3d12_command_list
+@@ -1933,6 +1978,9 @@ struct d3d12_root_signature
+ 
+     uint32_t descriptor_table_offset;
+     uint32_t descriptor_table_count;
++    /* XRGame render scale: byte offset of the current pass scale (in eighths, 0 when the pass is
++     * not scaled) in the push constants, right after the table offsets; 0 when there is none. */
++    uint32_t xrgame_pass_scale_offset;
+ 
+     unsigned int static_sampler_count;
+     D3D12_STATIC_SAMPLER_DESC1 *static_samplers_desc;
+@@ -3239,6 +3287,9 @@ struct d3d12_command_list
      unsigned int fb_width;
      unsigned int fb_height;
      unsigned int fb_layer_count;
-+    /* XRGame render scale of the bound depth image; viewports and scissors follow it. */
-+    uint32_t xrgame_fb_scale_percent;
++    /* XRGame render scale of the bound render targets in eighths, 0 when they are not scaled;
++     * viewports and scissors follow it. */
++    uint32_t xrgame_fb_scale_eighths;
  
      unsigned int xfb_buffer_count;
  
-@@ -6377,7 +6409,19 @@ static inline VkExtent3D d3d12_resource_desc_get_subresource_extent(const struct
+@@ -6374,10 +6425,47 @@ static inline VkExtent3D d3d12_resource_desc_get_subresource_extent(const struct
+     return d3d12_resource_desc_get_vk_subresource_extent(desc, format, &vk_subresource);
+ }
+ 
++/* Width and height of Vulkan mip `vk_mip` of the resource's image, after the XRGame reductions. */
++static inline VkExtent3D d3d12_resource_xrgame_image_mip_extent(const struct d3d12_resource *resource, uint32_t vk_mip)
++{
++    uint32_t width = resource->desc.Width, height = resource->desc.Height;
++    VkExtent3D extent;
++
++    if (resource->xrgame_mip_drop)
++    {
++        width = max(1u, width >> resource->xrgame_mip_drop);
++        height = max(1u, height >> resource->xrgame_mip_drop);
++    }
++
++    if (resource->xrgame_scale_eighths)
++    {
++        width = vkd3d_xrgame_scale_extent(width, resource->xrgame_scale_eighths);
++        height = vkd3d_xrgame_scale_extent(height, resource->xrgame_scale_eighths);
++    }
++
++    extent.width = max(1u, width >> vk_mip);
++    extent.height = max(1u, height >> vk_mip);
++    extent.depth = 1;
++    return extent;
++}
++
  static inline VkExtent3D d3d12_resource_get_view_subresource_extent(const struct d3d12_resource *resource, const struct vkd3d_view *view)
  {
      VkImageSubresourceLayers vk_subresource = vk_subresource_layers_from_view(view);
 -    return d3d12_resource_desc_get_vk_subresource_extent(&resource->desc, resource->format, &vk_subresource);
-+    VkExtent3D extent;
++    VkExtent3D extent, image_extent;
 +
 +    /* Views address the Vulkan image; the description is in D3D12 terms. */
 +    vk_subresource.mipLevel += resource->xrgame_mip_drop;
 +    extent = d3d12_resource_desc_get_vk_subresource_extent(&resource->desc, resource->format, &vk_subresource);
 +
-+    if (resource->xrgame_scale_percent)
++    if (resource->xrgame_scale_eighths)
 +    {
-+        extent.width = vkd3d_xrgame_scale_extent(extent.width, resource->xrgame_scale_percent);
-+        extent.height = vkd3d_xrgame_scale_extent(extent.height, resource->xrgame_scale_percent);
++        image_extent = d3d12_resource_xrgame_image_mip_extent(resource, vk_subresource.mipLevel - resource->xrgame_mip_drop);
++        extent.width = image_extent.width;
++        extent.height = image_extent.height;
 +    }
 +
 +    return extent;
