@@ -144,6 +144,8 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
                                    "[left|right|both] | status|cancel TOKEN"},
             {"capture_video", "H.264 of the immersive session; capture_video [start [EYE]|start_live TOKEN [EYE]|"
                               "stop|status]"},
+            {"capture_config", "Recording/live stream settings like scrcpy's; capture_config [video_bit_rate=8M] "
+                               "[max_size=1024] [max_fps=30] [i_frame_interval=2] | reset | status"},
         };
         for (const auto& provided : providers) {
             const char* command = provided.first;

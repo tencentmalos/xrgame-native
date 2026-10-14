@@ -79,6 +79,31 @@ my_mcp_tools `capture-sdk/tools/liveview.py` 用 `capture_video start_live TOKEN
 - 第一版窗口用 ffmpeg 的 `-f sdl2` 输出：数据正常，但 Windows 报告窗口「未响应」，点击无反应（ffmpeg 7 的多线程 muxer 下 SDL 窗口不处理消息）。改为 PyAV 在工作线程解码、Tk 主线程只负责显示后，本地回放 10 s 解码 892 帧、窗口保持响应；run111（Alyx，APK `f829a744`）实机窗口 `Responding=True`。
 - 头显休眠时 app 在后台，DebugBus 服务无法启动（`pid=(not running)`），需要先唤醒。
 
+## 跳帧优化、码率/尺寸设置和全尺寸截图
+
+Alyx 场景内左眼直播在第一版流程下有约 16% 的帧编码不上（run110：621 s 跳过 3752 次）。新增的 `status` 字段显示跳过全部是「编码器没有空闲图像」，我们的合成提交从提交到完成只有 2–3 ms，瓶颈在编码器一侧（`c2.qti.avc.encoder` 是硬件编码器，Surface 至少要 18 张图；日志里能看到它的输入预处理滤镜 `imgTxrF`/`cvpF`）。
+
+同局 A/B/A（run112，各 60 s，`debug.xrgame.capture.legacy` 切换）：
+
+| 段 | 编码帧率 | 跳过 | 合成延迟均值 |
+|---|---|---|---|
+| A1 原流程 | 29.0 fps | 630 | 2.7 ms |
+| B 失败下一帧重试、多一张备用图、单眼只合成一只眼 | 32.2 fps | 453 | 1.9 ms |
+| A2 原流程 | 27.7 fps | 501 | 2.7 ms |
+
+同局编码器配置对比（run113，各 45 s，均为新流程）：
+
+| 段 | 编码帧率 | 跳过 | 游戏 fps |
+|---|---|---|---|
+| P1 默认调度 | 34.8 | 110 | 48–50 |
+| P2 实时调度（`priority=0`、`operating-rate`=2×fps、`latency=1`、无 B 帧） | 35.9 | 12 | 47–49 |
+| P3 实时调度 + 4 张备用图 | 35.5 | 41 | 48 → 29 |
+| P4 默认调度 | 36.0 | 0 | 28–33 |
+
+P3/P4 后段游戏帧率降到约 29 fps（负载下降），只有 P1/P2 在相近负载下可比；实时调度保留为默认。不同会话之间差异较大：run115 默认直播 15.8 s 跳过 144 次，同局 `max_size=720`、4 Mbps、24 fps 的直播跳过 0 次。
+
+`capture_config`（与 scrcpy 的 `--video-bit-rate`/`--max-size`/`--max-fps` 对应）在 run115 验证：默认直播 1296x1200（半眼缓冲），`max_size=720` 时 720x666，结束后恢复为默认。截图改为全尺寸：xr 双眼 5184x2400、单眼 2592x2400，VR `canvas` 2592x1200（投影 swapchain 原尺寸）。APK `4e4f036adffe8385cf0078473e8a15774b4f24e50de2f717f602be6d718bd945`。
+
 ## 未覆盖与已知限制
 
 - 没有在 GPU 吃满的场景（Alyx 场景内、MHR）测截取的开销；Alyx 只做了功能验证，没有 A/B。

@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/system_properties.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -29,6 +30,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <optional>
@@ -108,6 +110,24 @@ struct Control {
     std::string error;
     uint64_t submitted = 0;
     uint64_t skipped = 0;
+    // Why encoder frames were skipped: no free encoder image, or the acquire semaphore's previous
+    // submission had not completed yet.
+    uint64_t skippedBusy = 0;
+    uint64_t skippedPending = 0;
+    // Submission to completion of the composes that fed the encoder.
+    uint64_t composes = 0;
+    uint64_t composeNsTotal = 0;
+    uint64_t composeNsMax = 0;
+    bool legacy = false;
+    uint32_t images = 0;
+    bool realtime = false;
+    // capture_config, as scrcpy's options: 0 keeps the default. They apply to recordings and live
+    // streams started afterwards; stills stay lossless at the source size.
+    uint32_t videoBitRate = 0;   // bits per second (default 12M)
+    uint32_t maxSize = 0;        // longest side of the encoded picture (default: the source's)
+    uint32_t maxFps = 0;         // encoded frames per second (default: half the XR rate)
+    uint32_t iFrameInterval = 0; // seconds between key frames (default 2)
+    uint32_t encodedFps = 0;     // the cap in effect for the running recording
     EncoderStats encoder{};
 };
 
@@ -151,6 +171,57 @@ std::string SourceCommand(const std::vector<std::string> &args) {
     const int source = gSelected.load();
     return std::string("status: ok\nsource: ") + SourceKey(source) + "\nproducer: " + SourceName(source) +
            "\nview: " + ViewName(source) + "\nsources: canvas xr\n";
+}
+
+// "8M", "800K", "8000000": bits per second; 0 when not a number.
+uint32_t ParseBitRate(const std::string &text) {
+    char *end = nullptr;
+    const double value = std::strtod(text.c_str(), &end);
+    if (end == text.c_str() || value <= 0.0) return 0;
+    double scale = 1.0;
+    if (*end == 'K' || *end == 'k') scale = 1e3, ++end;
+    else if (*end == 'M' || *end == 'm') scale = 1e6, ++end;
+    if (*end != '\0') return 0;
+    return static_cast<uint32_t>(std::min(value * scale, 200e6));
+}
+
+std::string ConfigCommand(const std::vector<std::string> &args) {
+    auto &state = State();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const char *usage = "status: bad-arguments\nusage: capture_config [video_bit_rate=8M] [max_size=1024] "
+                        "[max_fps=30] [i_frame_interval=2] | reset | status (0 = default)\n";
+    if (args.size() == 1 && args[0] == "reset") {
+        state.videoBitRate = state.maxSize = state.maxFps = state.iFrameInterval = 0;
+    } else if (!(args.empty() || (args.size() == 1 && args[0] == "status"))) {
+        for (const std::string &arg : args) {
+            const size_t equals = arg.find('=');
+            if (equals == std::string::npos) return usage;
+            const std::string key = arg.substr(0, equals);
+            const std::string value = arg.substr(equals + 1);
+            char *end = nullptr;
+            const long number = std::strtol(value.c_str(), &end, 10);
+            const bool integer = end != value.c_str() && *end == '\0' && number >= 0;
+            if (key == "video_bit_rate") {
+                const uint32_t rate = value == "0" ? 0 : ParseBitRate(value);
+                if (rate == 0 && value != "0") return usage;
+                state.videoBitRate = rate;
+            } else if (key == "max_size" && integer && (number == 0 || (number >= 64 && number <= 4096))) {
+                state.maxSize = static_cast<uint32_t>(number);
+            } else if (key == "max_fps" && integer && number <= 120) {
+                state.maxFps = static_cast<uint32_t>(number);
+            } else if (key == "i_frame_interval" && integer && number <= 60) {
+                state.iFrameInterval = static_cast<uint32_t>(number);
+            } else {
+                return usage;
+            }
+        }
+    }
+    std::ostringstream out;
+    out << "status: ok\nvideo_bit_rate: " << state.videoBitRate << "\nmax_size: " << state.maxSize
+        << "\nmax_fps: " << state.maxFps << "\ni_frame_interval: " << state.iFrameInterval
+        << "\napplies_to: recordings and live streams started next (0 = default: 12000000, source size, "
+           "half the XR rate, 2 s)\n";
+    return out.str();
 }
 
 std::string ScreenshotCommand(const std::vector<std::string> &args, const std::string &directory) {
@@ -220,6 +291,11 @@ std::string VideoCommand(const std::vector<std::string> &args, const std::string
             state.path.clear();
             state.submitted = 0;
             state.skipped = 0;
+            state.skippedBusy = 0;
+            state.skippedPending = 0;
+            state.composes = 0;
+            state.composeNsTotal = 0;
+            state.composeNsMax = 0;
             state.encoder = {};
         }
     } else if (action == "stop" && args.size() == 1) {
@@ -238,6 +314,12 @@ std::string VideoCommand(const std::vector<std::string> &args, const std::string
         << "\nmode: " << (state.live ? "live" : "file") << "\nview: " << ViewName(source) << "\neye: " << state.eye
         << "\nlayout: " << (state.layout.empty() ? "unknown" : state.layout) << "\nwidth: " << state.width
         << "\nheight: " << state.height << "\nsubmitted: " << state.submitted << "\nskipped: " << state.skipped
+        << "\nskipped_busy: " << state.skippedBusy << "\nskipped_pending: " << state.skippedPending
+        << "\ncompose_latency_ms_avg: "
+        << (state.composes ? static_cast<double>(state.composeNsTotal) / state.composes / 1e6 : 0.0)
+        << "\ncompose_latency_ms_max: " << static_cast<double>(state.composeNsMax) / 1e6
+        << "\npipeline: " << (state.legacy ? "legacy" : "retry") << "\nencoder_images: " << state.images
+        << "\nrealtime: " << (state.realtime ? "true" : "false") << "\nencoded_fps_cap: " << state.encodedFps
         << "\nencoded_samples: " << state.encoder.encoded_samples << "\nencoded_bytes: " << state.encoder.encoded_bytes
         << "\nfirst_codec_pts_us: " << state.encoder.first_pts_us
         << "\nlast_codec_pts_us: " << state.encoder.last_pts_us << "\nmetadata_association: codec_pts_only\neos: "
@@ -246,6 +328,24 @@ std::string VideoCommand(const std::vector<std::string> &args, const std::string
     if (!state.error.empty()) out << "error: " << state.error << '\n';
     return out.str();
 }
+
+// debug.xrgame.capture.legacy=1 restores the first pipeline for same-session A/B: encode on even XR
+// frames only, one spare encoder image, both eyes composed.
+bool LegacyPipeline() {
+    char value[PROP_VALUE_MAX] = {};
+    return __system_property_get("debug.xrgame.capture.legacy", value) > 0 && value[0] == '1';
+}
+
+// An integer system property, or `fallback` when unset or not a number.
+int PropertyInt(const char *name, int fallback) {
+    char value[PROP_VALUE_MAX] = {};
+    if (__system_property_get(name, value) <= 0) return fallback;
+    char *end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    return end != value ? static_cast<int>(parsed) : fallback;
+}
+
+uint32_t EyeBits(const std::string &eye) { return eye == "left" ? 1u : eye == "right" ? 2u : 3u; }
 
 void SetPhase(const std::string &phase, const std::string &error) {
     auto &state = State();
@@ -412,6 +512,7 @@ std::string HandleCommand(const std::string &command, const std::vector<std::str
     if (command == "capture_source") return SourceCommand(args);
     if (command == "capture_screenshot") return ScreenshotCommand(args, capturesDir);
     if (command == "capture_video") return VideoCommand(args, capturesDir);
+    if (command == "capture_config") return ConfigCommand(args);
     return "status: bad-arguments\nerror: unknown capture command\n";
 }
 
@@ -516,7 +617,9 @@ struct XrCapture::Impl {
         }
         ctx.waitIdle();
         for (Slot &slot : slots) destroySlot(slot);
+        destroySlot(projectionStill);
         ctx.destroyImage(&output);
+        ctx.destroyImage(&stillOutput);
         ctx.destroyImage(&placeholder);
         if (placeholderView != VK_NULL_HANDLE) ctx.destroyView(placeholderView);
         for (auto &buffer : constants) ctx.destroyHostBuffer(&buffer);
@@ -628,6 +731,9 @@ struct XrCapture::Impl {
         pipelineInfo.stage.module = module;
         pipelineInfo.stage.pName = "main";
         pipelineInfo.layout = pipelineLayout;
+        // One eye of a stereo output can be composed alone (vkCmdDispatchBase, Vulkan 1.1).
+        dispatchBase = reinterpret_cast<PFN_vkCmdDispatchBase>(vk.vkGetDeviceProcAddr(ctx.device(), "vkCmdDispatchBase"));
+        if (dispatchBase != nullptr) pipelineInfo.flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT;
         const VkResult result = vk.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
         vk.vkDestroyShaderModule(device, module, nullptr);
         if (result != VK_SUCCESS) {
@@ -689,6 +795,10 @@ struct XrCapture::Impl {
         std::string token;
         std::string eye;
         std::string directory;
+        uint32_t bitRate = 0;
+        uint32_t maxSize = 0;
+        uint32_t maxFps = 0;
+        uint32_t iFrameInterval = 0;
         {
             std::lock_guard<std::mutex> lock(state.mutex);
             wanted = state.wanted;
@@ -696,6 +806,10 @@ struct XrCapture::Impl {
             token = state.token;
             eye = state.eye;
             directory = state.directory;
+            bitRate = state.videoBitRate;
+            maxSize = state.maxSize;
+            maxFps = state.maxFps;
+            iFrameInterval = state.iFrameInterval;
         }
         // A canvas recording waits until a canvas was composed once (its shape is known).
         if (wanted && (width < 2 || height < 2)) return;
@@ -712,24 +826,44 @@ struct XrCapture::Impl {
         recSourceWidth = width;
         recHeight = height;
         recViews = views;
+        recEyes = views == 2 ? EyeBits(eye) : 3u;
+        nextEncodeFrame = 0;
         span = scrcpy::capture::SelectEye(width, views, eye);
-        const uint32_t encodedWidth = span.width & ~1u;
-        const uint32_t encodedHeight = height & ~1u;
+        uint32_t encodedWidth = span.width & ~1u;
+        uint32_t encodedHeight = height & ~1u;
+        // max_size scales the encoded picture down (the encoder blit filters it), as scrcpy does.
+        const uint32_t longest = std::max(encodedWidth, encodedHeight);
+        if (maxSize != 0 && longest > maxSize) {
+            const double scale = static_cast<double>(maxSize) / longest;
+            encodedWidth = std::max(16u, static_cast<uint32_t>(std::lround(encodedWidth * scale)) & ~1u);
+            encodedHeight = std::max(16u, static_cast<uint32_t>(std::lround(encodedHeight * scale)) & ~1u);
+        }
+        encWidth = encodedWidth;
+        encHeight = encodedHeight;
+        // max_fps below the default cadence (every other XR frame) spaces the encoded frames in time.
+        encodeIntervalNs = maxFps != 0 && static_cast<int>(maxFps) < fps ? 1'000'000'000ull / maxFps : 0;
+        nextEncodeNs = 0;
+        const int encodedFps = encodeIntervalNs != 0 ? static_cast<int>(maxFps) : fps;
         {
             std::lock_guard<std::mutex> lock(state.mutex);
             state.layout = scrcpy::capture::LayoutName(views);
             state.width = encodedWidth;
             state.height = encodedHeight;
+            state.encodedFps = static_cast<uint32_t>(encodedFps);
         }
         std::string error;
         const std::string path = live ? std::string{} : directory + "/embedded-" + std::to_string(NowNs()) + ".h264";
         EncoderConfig config;
         config.width = static_cast<int>(encodedWidth);
         config.height = static_cast<int>(encodedHeight);
-        config.fps = fps;
-        config.bitrate = 12'000'000;
+        config.fps = encodedFps;
+        config.bitrate = bitRate != 0 ? static_cast<int>(bitRate) : 12'000'000;
+        config.i_frame_interval = iFrameInterval != 0 ? static_cast<int>(iFrameInterval) : 2;
         config.output_path = path;
         config.live_token = live ? token : std::string{};
+        // Real-time codec scheduling (debug.xrgame.capture.realtime=0 turns it off for A/B).
+        realtime = !legacy && PropertyInt("debug.xrgame.capture.realtime", 1) != 0;
+        config.realtime = realtime;
         if (!encoder.Start(config, &error)) {
             closeRecorder();
             SetPhase("failed", error);
@@ -744,6 +878,8 @@ struct XrCapture::Impl {
         recActive = true;
         {
             std::lock_guard<std::mutex> lock(state.mutex);
+            state.images = static_cast<uint32_t>(encoderImages.size());
+            state.realtime = realtime;
             state.path = path;
             state.submitted = 0;
             state.skipped = 0;
@@ -785,8 +921,11 @@ struct XrCapture::Impl {
         }
         VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
         info.surface = surface;
-        info.minImageCount = caps.maxImageCount == 0 ? caps.minImageCount + 1
-                                                     : std::min(caps.minImageCount + 1, caps.maxImageCount);
+        // Spare images give the encoder time to hand them back while it is busy
+        // (debug.xrgame.capture.spare, 1-6, default 2).
+        const uint32_t spare = legacy ? 1u : static_cast<uint32_t>(std::clamp(PropertyInt("debug.xrgame.capture.spare", 2), 1, 6));
+        info.minImageCount = caps.maxImageCount == 0 ? caps.minImageCount + spare
+                                                     : std::min(caps.minImageCount + spare, caps.maxImageCount);
         info.imageFormat = selected->format;
         info.imageColorSpace = selected->colorSpace;
         info.imageExtent = requested;
@@ -825,6 +964,8 @@ struct XrCapture::Impl {
             }
         }
         encoderFormat = selected->format;
+        LOGI("capture: encoder swapchain %u images (surface min %u max %u), %s codec scheduling", count,
+             caps.minImageCount, caps.maxImageCount, realtime ? "real-time" : "default");
         return {};
     }
 
@@ -832,16 +973,17 @@ struct XrCapture::Impl {
     bool acquireEncoderImage() {
         if (!recActive) return false;
         const uint32_t index = nextAcquire % static_cast<uint32_t>(acquireSemaphores.size());
-        const auto skip = [] {
+        const auto skip = [](bool pending) {
             auto &state = State();
             std::lock_guard<std::mutex> lock(state.mutex);
             ++state.skipped;
+            ++(pending ? state.skippedPending : state.skippedBusy);
             return false;
         };
-        if (acquireUse[index] > ctx.completedSerial()) return skip();
+        if (acquireUse[index] > ctx.completedSerial()) return skip(true);
         uint32_t image = 0;
         const VkResult result = wsi.acquire(ctx.device(), swapchain, 0, acquireSemaphores[index], VK_NULL_HANDLE, &image);
-        if (result == VK_NOT_READY || result == VK_TIMEOUT) return skip();
+        if (result == VK_NOT_READY || result == VK_TIMEOUT) return skip(false);
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             SetPhase("failed", "encoder acquire: " + std::to_string(result));
             return false;
@@ -863,9 +1005,10 @@ struct XrCapture::Impl {
         blit.srcOffsets[0] = {static_cast<int32_t>(span.x), 0, 0};
         blit.srcOffsets[1] = {static_cast<int32_t>(span.x + span.width), static_cast<int32_t>(recHeight), 1};
         blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        blit.dstOffsets[1] = {static_cast<int32_t>(span.width & ~1u), static_cast<int32_t>(recHeight & ~1u), 1};
+        blit.dstOffsets[1] = {static_cast<int32_t>(encWidth), static_cast<int32_t>(encHeight), 1};
+        const bool scaled = encWidth != (span.width & ~1u) || encHeight != (recHeight & ~1u);
         wsi.blitImage(command, output.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, target,
-                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
+                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, scaled ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
         ctx.barrier(command, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                     VK_ACCESS_TRANSFER_WRITE_BIT, 0);
@@ -947,6 +1090,19 @@ struct XrCapture::Impl {
     bool failed = false;
 
     std::array<Slot, kSourceCount> slots{};
+
+    // A source's image this frame: stills use their own full-size projection copy.
+    Slot &slot(Source source) {
+        return still && source == Source::Projection ? projectionStill : slots[static_cast<uint32_t>(source)];
+    }
+
+    void releaseStill() {
+        if (stillUse == 0 || ctx.completedSerial() < stillUse) return;
+        destroySlot(projectionStill);
+        ctx.destroyImage(&stillOutput);
+        if (readbackUse <= ctx.completedSerial()) ctx.destroyHostBuffer(&readback);
+        stillUse = 0;
+    }
     std::vector<Noted> noted;
     uint64_t frames = 0;
     bool active = false;
@@ -968,6 +1124,12 @@ struct XrCapture::Impl {
     bool placeholderReady = false;
     vulkan::Image output{};
     bool outputComposed = false;  // `output` holds a composed frame
+    // Stills are full size: their own projection copy and output, released once the still is
+    // written so they do not stay allocated during play.
+    bool still = false;
+    Slot projectionStill{};
+    vulkan::Image stillOutput{};
+    uint64_t stillUse = 0;  // the last submission using them
     std::array<vulkan::HostBuffer, vulkan::Context::kSubmissionCount> constants{};
     vulkan::HostBuffer readback{};
     uint64_t readbackUse = 0;
@@ -992,6 +1154,18 @@ struct XrCapture::Impl {
     EyeSpan span{};
     VkResult presentResult = VK_SUCCESS;
     uint64_t slowPresents = 0;
+    // The first encoder frame at or after which the next one is due; a failed acquire leaves it so
+    // the next XR frame tries again.
+    uint64_t nextEncodeFrame = 0;
+    uint32_t recEyes = 3;  // eyes of a stereo source the recording uses (bit 0 left, bit 1 right)
+    uint32_t encWidth = 0;  // the encoded picture (max_size applied)
+    uint32_t encHeight = 0;
+    uint64_t encodeIntervalNs = 0;  // max_fps spacing, 0 for every other XR frame
+    uint64_t nextEncodeNs = 0;
+    uint32_t eyes = 3;     // eyes this frame needs
+    bool legacy = false;
+    bool realtime = false;
+    PFN_vkCmdDispatchBase dispatchBase = nullptr;
 };
 
 XrCapture::XrCapture(vulkan::Context &context) : impl_(std::make_unique<Impl>(context)) {}
@@ -1007,9 +1181,12 @@ bool XrCapture::begin(uint32_t eyeWidth, uint32_t eyeHeight, int64_t displayPeri
     p.shot.reset();
     p.noted.clear();
     if (p.failed) return false;
-    // Half the runtime's eye size: the capture is for review, not a second full-resolution render.
-    p.eyeWidth = std::max(64u, (std::min(eyeWidth, 2592u) / 2) & ~15u);
-    p.eyeHeight = std::max(64u, (std::min(eyeHeight, 2592u) / 2) & ~15u);
+    // Video: half the runtime's eye size (its eye buffer) unless capture_config's max_size scales it
+    // further; stills: the full eye size.
+    p.eyeWidth = std::max(64u, (std::min(eyeWidth, 4096u) / 2) & ~15u);
+    p.eyeHeight = std::max(64u, (std::min(eyeHeight, 4096u) / 2) & ~15u);
+    const uint32_t stillEyeWidth = std::max(64u, std::min(eyeWidth, 4096u) & ~15u);
+    const uint32_t stillEyeHeight = std::max(64u, std::min(eyeHeight, 4096u) & ~15u);
     const int selected = gSelected.load();
     const double hz = displayPeriodNs > 0 ? 1e9 / static_cast<double>(displayPeriodNs) : 72.0;
     // Every other XR frame while recording (36-45 fps at 72-90 Hz).
@@ -1021,17 +1198,38 @@ bool XrCapture::begin(uint32_t eyeWidth, uint32_t eyeHeight, int64_t displayPeri
     }
     ++p.frames;
     p.shot = Shots().Take(p.generation, p.frames, NowNs());
+    p.still = p.shot.has_value();
+    if (p.still) {
+        p.eyeWidth = stillEyeWidth;
+        p.eyeHeight = stillEyeHeight;
+    } else {
+        p.releaseStill();
+    }
     bool wanted = false;
     {
         auto &state = State();
         std::lock_guard<std::mutex> lock(state.mutex);
         wanted = state.wanted;
     }
-    const bool due = p.frames % 2 == 0;
+    if (p.frames % 72 == 1) {
+        p.legacy = LegacyPipeline();
+        auto &state = State();
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.legacy = p.legacy;
+    }
+    // Every other XR frame; a frame whose acquire failed retries on the next one.
+    const uint64_t now = NowNs();
+    const bool due = (p.legacy ? p.frames % 2 == 0 : p.frames >= p.nextEncodeFrame) && now >= p.nextEncodeNs;
     // A canvas recording learns the canvas's shape from one compose before its encoder starts.
     const bool learn = wanted && !p.recActive && selected == kCanvas && p.canvasWidth == 0 && due;
-    if (p.recActive && due) p.encoding = p.acquireEncoderImage();
+    // A still frame composes at full size; the recording skips it (one frame).
+    if (p.recActive && due && !p.still) p.encoding = p.acquireEncoderImage();
     p.active = p.shot.has_value() || p.encoding || learn;
+    // The eyes this frame's copies and compose need: a mono recording or one-eye still uses one.
+    p.eyes = 0;
+    if (p.shot) p.eyes |= EyeBits(p.shot->eye);
+    if (p.encoding) p.eyes |= p.recEyes;
+    if (learn || p.legacy || p.eyes == 0) p.eyes = 3;
     if (p.active && !p.initPipeline()) {
         LOGE("capture: compose pipeline unavailable; capture disabled for this session");
         if (p.shot) Shots().Complete(p.shot->token, 0, 0, "capture compose pipeline unavailable");
@@ -1059,7 +1257,7 @@ void XrCapture::copyProjection(VkCommandBuffer command, VkImage image, const std
                                VkFormat format, uint32_t width, uint32_t height) {
     Impl &p = *impl_;
     if (!p.active || width == 0 || height == 0) return;
-    Impl::Slot &slot = p.slots[static_cast<uint32_t>(Source::Projection)];
+    Impl::Slot &slot = p.slot(Source::Projection);
     // At most the capture's eye size: both the xr compose and the canvas use it at that size.
     const uint32_t copyWidth = std::max(16u, std::min(width, p.eyeWidth) & ~1u);
     const uint32_t copyHeight = std::max(16u, std::min(height, p.eyeHeight) & ~1u);
@@ -1067,6 +1265,7 @@ void XrCapture::copyProjection(VkCommandBuffer command, VkImage image, const std
                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
     if (slot.sampled == VK_NULL_HANDLE) return;
     for (uint32_t eye = 0; eye < 2; ++eye) {
+        if (!(p.eyes & (1u << eye))) continue;
         p.copyLayer(command, image, views[eye], eye, eye == 0 ? slot.image.view : slot.second, slot.image.image,
                     format, {copyWidth, copyHeight});
     }
@@ -1157,7 +1356,7 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
 
     // Which images hold a usable copy this frame.
     const auto usable = [&p](Source source) {
-        const Impl::Slot &slot = p.slots[static_cast<uint32_t>(source)];
+        const Impl::Slot &slot = p.slot(source);
         if (slot.sampled == VK_NULL_HANDLE) return false;
         if (source == Source::Screen || source == Source::Projection) return slot.copiedFrame == p.frames;
         return slot.attached != nullptr && slot.attached->CaptureSerial() != slot.serialAtAttach;
@@ -1179,7 +1378,7 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
             finishShot("no canvas layer was drawn this frame");
             return;
         }
-        const Impl::Slot &slot = p.slots[static_cast<uint32_t>(projection ? Source::Projection : Source::Screen)];
+        const Impl::Slot &slot = p.slot(projection ? Source::Projection : Source::Screen);
         outWidth = slot.image.width;
         outHeight = slot.image.height;
         views = projection ? 2 : 1;
@@ -1191,9 +1390,11 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
             layer.info[2] = projection ? eye : 0u;
         }
         constants.extent[3] = projection ? 2 : 1;
-        p.canvasWidth = outWidth * views;
-        p.canvasHeight = outHeight;
-        p.canvasViews = views;
+        if (!p.still) {  // the recording's canvas shape; stills are larger
+            p.canvasWidth = outWidth * views;
+            p.canvasHeight = outHeight;
+            p.canvasViews = views;
+        }
     } else {
         XrViewLocateInfo locate{XR_TYPE_VIEW_LOCATE_INFO};
         locate.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
@@ -1237,7 +1438,7 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
                 }
                 spacePose = location.pose;
             }
-            const Impl::Slot &slot = p.slots[static_cast<uint32_t>(layer.source)];
+            const Impl::Slot &slot = p.slot(layer.source);
             for (uint32_t eye = 0; eye < 2; ++eye) {
                 LayerUbo &out = constants.eyes[eye].layers[index];
                 out.info[1] = static_cast<uint32_t>(layer.source);
@@ -1278,12 +1479,13 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
     // The recorder was started for another shape: it restarts on the next frame.
     const bool encodeNow = p.encoding && fullWidth == p.recSourceWidth && outHeight == p.recHeight;
 
-    if (p.output.image == VK_NULL_HANDLE || p.output.width != fullWidth || p.output.height != outHeight) {
-        if (p.output.image != VK_NULL_HANDLE) p.ctx.waitIdle();
-        p.ctx.destroyImage(&p.output);
-        p.outputComposed = false;
+    vulkan::Image &composed = p.still ? p.stillOutput : p.output;
+    if (composed.image == VK_NULL_HANDLE || composed.width != fullWidth || composed.height != outHeight) {
+        if (composed.image != VK_NULL_HANDLE) p.ctx.waitIdle();
+        p.ctx.destroyImage(&composed);
+        if (!p.still) p.outputComposed = false;
         if (!p.ctx.createImage(fullWidth, outHeight, VK_FORMAT_R8G8B8A8_UNORM,
-                               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, &p.output)) {
+                               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, &composed)) {
             finishShot("capture output image unavailable");
             return;
         }
@@ -1315,17 +1517,17 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
         p.placeholderReady = true;
     }
-    p.ctx.barrier(command, p.output.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+    p.ctx.barrier(command, composed.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
                   VK_ACCESS_SHADER_WRITE_BIT);
     std::array<VkDescriptorImageInfo, kSourceCount> images{};
     for (uint32_t i = 0; i < kSourceCount; ++i) {
-        const Impl::Slot &slot = p.slots[i];
+        const Impl::Slot &slot = p.slot(static_cast<Source>(i));
         const bool use = usable(static_cast<Source>(i));
         images[i] = {p.sampler, use ? slot.sampled : p.placeholderView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     }
     const VkDescriptorBufferInfo buffer{ubo.buffer, 0, sizeof(Constants)};
-    const VkDescriptorImageInfo target{VK_NULL_HANDLE, p.output.view, VK_IMAGE_LAYOUT_GENERAL};
+    const VkDescriptorImageInfo target{VK_NULL_HANDLE, composed.view, VK_IMAGE_LAYOUT_GENERAL};
     std::array<VkWriteDescriptorSet, 3> writes{};
     for (uint32_t i = 0; i < writes.size(); ++i) {
         writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -1343,8 +1545,15 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
     p.vk.vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, p.pipeline);
     p.vk.vkCmdPushDescriptorSetKHR(command, VK_PIPELINE_BIND_POINT_COMPUTE, p.pipelineLayout, 0,
                                    static_cast<uint32_t>(writes.size()), writes.data());
-    p.vk.vkCmdDispatch(command, (fullWidth + 7) / 8, (outHeight + 7) / 8, 1);
-    p.ctx.barrier(command, p.output.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    const uint32_t groupsY = (outHeight + 7) / 8;
+    if (views == 2 && p.eyes != 3 && p.dispatchBase != nullptr && outWidth % 8 == 0) {
+        // One eye of the side-by-side output; the other half is left undefined and never read.
+        const uint32_t eyeGroups = outWidth / 8;
+        p.dispatchBase(command, p.eyes == 1 ? 0 : eyeGroups, 0, 0, eyeGroups, groupsY, 1);
+    } else {
+        p.vk.vkCmdDispatch(command, (fullWidth + 7) / 8, groupsY, 1);
+    }
+    p.ctx.barrier(command, composed.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
                   VK_ACCESS_TRANSFER_READ_BIT);
 
@@ -1367,7 +1576,7 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
             copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             copy.imageOffset = {static_cast<int32_t>(shotSpan.x), 0, 0};
             copy.imageExtent = {shotSpan.width, outHeight, 1};
-            p.vk.vkCmdCopyImageToBuffer(command, p.output.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            p.vk.vkCmdCopyImageToBuffer(command, composed.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                         p.readback.buffer, 1, &copy);
             VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
             toHost.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1395,6 +1604,15 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
     }
     vulkan::SubmitSync sync;
     if (encodeNow) {
+        const uint64_t submittedNs = NowNs();
+        submission->onComplete.push_back([submittedNs] {
+            const uint64_t latency = NowNs() - submittedNs;
+            auto &state = State();
+            std::lock_guard<std::mutex> lock(state.mutex);
+            ++state.composes;
+            state.composeNsTotal += latency;
+            state.composeNsMax = std::max(state.composeNsMax, latency);
+        });
         p.recordEncoderBlit(command);
         sync.wait = p.acquireSemaphores[p.acquireIndex];
         sync.waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -1402,12 +1620,18 @@ void XrCapture::compose(XrSession session, XrSpace space, XrTime displayTime) {
         sync.afterSubmit = [&p](VkQueue queue) { p.presentEncoderImage(queue); };
     }
     const bool submitted = p.ctx.submit(submission, sync);
-    if (submitted) p.outputComposed = true;
+    if (submitted && !p.still) p.outputComposed = true;
+    if (submitted && p.still) p.stillUse = submission->serial;
     if (shot && submitted) p.readbackUse = submission->serial;
     if (encodeNow) {
         p.acquireUse[p.acquireIndex] = submitted ? submission->serial : 0;
         p.acquired = false;
-        if (submitted) p.notePresented();
+        if (submitted) {
+            p.notePresented();
+            p.nextEncodeFrame = p.frames + 2;
+            // A few milliseconds early, so a frame at the interval is not pushed to the next XR frame.
+            if (p.encodeIntervalNs != 0) p.nextEncodeNs = NowNs() + p.encodeIntervalNs - 5'000'000ull;
+        }
     }
     // Acquired for a recording of another shape (it restarts next frame), or the submit failed:
     // the image goes back with black.

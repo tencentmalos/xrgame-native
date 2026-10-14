@@ -40,7 +40,7 @@ class DebugBusService : Service() {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
             "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard")
-        private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video")
+        private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video", "capture_config")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
     }

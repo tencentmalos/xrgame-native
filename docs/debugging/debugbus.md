@@ -174,16 +174,19 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 
 | 命令 | 作用与边界 |
 | --- | --- |
-| `capture_source [canvas\|xr\|status]` | `canvas`：会话自己画的图，2D 大屏的 quad 图（mono），或 Windows VR 两只眼的投影图并排（`stereo_sbs`）。`xr`：佩戴者看到的画面去掉镜头畸变：把本会话提交的图层（投影、大屏 quad/曲面、叠加层、状态层、键盘）按眼做光线求交合成，单眼为运行时推荐眼尺寸的一半，两眼并排。直通和 Pico 系统自己的图层不在其中（直通处为黑）。截图或录像进行中拒绝切换 |
-| `capture_screenshot request TOKEN [left\|right\|both]` / `status\|cancel TOKEN` | 无损 PNG，TOKEN 为 32 位小写十六进制。下一帧取图，写到 `files/captures/snapshot-TOKEN.png`，用 `run-as` 取回。需要正在运行的沉浸式 Vulkan 合成会话 |
-| `capture_video start [EYE]` / `start_live TOKEN [EYE]` / `stop` / `status` | MediaCodec H.264：文件模式写 `files/captures/embedded-<ns>.h264` 和 `.frames.csv`；live 模式走 `scapture.TOKEN` 本地 socket。每隔一个 XR 帧编码一次（72 Hz 下 36 fps，90 Hz 下 45 fps）；编码器忙时跳过该帧（`skipped`），不阻塞 XR 线程。会话结束即停止录像 |
+| `capture_source [canvas\|xr\|status]` | `canvas`：会话自己画的图，2D 大屏的 quad 图（mono），或 Windows VR 两只眼的投影图并排（`stereo_sbs`）。`xr`：佩戴者看到的画面去掉镜头畸变：把本会话提交的图层（投影、大屏 quad/曲面、叠加层、状态层、键盘）按眼做光线求交合成，两眼并排；截图为运行时推荐眼尺寸（Swan 每眼 2592x2400），录像和直播默认为其一半（1296x1200）。直通和 Pico 系统自己的图层不在其中（直通处为黑）。截图或录像进行中拒绝切换 |
+| `capture_screenshot request TOKEN [left\|right\|both]` / `status\|cancel TOKEN` | 无损 PNG，全尺寸（`xr` 为推荐眼尺寸，VR 的 `canvas` 为投影 swapchain 尺寸，大屏 `canvas` 为大屏图层尺寸），TOKEN 为 32 位小写十六进制。下一帧取图，写到 `files/captures/snapshot-TOKEN.png`，用 `run-as` 取回。截图帧用单独的全尺寸图像，写完后释放；录像跳过这一帧。需要正在运行的沉浸式 Vulkan 合成会话 |
+| `capture_video start [EYE]` / `start_live TOKEN [EYE]` / `stop` / `status` | MediaCodec H.264：文件模式写 `files/captures/embedded-<ns>.h264` 和 `.frames.csv`；live 模式走 `scapture.TOKEN` 本地 socket。默认每隔一个 XR 帧编码一次（72 Hz 下 36 fps，90 Hz 下 45 fps），12 Mbps，关键帧间隔 2 s；编码器没有空闲图像时这一帧不编码、下一个 XR 帧重试，不阻塞 XR 线程。`status` 给出 `skipped_busy`（编码器没还图像）、`skipped_pending`（我们的上一次提交未完成）、`compose_latency_ms_avg/max`、`encoder_images`、`realtime`。会话结束即停止录像 |
+| `capture_config [video_bit_rate=8M] [max_size=1024] [max_fps=30] [i_frame_interval=2] \| reset \| status` | 与 scrcpy 的 `--video-bit-rate`/`--max-size`/`--max-fps` 对应，0 表示默认；对之后开始的录像和直播生效，截图不受影响。`max_size` 限制编码画面的长边（编码前线性缩小），`max_fps` 低于默认节奏时按时间间隔编码。`capturectl.py`、`liveview.py` 和 scrcpy MCP `record_app_video` 的同名参数通过它设置，用完恢复原值 |
 
 实现（`app/src/main/cpp/xrimmersive/xr_capture.cpp`，改编自 shadPS4 的 `capture_recorder`/`xr_capture`）：
 - 只在被截取的帧上做额外工作：有待取的截图，或录像中每隔一帧。
 - 每个图层在自己的命令缓冲里、`xrReleaseSwapchainImage` 之前按采样方式拷贝，不需要 swapchain 的 TRANSFER_SRC。投影层在截取帧上不复用上一张图，保证拷到的就是显示的那张。
 - 状态层和键盘通过 Foundation `XrImguiVulkanLayer::SetCaptureTarget` 拷贝；它们最多每秒重绘 4 次，所以整个会话都挂着目标图（面板小、拷贝频率与重绘相同），任何一帧的截图都带得上它们。
 - `xrEndFrame` 之后在同一队列上做合成（compute）、PNG 回读和编码器 blit；回读数据在完成线程上取出，PNG 在单独线程写，XR 线程不等 GPU。
-- 编码器的输入 Surface 走 Vulkan swapchain（合成设备在带 SDK 的构建里打开 `VK_KHR_android_surface`/`VK_KHR_swapchain`），acquire 超时为 0。
+- 编码器的输入 Surface 走 Vulkan swapchain（合成设备在带 SDK 的构建里打开 `VK_KHR_android_surface`/`VK_KHR_swapchain`），acquire 超时为 0。Swan 上编码器（`c2.qti.avc.encoder`，硬件）要求至少 18 张图，我们建 20 张。
+- 编码器按实时任务配置（`priority=0`、`operating-rate` 为编码帧率的两倍、`latency=1`、无 B 帧）：Alyx 场景里编码器自己的输入预处理在 GPU 满载时会压住图像。单眼录像和直播只合成、拷贝那一只眼。
+- A/B 开关：`debug.xrgame.capture.legacy=1` 回到最初的流程（只在偶数帧编码、少一张备用图、两眼都合成），`debug.xrgame.capture.realtime=0` 关掉实时配置，`debug.xrgame.capture.spare=N` 改备用图数。
 
 构建：`-PxrGameCaptureSdk=<…/capture-sdk/native>` 或环境变量 `XRGAME_CAPTURE_SDK`（只作用于 debug 构建），
 `BUILD_INFO.json` 的 `captureSdk` 记录其源文件哈希和 `XRGAME_CAPTURE_SDK_REVISION`。SDK 源码不进本仓库。
