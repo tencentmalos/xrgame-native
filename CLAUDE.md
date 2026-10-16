@@ -3,6 +3,37 @@
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
 - 2026-10-08 用户指定后续本机编译默认使用 Apple Container：`tools/xrgame/apple-container.sh build`，首次运行 `setup`。源码在 Mac 编辑，Linux ext4 卷保留独立工具链/缓存，产物为 `picoXrDebug` + 原生 `RelWithDebInfo`。见 [操作指南](docs/building/apple-container.md)；完整运行时重建与设备验收不能由 APK 构建推定。
+- 2026-10-15 Alyx 的 Vulkan 渲染（`-vulkan`）在 Swan 进场景出画面，游戏自带的 FDM 注视点渲染接上 Pico 眼动。按用户要求“原生路径优先，没办法再做 guest patch”，全部改在原生层：
+  - OpenComposite 在 `-vulkan` 时写 `initUsingVulkan=true`；
+  - 运行时返回 Vulkan 设备扩展；
+  - Wine 补丁 `wine-vulkan-host-image-copy.patch` 在宿主设备上补开 `VK_EXT_host_image_copy`（游戏是 Vulkan 1.0 实例，没启用这个扩展却调用 `vkCopyMemoryToImageEXT`），出包 Proton xrg6；
+  - 注视位姿随 views 快照传给运行时，运行时实现 `XR_FB_eye_tracking_social`；
+  - OpenComposite 新补丁 `eye-tracked-foveation.patch` 实现 `GetEyeTrackedFoveationCenter`，DLL `54e702ca` 为 MSVC 构建。
+  - 调试覆盖 `debug.xrgame.xr.gaze=右,上`（度）验证了 x 数值与 y 方向（游戏用 `vr_fdm_offset_flip_y` 取反 y）。
+  - 真人佩戴下的效果、画质和 GPU 开销尚未验收。同日的 guest patch v1 见[规格](docs/specs/xrgame-guest-patch-v1.md)。
+  - 见[记录](docs/validation/swan-alyx-vulkan-20261015.md)。
+- 2026-10-15 两个调试器按用户要求修复（Alyx FDM/ETFR 改走 guest patch 之前）：
+  - guest：WineDbg 改由 DebugBus `guest_debugger` 从 app 进程启动（`run-as` 是 `runas_app`，Swan 的 SELinux 会丢掉 wineserver 的 fd）。WineDbg r7 放行除断点、单步外的全部首次异常。
+  - Alyx 附加时约一半会死：Wine 的 `CreateRemoteThread` 线程继承了代为创建它的线程的信号屏蔽字，那个线程常在信号处理函数里等调试器，SIGTRAP 是屏蔽的，break-in 线程第一次 `brk` 就把进程杀了。Wine 补丁 `wine-new-thread-sigmask.patch`，出包 Proton xrg7；同一局 Alyx 附加/分离 8 轮全部存活，MCP 完整流程通过。DebugBus `stop` 改为 SIGKILL。
+  - host：native-debugger MCP 在 gdb-remote 附加时没选 Android 平台，信号表编号错位（7 号是 SIGEMT），放行 SIGBUS 无效；已在私有 `my_mcp_tools` 修复并安装本地版 `gdbsig1`。2026-10-16 用 `tcp_gdbserver`（显式端口）对 app 端到端验证通过：45 s 无误停，暂停、继续、分离都正常。默认的 abstract_platform 传输仍未解决，要显式指定 TCP。
+  - 2026-10-16 在场景中的 Alyx 上把整条链测了一遍：
+    - host：XR 会话中附加，在 `libxrimmersive.so` 下函数断点、单步、分离（XR 90/90），IDA 关联到 `nativeWaitWindowsFrame`。
+    - abstract_platform 断开的原因是 CodeLLDB 1.12.1 并行加载约 570 个模块时退出，脚本中关掉 `target.parallel-module-load` 即可。已打进本地包 `gdbsig3`，重连 MCP 后验证。
+    - guest：tier0 `Plat_FloatTime` 软件断点命中，删除断点后单步正常（MCP 不允许直接从自己的软件断点单步），IDA 反编译对得上。WineDbg 没有混合栈，用 `read_memory` 读返回地址。
+    - patched run-as：经 MCP 环境事务安装（关 verity、重启），新增 `--app-domain`（仅 root：package UID + App 自己的 `untrusted_app` 域），helper 用 `--launcher run-as-app-domain`。`2db6782d` 暂在 `/data/local/tmp`，换进系统要等 gdbsig3 资产。
+    - 两种启动方式对比：host lldb 停住 SteamPSP 时 DebugBus 超时，run-as 方式照常启动并命中 guest 断点。guest + host 联调用它，默认仍为 DebugBus。
+  - 见[记录](docs/validation/swan-guest-debugger-20261015.md)。
+- 2026-10-16 Alyx 眼动注视点的 guest patch 第一轮（`tools/xrgame/guest-patch/games/546560/`，静态分析用 reverse_study MCP）：
+  - `etfr_fdm_split`：默认立体模式两眼共用一层时，把游戏的 FDM 图案按每只眼各生成一次；
+  - `etfr_offset_eye`：游戏把注视换成偏移时按两眼总宽，补丁改为单眼宽度（x 减半）；
+  - `etfr_fdm_ab`：同一局里开关游戏的 FDM，只用于测量。
+  - 无人佩戴、用注视覆盖加 Turnip `fdmviz` 测：每只眼的全密度区跟着注视，误差在一个粒度（32 像素）内（右 20°：+208，预期 216）。
+  - 游戏自己的“周边发黑”（没打补丁也有）来自景深预通道，启动参数加 `+vr_depth_prepass 0` 就没了。
+  - **在这套 Turnip（xrg16，A840）上 FDM 是亏的**：同一局里 FDM 开永远比关慢（27.6 对 51.3 fps；`TU_DEBUG=gmem` 下 25.3 对 38.1；24.6/26.3 对 32.4/40.3），不要默认打开 Alyx 的 ETFR。
+    - 均匀全密度的图（没有任何着色节省）更慢（同一局 11.7 对 49.8 fps），所以开销在每个分箱，不在着色。读代码：Turnip 在 A8XX 上没有硬件分箱缩放（`bin_scale_en` 要求 CHIP < A8XX），缩放分箱没有 LRZ，每个分箱都要重放 CPU 生成的 patchpoint（视口、裁剪、FS 参数）加缓存失效和 WFI；FDM 通道还被强制走 GMEM。逐分箱 GPU 时间（u_trace）没量。要修就得改 Turnip，需要用户批准。
+    - Swan 的高通系统 Vulkan 驱动有 Alyx 要的能力（Vulkan 1.4、`VK_EXT_fragment_density_map_offset`、`VK_EXT_host_image_copy`），但没有人给它呈现：它是 Android HAL 驱动，v1 不用 `libvulkan_wrapper`，Turnip 的 X11/AHB 呈现是 Mesa WSI。要做的话得在 Wine 的 win32u 里用 AHB 图像自己做软件 swapchain（宿主加载器换成 Android 的 `libvulkan.so`，经 DRI3 交给 X server）。没开始，用户还没选路线。
+  - 没测：真人佩戴、`fove_square_use_legacy`、径向图案、长时间游玩。
+  - 见[记录](docs/validation/swan-alyx-etfr-guest-patch-20261016.md)。
 - 2026-10-02 普通 Android SBS 已在 AYN 显示 Alyx 双眼主菜单与虚拟手；OpenComposite 新 ABI 与 GBE 离线本地通信已修复。双手固定 pose，按键/摇杆从 Android 注入到 Windows OpenXR action 的验证通过。完整游玩、物理手柄与 Swan 尚未验收。见 [SBS 规划](docs/specs/xrgame-native-vr-sbs-v1.md)及[证据](docs/validation/vr-sbs-20261002.md)。
 - 2026-10-12 新增普通游戏的「2D 大屏（XR）」显示模式：只在头显上提供，不依赖 `XR_BUILD`，游戏在 OpenXR 会话里以大屏显示。尺寸预设都在 1.5 米焦平面上，分 65 / 80 / 100 / 120 英寸，默认 80 英寸（水平视角约 61°）。XRGAME 新建容器默认 90 Hz。大屏模式使用 Vulkan 合成，显示与 Alyx 相同的状态层。GPU 直通原先没生效，原因是 `VulkanRenderer.setVulkanXrFrameBridge` 在非 `XR_BUILD` 下直接返回；修复后 MHR 导入 1280x720 共享 AHB，Alyx 无人值守进场景回归通过。Pico 的刷新率枚举只列当前显示刷新率，运行时会拒绝其他值，所以只有系统在 90 Hz 时才能拿到 90。Pico 系统资源管理服务（`resmanagerserver`，日志标签 BrainCore）在 Alyx 场景负载下把全系统节流到 72 Hz，之后一直没解除。状态层在大屏模式下与屏幕平行，放在左上角外侧；立体模式下保持竖直，不再朝眼睛偏转。GPU 读数改用 `gpu_busy_percentage`，因为 Swan 的 `gpubusy` 一直为 0。MHR 约 27 fps，受限于自身主线程和每帧 27 ms 的 GPU 工作，频率都被系统限在硬件上限以下。大屏新增 VST 透视（按游戏开关）：Pico 上启动 `XR_FB_passthrough` 后由运行时在背景里画，不提交透视层，混合模式保持 OPAQUE。XR 模式支持外接手柄：XR 手柄和蓝牙 Xbox/DualSense 手柄谁最后按下谁驱动 1 号玩家；长按 Start 600 ms 开快捷菜单；震动跟随当前手柄；状态层 INPUT 一栏显示当前输入。见[记录](docs/validation/swan-xr-bigscreen-20261012.md)。
 - 2026-10-14 按用户要求移除 D3D 渲染缩放（含最初的阴影缩放）：不适合 Steam 游戏，移除以降低实现复杂度。实现保留在主仓分支 `feature/malos/d3d-render-scale`（`4d5f0f484`）和 fork 的 `feature/malos/xrgame-resource-scale`，不再维护；容器里残留的 `XRGAME_RENDER_SCALE` 不再被读取。现在组件为 vkd3d xrg4、DXVK xrg7，只含纹理质量。代价：MHR 标题前后少了阴影数组省下的约 1 GiB，当天 MHR 加载时被 Pico lmkd 杀过一次（`POLICY_SWAP_THEN_KILL`）。启动面板同时去掉「插帧」，加上「限帧」（快捷菜单 FPS 限制器的 `fpsLimiterEnabled`/`fpsLimiterTarget`），VR 渲染分辨率选中后显示单眼尺寸，并新增「高」「极高」两档：每轴从推荐尺寸走向运行时最大眼尺寸，Swan 上极高为 4160×3552；Windows 运行时声明的交换链上限由 4096 改为 16384。纹理质量只保留高/中/低选项，不显示说明。见[移除记录](docs/validation/swan-d3d-render-scale-removal-20261014.md)。
