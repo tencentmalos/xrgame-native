@@ -1,5 +1,7 @@
 package app.gamenative.ui.screen.xr.windows
 
+import app.gamenative.ui.screen.xr.XrDebugInput
+import app.gamenative.xrgame.XrGameDebugLaunch
 import app.gamenative.xrgame.XrGameProfiler
 import java.io.BufferedWriter
 import java.io.Closeable
@@ -12,6 +14,7 @@ import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 class WindowsVrControlServer(
     private val config: WindowsVrRuntimeConfig,
@@ -28,7 +31,9 @@ class WindowsVrControlServer(
     private val interstitials = WindowsVrInterstitials { state ->
         snapshots.setInterstitial(state?.let(WindowsVrInterstitialRenderer::render))
         diagnostics.record("interstitial", if (state == null) "hidden" else "shown message=${state.message.isNotEmpty()}")
+        if (state?.message?.isNotEmpty() == true && XrGameDebugLaunch.autoTrigger) answerPrompt()
     }
+    private val answeringPrompt = AtomicBoolean(false)
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
@@ -122,6 +127,28 @@ class WindowsVrControlServer(
                 "OK"
             } else "ERROR unsupported"
             else -> "ERROR unsupported"
+        }
+    }
+
+    /**
+     * DebugBus `launch <appId> load=<save>`: presses the trigger for the game's prompt after loading
+     * (Half-Life: Alyx waits for it), so tests reach the scene without a person; up to three presses
+     * while the prompt stays up. Each press lasts 600 ms: with the headset worn, 300 ms presses right
+     * after loading were missed three times while one of 600 ms was taken.
+     */
+    private fun answerPrompt() {
+        if (!answeringPrompt.compareAndSet(false, true)) return
+        thread(isDaemon = true, name = "xr-auto-trigger") {
+            try {
+                for (attempt in 1..3) {
+                    Thread.sleep(if (attempt == 1) 1_000L else 2_000L)
+                    if (!running.get() || !interstitials.prompting()) break
+                    XrDebugInput.apply(listOf("axis", "rt", "1", "600"))
+                    timber.log.Timber.i("DebugBus automatic trigger for the game's prompt (press %d)", attempt)
+                }
+            } finally {
+                answeringPrompt.set(false)
+            }
         }
     }
 
@@ -268,7 +295,16 @@ class WindowsVrControlServer(
                 }
             }
         }.joinToString(" ")
-        return "OK flags=${snapshot.flags[0]} $rawValues $namedValues"
+        return "OK flags=${snapshot.flags[0]} $rawValues $namedValues${gazeValues(snapshot.views)}"
+    }
+
+    /** The eye gaze after the views (named only, so positional readers are unaffected). */
+    private fun gazeValues(views: FloatArray): String {
+        if (views.size < 30) return ""
+        if (views[22] == 0f) return " ev=0"
+        return " ev=1 " + gazeFields.indices.joinToString(" ") {
+            "${gazeFields[it]}=${(views[23 + it] * 1_000_000f).toLong()}"
+        }
     }
 
     private fun getInput(tokens: List<String>): String {
@@ -335,6 +371,7 @@ class WindowsVrControlServer(
         // MAILBOX lines carry base64 JSON (the runtime caps messages at 6000 bytes).
         const val MAX_LINE = 8192
         val viewFields = arrayOf("qx", "qy", "qz", "qw", "px", "py", "pz", "fl", "fr", "fu", "fd")
+        val gazeFields = arrayOf("eqx", "eqy", "eqz", "eqw", "epx", "epy", "epz")
         val inputFields = arrayOf(
             "tr", "sq", "sx", "sy", "gqx", "gqy", "gqz", "gqw", "gpx", "gpy", "gpz",
             "aqx", "aqy", "aqz", "aqw", "apx", "apy", "apz",

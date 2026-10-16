@@ -843,12 +843,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         WindowsVrUpscale.set(settings)
         WindowsVrGripCorrection.reset(android.os.Build.DEVICE)
         val reconstructs = backend == WindowsVrUpscale.BACKEND_VULKAN && settings.filter != WindowsVrUpscale.Filter.OFF
-        // Eye-tracked foveation needs Pico's eye tracking permission; without it the gaze stays
-        // invalid and foveation keeps the fixed centre.
-        if (reconstructs && settings.foveation == WindowsVrUpscale.Foveation.EYE &&
-            checkSelfPermission(WindowsVrUpscale.EYE_TRACKING_PERMISSION) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(WindowsVrUpscale.EYE_TRACKING_PERMISSION), EYE_TRACKING_REQUEST)
+        // Eye-tracked foveation (ours, or a VR game's own through XR_FB_eye_tracking_social) needs
+        // Pico's eye tracking permissions; without them the gaze stays invalid and foveation
+        // keeps the fixed centre.
+        val missing = WindowsVrUpscale.EYE_TRACKING_PERMISSIONS.filter {
+            checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty() && (windowsVr || (reconstructs && settings.foveation == WindowsVrUpscale.Foveation.EYE))) {
+            requestPermissions(missing.toTypedArray(), EYE_TRACKING_REQUEST)
         }
         // VR games reconstruct into their eye buffers; the big screen sizes its layer by the tier.
         return if (reconstructs && !windowsVr) settings.eyeBuffer else null

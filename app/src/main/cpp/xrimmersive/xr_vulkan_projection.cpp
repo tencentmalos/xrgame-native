@@ -284,6 +284,84 @@ spatial::upscale::FoveatedEye ProjectionPresenter::foveate(const EyeFrame &frame
     return eye;
 }
 
+// The ETFR debug view: a cross where the gaze the game is given lands in this eye's image (green),
+// or in the view's centre while there is none (magenta). Both colours read the same in RGBA and
+// BGRA. The cross is copied in, so it covers the image beneath it.
+void ProjectionPresenter::drawGazeMarker(VkCommandBuffer command, VkImage target, uint32_t eye, const EyeFrame &frame,
+                                         uint32_t width, uint32_t height) {
+    constexpr uint32_t kSide = 64;  // each colour is a kSide x kSide block of the buffer
+    if (!frame.projectionValid || width == 0 || height == 0) return;
+    if (format_ != VK_FORMAT_R8G8B8A8_SRGB && format_ != VK_FORMAT_R8G8B8A8_UNORM &&
+        format_ != VK_FORMAT_B8G8R8A8_SRGB && format_ != VK_FORMAT_B8G8R8A8_UNORM) {
+        return;
+    }
+    if (marker_.buffer == VK_NULL_HANDLE) {
+        if (!context_->createHostBuffer(kSide * kSide * 4 * 2, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, &marker_)) return;
+        auto *pixels = static_cast<uint8_t *>(marker_.mapped);
+        for (uint32_t i = 0; i < kSide * kSide * 2; ++i) {
+            const bool green = i < kSide * kSide;
+            pixels[i * 4] = green ? 0 : 255;
+            pixels[i * 4 + 1] = green ? 255 : 0;
+            pixels[i * 4 + 2] = green ? 0 : 255;
+            pixels[i * 4 + 3] = 255;
+        }
+        LOGI("vulkan projection: ETFR debug view on (format %d)", format_);
+    }
+    // Tangents in the eye's view: where the gaze points, else the centre of its FOV.
+    const float left = std::tan(frame.projectionFov[0]), right = std::tan(frame.projectionFov[1]);
+    const float up = std::tan(frame.projectionFov[2]), down = std::tan(frame.projectionFov[3]);
+    float x = (left + right) * 0.5f, y = (up + down) * 0.5f;
+    bool tracked = false;
+    if (gameGaze_.valid) {
+        const std::array<float, 3> world = Rotate(gameGaze_.orientation, {0.0f, 0.0f, -1.0f});
+        const XrQuaternionf inverse{-frame.projectionOrientation[0], -frame.projectionOrientation[1],
+                                    -frame.projectionOrientation[2], frame.projectionOrientation[3]};
+        const std::array<float, 3> view = Rotate(inverse, world);
+        if (view[2] < -0.05f) {
+            x = view[0] / -view[2];
+            y = view[1] / -view[2];
+            tracked = true;
+        }
+    }
+    const int32_t cx = static_cast<int32_t>((x - left) / (right - left) * static_cast<float>(width));
+    const int32_t cy = static_cast<int32_t>((up - y) / (up - down) * static_cast<float>(height));
+    const int32_t thick = static_cast<int32_t>(std::max(4u, width / 400));
+    const int32_t arm = static_cast<int32_t>(std::min(kSide, std::max(16u, width / 40)));
+    const int32_t gap = arm / 3;
+    const std::array<std::array<int32_t, 4>, 4> arms{{
+        {cx - gap - arm, cy - thick / 2, arm, thick},
+        {cx + gap, cy - thick / 2, arm, thick},
+        {cx - thick / 2, cy - gap - arm, thick, arm},
+        {cx - thick / 2, cy + gap, thick, arm},
+    }};
+    std::array<VkBufferImageCopy, 4> regions{};
+    uint32_t count = 0;
+    for (const auto &rect : arms) {
+        const int32_t x0 = std::max(rect[0], 0), y0 = std::max(rect[1], 0);
+        const int32_t x1 = std::min(rect[0] + rect[2], static_cast<int32_t>(width));
+        const int32_t y1 = std::min(rect[1] + rect[3], static_cast<int32_t>(height));
+        if (x1 <= x0 || y1 <= y0) continue;
+        VkBufferImageCopy &region = regions[count++];
+        region.bufferOffset = tracked ? 0 : kSide * kSide * 4;
+        region.bufferRowLength = kSide;
+        region.bufferImageHeight = kSide;
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, eye, 1};
+        region.imageOffset = {x0, y0, 0};
+        region.imageExtent = {static_cast<uint32_t>(x1 - x0), static_cast<uint32_t>(y1 - y0), 1};
+    }
+    if (count == 0) return;
+    context_->barrier(command, target, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, eye, 1);
+    context_->vk().vkCmdCopyBufferToImage(command, marker_.buffer, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                          count, regions.data());
+    context_->barrier(command, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT,
+                      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                      VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                      eye, 1);
+}
+
 bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space, XrCompositionLayerProjection *layer) {
     lastFreshSnap_ = -1;
     if (layer == nullptr || context_ == nullptr || context_->lost() || !transport.hasStereoContent()) return false;
@@ -471,6 +549,7 @@ bool ProjectionPresenter::render(WindowsFrameTransport &transport, XrSpace space
             context_->blit(command, views_[imageIndex][eye], {width, height}, format_, source.view, VK_NULL_HANDLE,
                            params);
         }
+        if (settings.debug) drawGazeMarker(command, target, eye, frame, width, height);
         context_->barrier(command, source.image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                           VK_ACCESS_SHADER_READ_BIT, 0, 0, 1, family, VK_QUEUE_FAMILY_FOREIGN_EXT);
@@ -538,6 +617,7 @@ void ProjectionPresenter::shutdown() {
     if (context_ == nullptr) return;
     context_->waitIdle();
     upscaler_.reset();
+    if (marker_.buffer != VK_NULL_HANDLE) context_->destroyHostBuffer(&marker_);
     for (auto &eye : imported_) {
         for (auto &entry : eye) {
             if (entry.image.image != VK_NULL_HANDLE) releaseImported(entry);

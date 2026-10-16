@@ -53,7 +53,8 @@ class WindowsVrSnapshotProvider : WindowsVrFrameSource {
     override fun waitFrame(afterSerial: Long, timeoutMs: Int): WindowsVrRuntimeSnapshot? {
         val activeHandle = handle
         if (activeHandle == 0L) return null
-        val snapshot = WindowsVrRuntimeSnapshot(LongArray(12), FloatArray(22), FloatArray(36), IntArray(3))
+        // views: two eyes of 11 floats, then the eye gaze (valid, orientation, position).
+        val snapshot = WindowsVrRuntimeSnapshot(LongArray(12), FloatArray(30), FloatArray(36), IntArray(3))
         if (!XrNative.nativeWaitWindowsFrame(
                 activeHandle,
                 afterSerial,

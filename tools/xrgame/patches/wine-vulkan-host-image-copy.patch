@@ -1,0 +1,33 @@
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -852,6 +852,30 @@
+     device->extensions.has_VK_WINE_openvr_device_extensions = 0;
+     device->extensions.has_VK_WINE_openxr_device_extensions = 0;
+ 
++    /* xrgame: Windows drivers return the VK_EXT_host_image_copy commands whether or not the
++     * extension is enabled, and Source 2's Vulkan renderer (Half-Life: Alyx, a Vulkan 1.0
++     * instance) calls vkCopyMemoryToImageEXT without enabling it. Mesa returns NULL for the
++     * commands of extensions that are not enabled, so enable it on the host device whenever
++     * the driver supports it. It only changes images created with host transfer usage. */
++    if (!device->extensions.has_VK_EXT_host_image_copy && physical_device->extensions.has_VK_EXT_host_image_copy &&
++        physical_device->extensions.has_VK_KHR_copy_commands2 && physical_device->extensions.has_VK_KHR_format_feature_flags2 &&
++        !find_next_struct( info->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES ) &&
++        !find_next_struct( info->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES ))
++    {
++        VkPhysicalDeviceHostImageCopyFeaturesEXT *host_image_copy;
++
++        if (!(host_image_copy = mem_alloc( pool, sizeof(*host_image_copy) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
++        host_image_copy->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES;
++        host_image_copy->pNext = (void *)info->pNext;
++        host_image_copy->hostImageCopy = VK_TRUE;
++        info->pNext = host_image_copy;
++
++        TRACE( "Enabling VK_EXT_host_image_copy on the host device\n" );
++        device->extensions.has_VK_EXT_host_image_copy = 1;
++        device->extensions.has_VK_KHR_copy_commands2 = 1;
++        device->extensions.has_VK_KHR_format_feature_flags2 = 1;
++    }
++
+     if (device->extensions.has_VK_EXT_external_memory_dma_buf)
+         device->extensions.has_VK_KHR_external_memory_fd = 1;
+ 

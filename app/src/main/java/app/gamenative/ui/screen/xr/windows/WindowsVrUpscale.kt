@@ -34,6 +34,8 @@ object WindowsVrUpscale {
     const val ENV_EYE_BUFFER = "XRGAME_XR_EYE_BUFFER"
     const val ENV_FRAME_GEN = "XRGAME_XR_FRAMEGEN"
     const val ENV_FLOW = "XRGAME_XR_FRAMEGEN_FLOW"
+    /** The ETFR debug view: density tint of our reconstruction and a cross at the gaze ("1"). */
+    const val ENV_DEBUG = "XRGAME_XR_FOVEATION_DEBUG"
     const val BACKEND_VULKAN = "vulkan"
     const val BACKEND_GLES = "gles"
     const val DEFAULT_BACKEND = BACKEND_GLES
@@ -47,7 +49,8 @@ object WindowsVrUpscale {
 
     /** Android build of the bundled Turnip, loaded into the app process through adrenotools. */
     const val DRIVER_LIBRARY = "libvulkan_freedreno_android.so"
-    const val EYE_TRACKING_PERMISSION = "com.picovr.permission.EYE_TRACKING"
+    /** Pico grants the eye gaze only with both: eye tracking and eye-tracked foveated rendering. */
+    val EYE_TRACKING_PERMISSIONS = listOf("com.picovr.permission.EYE_TRACKING", "com.pico.xrpermission.ETFR")
 
     enum class Filter(val id: Int, val key: String) { OFF(0, "off"), FSR1(1, "fsr1"), SGSR(2, "sgsr") }
     enum class Foveation(val id: Int, val key: String) { OFF(0, "off"), FIXED(1, "fixed"), EYE(2, "eye") }
@@ -183,13 +186,15 @@ object WindowsVrUpscale {
             eyeBuffer = EyeBuffer.entries.firstOrNull { it.key == vars.get(ENV_EYE_BUFFER) } ?: defaults.eyeBuffer,
             frameGen = FrameGen.entries.firstOrNull { it.key == vars.get(ENV_FRAME_GEN) } ?: defaults.frameGen,
             flowPercent = vars.get(ENV_FLOW).toIntOrNull()?.coerceIn(25, 100) ?: defaults.flowPercent,
+            debug = vars.get(ENV_DEBUG) == "1",
         )
     }
 
     fun fromContainer(container: Container): Settings = fromEnvVars(container.envVars)
 
-    /** Stores everything except the runtime-only debug overlay. */
+    /** Stores everything; the debug view only while it is on. */
     fun withSettings(envVars: String, settings: Settings): String = EnvVars(envVars).apply {
+        if (settings.debug) put(ENV_DEBUG, "1") else remove(ENV_DEBUG)
         put(ENV_FILTER, settings.filter.key)
         put(ENV_SHARPNESS, settings.sharpness.coerceIn(0, 100))
         put(ENV_FOVEATION, settings.foveation.key)

@@ -24,4 +24,16 @@ class XrGameDebugLaunchTest {
         assertEquals("", XrGameDebugLaunch.take("STEAM_546560"))
         assertNull(XrGameDebugLaunch.pendingArguments())
     }
+
+    @Test fun automaticTriggerFollowsTheLaunchThatTookTheArguments() {
+        XrGameDebugLaunch.loadSave(546560, "s0/autosave")
+        XrGameDebugLaunch.take("STEAM_546560")
+        assertTrue(XrGameDebugLaunch.autoTrigger)
+        XrGameDebugLaunch.take("STEAM_546560")
+        assertFalse(XrGameDebugLaunch.autoTrigger)
+
+        XrGameDebugLaunch.loadSave(546560, "s0/autosave", autoTrigger = false)
+        XrGameDebugLaunch.take("STEAM_546560")
+        assertFalse(XrGameDebugLaunch.autoTrigger)
+    }
 }

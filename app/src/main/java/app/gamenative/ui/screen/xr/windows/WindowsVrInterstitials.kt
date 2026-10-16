@@ -53,6 +53,10 @@ class WindowsVrInterstitials(private val publish: (State?) -> Unit) {
         return true
     }
 
+    /** Whether the game shows a message such as "press Trigger to begin". */
+    @Synchronized
+    fun prompting(): Boolean = state?.message?.isNotEmpty() == true
+
     @Synchronized
     fun clear() {
         if (state != null) {

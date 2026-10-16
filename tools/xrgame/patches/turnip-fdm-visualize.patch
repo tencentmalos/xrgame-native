@@ -1,0 +1,136 @@
+diff --git a/src/freedreno/vulkan/tu_pipeline.cc b/src/freedreno/vulkan/tu_pipeline.cc
+index 75c0782e5de..84cbb85defd 100644
+--- a/src/freedreno/vulkan/tu_pipeline.cc
++++ b/src/freedreno/vulkan/tu_pipeline.cc
+@@ -1911,6 +1911,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
+          builder->graphics_state.mv->view_mask;
+       keys[MESA_SHADER_FRAGMENT].fragment_density_map =
+          builder->fragment_density_map;
++      keys[MESA_SHADER_FRAGMENT].fdm_visualize =
++         builder->fragment_density_map && TU_DEBUG(FDM_VISUALIZE);
+       keys[MESA_SHADER_FRAGMENT].fdm_per_layer =
+          builder->fdm_per_layer;
+       keys[MESA_SHADER_FRAGMENT].max_fdm_layers = builder->max_fdm_layers;
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 24a0ab0d410..76553e6178b 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -1709,6 +1709,71 @@ tu_nir_lower_fdm(nir_shader *shader, const struct lower_fdm_options *options)
+                                         lower_fdm_instr, (void *)options);
+ }
+ 
++static nir_def *
++tu_fdm_visualize_tint(nir_builder *b, float r, float g, float bl)
++{
++   float luma = 0.2126f * r + 0.7152f * g + 0.0722f * bl;
++   return nir_imm_vec3(b, 0.25f + 0.75f * r / luma,
++                       0.25f + 0.75f * g / luma,
++                       0.25f + 0.75f * bl / luma);
++}
++
++static bool
++tu_nir_visualize_fdm_instr(nir_builder *b, nir_intrinsic_instr *intrin,
++                           void *data)
++{
++   if (intrin->intrinsic != nir_intrinsic_store_deref)
++      return false;
++
++   nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
++   if (deref->deref_type != nir_deref_type_var ||
++       !nir_deref_mode_is(deref, nir_var_shader_out))
++      return false;
++
++   nir_variable *var = deref->var;
++   if ((var->data.location != FRAG_RESULT_DATA0 &&
++        var->data.location != FRAG_RESULT_COLOR) ||
++       var->data.index != 0)
++      return false;
++
++   enum glsl_base_type base = glsl_get_base_type(var->type);
++   if (base != GLSL_TYPE_FLOAT && base != GLSL_TYPE_FLOAT16)
++      return false;
++
++   nir_def *value = intrin->src[1].ssa;
++   if (value->num_components < 3)
++      return false;
++
++   b->cursor = nir_before_instr(&intrin->instr);
++   nir_def *size = nir_load_frag_size(b);
++   nir_def *area = nir_imul(b, nir_channel(b, size, 0), nir_channel(b, size, 1));
++   nir_def *tint =
++      nir_bcsel(b, nir_ige_imm(b, area, 16), tu_fdm_visualize_tint(b, 1.0f, 0.0f, 0.0f),
++      nir_bcsel(b, nir_ige_imm(b, area, 8), tu_fdm_visualize_tint(b, 1.0f, 0.5f, 0.0f),
++      nir_bcsel(b, nir_ige_imm(b, area, 4), tu_fdm_visualize_tint(b, 1.0f, 1.0f, 0.0f),
++                tu_fdm_visualize_tint(b, 0.0f, 1.0f, 0.0f))));
++   tint = nir_f2fN(b, tint, value->bit_size);
++   nir_def *color = nir_trim_vector(b, value, 3);
++   nir_def *weights =
++      nir_f2fN(b, nir_imm_vec3(b, 0.2126f, 0.7152f, 0.0722f), value->bit_size);
++   nir_def *luma = nir_replicate(b, nir_fdot(b, color, weights), 3);
++   nir_def *rgb = nir_bcsel(b, nir_ige_imm(b, area, 2),
++                            nir_fmul(b, tint, luma), color);
++
++   nir_def *channels[NIR_MAX_VEC_COMPONENTS];
++   for (unsigned i = 0; i < value->num_components; i++)
++      channels[i] = i < 3 ? nir_channel(b, rgb, i) : nir_channel(b, value, i);
++   nir_src_rewrite(&intrin->src[1], nir_vec(b, channels, value->num_components));
++   return true;
++}
++
++static bool
++tu_nir_visualize_fdm(nir_shader *shader)
++{
++   return nir_shader_intrinsics_pass(shader, tu_nir_visualize_fdm_instr,
++                                     nir_metadata_control_flow, NULL);
++}
++
+ static bool
+ lower_ssbo_descriptor_instr(nir_builder *b, nir_intrinsic_instr *intrin,
+                             void *cb_data)
+@@ -3491,6 +3556,8 @@ tu_lower_nir(struct tu_device *dev,
+       .use_layer = !key->multiview_mask,
+       .adjust_gmem_fragcoord = key->fragment_density_map && key->custom_resolve,
+    };
++   if (key->fdm_visualize && nir->info.stage == MESA_SHADER_FRAGMENT)
++      NIR_PASS(_, nir, tu_nir_visualize_fdm);
+    NIR_PASS(_, nir, tu_nir_lower_fdm, &fdm_options);
+ 
+    if (nir->info.stage != MESA_SHADER_FRAGMENT &&
+diff --git a/src/freedreno/vulkan/tu_shader.h b/src/freedreno/vulkan/tu_shader.h
+index b19287b8944..61cdd3d5b23 100644
+--- a/src/freedreno/vulkan/tu_shader.h
++++ b/src/freedreno/vulkan/tu_shader.h
+@@ -141,7 +141,8 @@ struct tu_shader_key {
+    bool lower_view_index_to_device_index : 1;
+    bool custom_resolve : 1;
+    bool emulate_alpha_to_coverage : 1;
+-   uint32_t padding : 23;
++   bool fdm_visualize : 1;
++   uint32_t padding : 22;
+ 
+    enum ir3_wavesize_option api_wavesize, real_wavesize;
+ 
+diff --git a/src/freedreno/vulkan/tu_util.cc b/src/freedreno/vulkan/tu_util.cc
+index b12ffccb68a..c104e055443 100644
+--- a/src/freedreno/vulkan/tu_util.cc
++++ b/src/freedreno/vulkan/tu_util.cc
+@@ -63,6 +63,7 @@ static const struct debug_control tu_debug_options[] = {
+    { "kgsl_preempt_fg", TU_DEBUG_KGSL_PREEMPT_FG },
+    { "cmd_no_preempt", TU_DEBUG_CMD_NO_PREEMPT },
+    { "lrzfc", TU_DEBUG_LRZFC },
++   { "fdmviz", TU_DEBUG_FDM_VISUALIZE },
+    { NULL, 0 }
+ };
+ 
+diff --git a/src/freedreno/vulkan/tu_util.h b/src/freedreno/vulkan/tu_util.h
+index 61bd48f1484..351542b75e0 100644
+--- a/src/freedreno/vulkan/tu_util.h
++++ b/src/freedreno/vulkan/tu_util.h
+@@ -81,6 +81,7 @@ enum tu_debug_flags : uint64_t
+    TU_DEBUG_KGSL_PREEMPT_FG          = BITFIELD64_BIT(41),
+    TU_DEBUG_CMD_NO_PREEMPT           = BITFIELD64_BIT(42),
+    TU_DEBUG_LRZFC                    = BITFIELD64_BIT(43),
++   TU_DEBUG_FDM_VISUALIZE            = BITFIELD64_BIT(44),
+ };
+ 
+ struct tu_env {

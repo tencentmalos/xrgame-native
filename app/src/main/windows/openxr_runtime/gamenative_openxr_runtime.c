@@ -670,7 +670,10 @@ static const char* GN_VULKAN_INSTANCE_EXTENSIONS = "";
 
 
 
-static const char* GN_VULKAN_DEVICE_EXTENSIONS = "";
+/* Device extensions a Vulkan client must enable (OpenComposite passes them to OpenVR games):
+ * Wine maps the Win32 external memory and fence extensions to the host fd ones, which the
+ * unixlib needs to export the swapchain images and their fences. */
+static const char* GN_VULKAN_DEVICE_EXTENSIONS = "VK_KHR_external_memory_win32 VK_KHR_external_fence_win32";
 
 
 
@@ -1661,7 +1664,7 @@ static XrResult XRAPI_CALL gn_xrEnumerateInstanceExtensionProperties(
     gn_uint32* propertyCountOutput,
     XrExtensionProperties* properties) {
     (void)layerName;
-    const gn_uint32 available = 4;
+    const gn_uint32 available = 5;
     if (!propertyCountOutput) return XR_ERROR_VALIDATION_FAILURE;
     if (propertyCapacityInput != 0 && properties == NULL) return XR_ERROR_VALIDATION_FAILURE;
     XrResult r = gn_copy_props(available, propertyCapacityInput, propertyCountOutput);
@@ -1675,6 +1678,10 @@ static XrResult XRAPI_CALL gn_xrEnumerateInstanceExtensionProperties(
     }
     if (propertyCapacityInput > 3) {
         gn_write_extension(&properties[3], XR_KHR_D3D12_ENABLE_EXTENSION_NAME, XR_KHR_D3D12_enable_SPEC_VERSION);
+    }
+    if (propertyCapacityInput > 4) {
+        gn_write_extension(&properties[4], XR_FB_EYE_TRACKING_SOCIAL_EXTENSION_NAME,
+                           XR_FB_eye_tracking_social_SPEC_VERSION);
     }
     return XR_SUCCESS;
 }
@@ -1816,6 +1823,11 @@ static XrResult XRAPI_CALL gn_xrGetSystemProperties(XrInstance instance, XrSyste
     properties->graphicsProperties.maxLayerCount = 16;
     properties->trackingProperties.orientationTracking = XR_TRUE;
     properties->trackingProperties.positionTracking = XR_TRUE;
+    /* Gazes are reported invalid while the headset has no eye tracking to send. */
+    for (XrBaseOutStructure* next = (XrBaseOutStructure*)properties->next; next; next = next->next) {
+        if (next->type == XR_TYPE_SYSTEM_EYE_TRACKING_PROPERTIES_FB)
+            ((XrSystemEyeTrackingPropertiesFB*)next)->supportsEyeTracking = XR_TRUE;
+    }
     return XR_SUCCESS;
 }
 
@@ -2203,12 +2215,29 @@ static XrPosef gn_pose_inverse(XrPosef pose) {
 }
 
 static void gn_get_head_pose(XrPosef* pose) {
+    float q[4], length = 0.0f, sign = 1.0f, dot = 0.0f;
     gn_identity_pose(pose);
     if (!gn_eye_views_valid) return;
-    pose->orientation.x = gn_eye_views[0].quat[0];
-    pose->orientation.y = gn_eye_views[0].quat[1];
-    pose->orientation.z = gn_eye_views[0].quat[2];
-    pose->orientation.w = gn_eye_views[0].quat[3];
+    /* Halfway between the eyes: canted displays turn each eye outward (5 degrees on Swan), so the
+       left eye's orientation alone points the head, and gazes located in it, to the left. */
+    for (int i = 0; i < 4; ++i) dot += gn_eye_views[0].quat[i] * gn_eye_views[1].quat[i];
+    if (dot < 0.0f) sign = -1.0f;
+    for (int i = 0; i < 4; ++i) {
+        q[i] = gn_eye_views[0].quat[i] + sign * gn_eye_views[1].quat[i];
+        length += q[i] * q[i];
+    }
+    if (length > 1e-12f) {
+        length = gn_sqrt(length);
+        pose->orientation.x = q[0] / length;
+        pose->orientation.y = q[1] / length;
+        pose->orientation.z = q[2] / length;
+        pose->orientation.w = q[3] / length;
+    } else {
+        pose->orientation.x = gn_eye_views[0].quat[0];
+        pose->orientation.y = gn_eye_views[0].quat[1];
+        pose->orientation.z = gn_eye_views[0].quat[2];
+        pose->orientation.w = gn_eye_views[0].quat[3];
+    }
     pose->position.x = (gn_eye_views[0].pos[0] + gn_eye_views[1].pos[0]) * 0.5f;
     pose->position.y = (gn_eye_views[0].pos[1] + gn_eye_views[1].pos[1]) * 0.5f;
     pose->position.z = (gn_eye_views[0].pos[2] + gn_eye_views[1].pos[2]) * 0.5f;
@@ -2718,6 +2747,83 @@ static XrResult XRAPI_CALL gn_xrLocateViews(
             views[i].fov.angleUp = 0.75f;
             views[i].fov.angleDown = -0.75f;
         }
+    }
+    return XR_SUCCESS;
+}
+
+/* XR_FB_eye_tracking_social. The Android session sends the headset's combined eye gaze with
+ * the views (ev, eq?, ep? in their absolute space and at their time). Both eyes report its
+ * direction, each from its own eye position; games such as Half-Life: Alyx (through
+ * OpenComposite) move their foveation to it. */
+#define GN_EYE_TRACKER ((XrEyeTrackerFB)0x474e584745594553ULL)
+static gn_uint32 gn_eye_tracker_count = 0;
+
+static XrResult XRAPI_CALL gn_xrCreateEyeTrackerFB(
+    XrSession session,
+    const XrEyeTrackerCreateInfoFB* createInfo,
+    XrEyeTrackerFB* eyeTracker) {
+    if (session != gn_session) return XR_ERROR_HANDLE_INVALID;
+    if (!createInfo || createInfo->type != XR_TYPE_EYE_TRACKER_CREATE_INFO_FB || !eyeTracker)
+        return XR_ERROR_VALIDATION_FAILURE;
+    ++gn_eye_tracker_count;
+    *eyeTracker = GN_EYE_TRACKER;
+    gn_log_line("xrCreateEyeTrackerFB");
+    return XR_SUCCESS;
+}
+
+static XrResult XRAPI_CALL gn_xrDestroyEyeTrackerFB(XrEyeTrackerFB eyeTracker) {
+    if (eyeTracker != GN_EYE_TRACKER || gn_eye_tracker_count == 0) return XR_ERROR_HANDLE_INVALID;
+    --gn_eye_tracker_count;
+    return XR_SUCCESS;
+}
+
+static XrResult XRAPI_CALL gn_xrGetEyeGazesFB(
+    XrEyeTrackerFB eyeTracker,
+    const XrEyeGazesInfoFB* gazeInfo,
+    XrEyeGazesFB* eyeGazes) {
+    static const char* qk[4] = {"eqx", "eqy", "eqz", "eqw"};
+    static const char* pk[3] = {"epx", "epy", "epz"};
+    char response[1024];
+    XrPosef gaze, base_pose, base_inverse;
+    float base_linear[3], base_angular[3];
+    int base_status;
+    if (eyeTracker != GN_EYE_TRACKER || gn_eye_tracker_count == 0) return XR_ERROR_HANDLE_INVALID;
+    if (!gazeInfo || gazeInfo->type != XR_TYPE_EYE_GAZES_INFO_FB ||
+        !eyeGazes || eyeGazes->type != XR_TYPE_EYE_GAZES_FB) {
+        return XR_ERROR_VALIDATION_FAILURE;
+    }
+    for (int eye = 0; eye < 2; ++eye) {
+        eyeGazes->gaze[eye].isValid = XR_FALSE;
+        eyeGazes->gaze[eye].gazeConfidence = 0.0f;
+        gn_identity_pose(&eyeGazes->gaze[eye].gazePose);
+    }
+    eyeGazes->time = gazeInfo->time;
+    if (!gn_cached_line("views", 0, response, sizeof(response)) &&
+        !gn_bridge_call("LOCATE_VIEWS", response, sizeof(response))) {
+        return XR_SUCCESS;
+    }
+    if (gn_parse_i64(response, "ev", 0) != 1) return XR_SUCCESS;
+    base_status = gn_space_absolute_pose(gazeInfo->baseSpace, &base_pose, base_linear, base_angular);
+    if (base_status < 0) return XR_ERROR_HANDLE_INVALID;
+    if (base_status == 0) return XR_SUCCESS;
+    base_inverse = gn_pose_inverse(base_pose);
+    gaze.orientation.x = gn_parse_micro(response, qk[0], 0.0f);
+    gaze.orientation.y = gn_parse_micro(response, qk[1], 0.0f);
+    gaze.orientation.z = gn_parse_micro(response, qk[2], 0.0f);
+    gaze.orientation.w = gn_parse_micro(response, qk[3], 1.0f);
+    gaze.position.x = gn_parse_micro(response, pk[0], 0.0f);
+    gaze.position.y = gn_parse_micro(response, pk[1], 0.0f);
+    gaze.position.z = gn_parse_micro(response, pk[2], 0.0f);
+    for (int eye = 0; eye < 2; ++eye) {
+        XrPosef eye_gaze = gaze;
+        if (gn_eye_views_valid) {
+            eye_gaze.position.x = gn_eye_views[eye].pos[0];
+            eye_gaze.position.y = gn_eye_views[eye].pos[1];
+            eye_gaze.position.z = gn_eye_views[eye].pos[2];
+        }
+        eyeGazes->gaze[eye].gazePose = gn_pose_multiply(base_inverse, eye_gaze);
+        eyeGazes->gaze[eye].gazeConfidence = 1.0f;
+        eyeGazes->gaze[eye].isValid = XR_TRUE;
     }
     return XR_SUCCESS;
 }
@@ -3652,6 +3758,9 @@ GN_EXPORT XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const c
     GN_PROC(xrApplyHapticFeedback)
     GN_PROC(xrStopHapticFeedback)
     GN_PROC(xrSendMailboxMessageGNX)
+    GN_PROC(xrCreateEyeTrackerFB)
+    GN_PROC(xrDestroyEyeTrackerFB)
+    GN_PROC(xrGetEyeGazesFB)
 #undef GN_PROC
     if (gn_streq(name, "xrLocateSpacesKHR")) {
         *function = (PFN_xrVoidFunction)gn_xrLocateSpaces;

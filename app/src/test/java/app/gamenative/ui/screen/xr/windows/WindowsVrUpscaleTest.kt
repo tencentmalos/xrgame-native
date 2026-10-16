@@ -129,12 +129,16 @@ class WindowsVrUpscaleTest {
             debug = true,
         )
         val stored = WindowsVrUpscale.withSettings("WINEESYNC=1", chosen)
-        assertEquals(chosen.copy(debug = false), WindowsVrUpscale.fromEnvVars(stored))
+        assertEquals(chosen, WindowsVrUpscale.fromEnvVars(stored))
         assertEquals("1", EnvVars(stored).get("WINEESYNC"))
         assertEquals(WindowsVrUpscale.BACKEND_GLES, WindowsVrUpscale.backend(stored))
         val vulkan = WindowsVrUpscale.withBackend(stored, WindowsVrUpscale.BACKEND_VULKAN)
         assertEquals(WindowsVrUpscale.BACKEND_VULKAN, WindowsVrUpscale.backend(vulkan))
-        assertEquals(chosen.copy(debug = false), WindowsVrUpscale.fromEnvVars(vulkan))
+        assertEquals(chosen, WindowsVrUpscale.fromEnvVars(vulkan))
+        // Switching the debug view off removes its variable again.
+        val off = WindowsVrUpscale.withSettings(vulkan, chosen.copy(debug = false))
+        assertFalse(EnvVars(off).has(WindowsVrUpscale.ENV_DEBUG))
+        assertEquals(chosen.copy(debug = false), WindowsVrUpscale.fromEnvVars(off))
     }
 
     @Test fun frameGenerationAppliesAndStaysOffByDefault() {

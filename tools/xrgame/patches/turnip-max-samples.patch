@@ -1,0 +1,279 @@
+diff --git a/src/freedreno/vulkan/tu_cmd_buffer.cc b/src/freedreno/vulkan/tu_cmd_buffer.cc
+index 23a3d3c5718..8b5111f7414 100644
+--- a/src/freedreno/vulkan/tu_cmd_buffer.cc
++++ b/src/freedreno/vulkan/tu_cmd_buffer.cc
+@@ -1344,6 +1344,7 @@ tu6_update_msaa(struct tu_cmd_buffer *cmd)
+     */
+    if (samples == 0)
+       samples = VK_SAMPLE_COUNT_1_BIT;
++   samples = tu_clamp_samples(samples);
+    tu6_emit_msaa<CHIP>(&cmd->draw_cs, samples, cmd->state.msaa_disable);
+ }
+ 
+@@ -8528,7 +8529,7 @@ tu_emit_fdm_params(struct tu_cmd_buffer *cmd,
+ {
+    STATIC_ASSERT(IR3_DP_FS(frag_invocation_count) == IR3_DP_FS_DYNAMIC);
+    tu_cs_emit(cs, fs->fs.sample_shading ?
+-              cmd->vk.dynamic_graphics_state.ms.rasterization_samples : 1);
++              tu_clamp_samples((VkSampleCountFlagBits) cmd->vk.dynamic_graphics_state.ms.rasterization_samples) : 1);
+    tu_cs_emit(cs, cmd->vk.dynamic_graphics_state.ms.alpha_to_coverage_enable);
+    tu_cs_emit(cs, 0);
+    tu_cs_emit(cs, 0);
+diff --git a/src/freedreno/vulkan/tu_device.cc b/src/freedreno/vulkan/tu_device.cc
+index a9bafe12bb2..cd348b0ddc6 100644
+--- a/src/freedreno/vulkan/tu_device.cc
++++ b/src/freedreno/vulkan/tu_device.cc
+@@ -131,6 +131,8 @@ tu_device_get_cache_uuid(struct tu_physical_device *device, void *uuid)
+    _mesa_blake3_update(&ctx, &device->uche_trap_base, sizeof(device->uche_trap_base));
+    _mesa_blake3_update(&ctx, &device->compiler_options,
+                        sizeof(device->compiler_options));
++   if (tu_env.max_samples)
++      _mesa_blake3_update(&ctx, &tu_env.max_samples, sizeof(tu_env.max_samples));
+    _mesa_blake3_final(&ctx, blake3);
+ 
+    memcpy(uuid, blake3, VK_UUID_SIZE);
+diff --git a/src/freedreno/vulkan/tu_image.cc b/src/freedreno/vulkan/tu_image.cc
+index 41d0e57aa19..cc351f45799 100644
+--- a/src/freedreno/vulkan/tu_image.cc
++++ b/src/freedreno/vulkan/tu_image.cc
+@@ -923,6 +923,18 @@ tu_android_get_wsi_memory(struct tu_device *dev,
+ }
+ #endif /* VK_USE_PLATFORM_ANDROID_KHR */
+ 
++static const VkImageCreateInfo *
++tu_image_create_info_clamp_samples(const VkImageCreateInfo *info,
++                                   VkImageCreateInfo *clamped)
++{
++   VkSampleCountFlagBits samples = tu_clamp_samples(info->samples);
++   if (samples == info->samples)
++      return info;
++   *clamped = *info;
++   clamped->samples = samples;
++   return clamped;
++}
++
+ VKAPI_ATTR VkResult VKAPI_CALL
+ tu_CreateImage(VkDevice _device,
+                const VkImageCreateInfo *pCreateInfo,
+@@ -932,9 +944,12 @@ tu_CreateImage(VkDevice _device,
+    uint64_t modifier = DRM_FORMAT_MOD_INVALID;
+    const VkSubresourceLayout *plane_layouts = NULL;
+    VkResult result;
++   VkImageCreateInfo clamped_info;
+ 
+    VK_FROM_HANDLE(tu_device, device, _device);
+ 
++   pCreateInfo = tu_image_create_info_clamp_samples(pCreateInfo, &clamped_info);
++
+    if (wsi_common_is_swapchain_image(pCreateInfo)) {
+       return wsi_common_create_swapchain_image(device->physical_device->vk.wsi_device,
+                                                pCreateInfo,
+@@ -1414,9 +1429,12 @@ tu_GetDeviceImageMemoryRequirements(
+    VK_FROM_HANDLE(tu_device, device, _device);
+ 
+    struct tu_image image = {0};
++   VkImageCreateInfo clamped_info;
++   const VkImageCreateInfo *create_info =
++      tu_image_create_info_clamp_samples(pInfo->pCreateInfo, &clamped_info);
+ 
+-   vk_image_init(&device->vk, &image.vk, pInfo->pCreateInfo);
+-   TU_CALLX(device, tu_image_init)(device, &image, pInfo->pCreateInfo, DRM_FORMAT_MOD_INVALID, NULL, TU_IMAGE_ID_NONE);
++   vk_image_init(&device->vk, &image.vk, create_info);
++   TU_CALLX(device, tu_image_init)(device, &image, create_info, DRM_FORMAT_MOD_INVALID, NULL, TU_IMAGE_ID_NONE);
+ 
+    tu_get_image_memory_requirements(device, &image, pMemoryRequirements);
+ }
+@@ -1431,9 +1449,12 @@ tu_GetDeviceImageSparseMemoryRequirements(
+    VK_FROM_HANDLE(tu_device, device, _device);
+ 
+    struct tu_image image = {0};
++   VkImageCreateInfo clamped_info;
++   const VkImageCreateInfo *create_info =
++      tu_image_create_info_clamp_samples(pInfo->pCreateInfo, &clamped_info);
+ 
+-   vk_image_init(&device->vk, &image.vk, pInfo->pCreateInfo);
+-   TU_CALLX(device, tu_image_init)(device, &image, pInfo->pCreateInfo, DRM_FORMAT_MOD_INVALID, NULL, TU_IMAGE_ID_NONE);
++   vk_image_init(&device->vk, &image.vk, create_info);
++   TU_CALLX(device, tu_image_init)(device, &image, create_info, DRM_FORMAT_MOD_INVALID, NULL, TU_IMAGE_ID_NONE);
+ 
+    tu_get_image_sparse_memory_requirements(device, &image,
+                                            pSparseMemoryRequirementCount,
+@@ -1522,9 +1543,12 @@ tu_GetDeviceImageSubresourceLayoutKHR(VkDevice _device,
+    VK_FROM_HANDLE(tu_device, device, _device);
+ 
+    struct tu_image image = {0};
++   VkImageCreateInfo clamped_info;
++   const VkImageCreateInfo *create_info =
++      tu_image_create_info_clamp_samples(pInfo->pCreateInfo, &clamped_info);
+ 
+-   vk_image_init(&device->vk, &image.vk, pInfo->pCreateInfo);
+-   TU_CALLX(device, tu_image_init)(device, &image, pInfo->pCreateInfo, DRM_FORMAT_MOD_INVALID, NULL, TU_IMAGE_ID_NONE);
++   vk_image_init(&device->vk, &image.vk, create_info);
++   TU_CALLX(device, tu_image_init)(device, &image, create_info, DRM_FORMAT_MOD_INVALID, NULL, TU_IMAGE_ID_NONE);
+ 
+    tu_get_image_subresource_layout(&image, pInfo->pSubresource, pLayout);
+ }
+diff --git a/src/freedreno/vulkan/tu_pass.cc b/src/freedreno/vulkan/tu_pass.cc
+index 5334f90bd9b..eb9489c487b 100644
+--- a/src/freedreno/vulkan/tu_pass.cc
++++ b/src/freedreno/vulkan/tu_pass.cc
+@@ -1095,6 +1095,25 @@ tu_CreateRenderPass2(VkDevice _device,
+       return vk_common_CreateRenderPass2(_device, pCreateInfo, pAllocator,
+                                          pRenderPass);
+ 
++   VkRenderPassCreateInfo2 clamped_info;
++   VkAttachmentDescription2 clamped_attachments[32];
++   if (tu_env.max_samples &&
++       pCreateInfo->attachmentCount <= ARRAY_SIZE(clamped_attachments)) {
++      bool clamped = false;
++      for (uint32_t i = 0; i < pCreateInfo->attachmentCount; i++) {
++         clamped_attachments[i] = pCreateInfo->pAttachments[i];
++         clamped_attachments[i].samples =
++            tu_clamp_samples(clamped_attachments[i].samples);
++         clamped |= clamped_attachments[i].samples !=
++                    pCreateInfo->pAttachments[i].samples;
++      }
++      if (clamped) {
++         clamped_info = *pCreateInfo;
++         clamped_info.pAttachments = clamped_attachments;
++         pCreateInfo = &clamped_info;
++      }
++   }
++
+    struct tu_render_pass *pass;
+    size_t size;
+    size_t attachments_offset;
+diff --git a/src/freedreno/vulkan/tu_pipeline.cc b/src/freedreno/vulkan/tu_pipeline.cc
+index 84cbb85defd..03b079e54f0 100644
+--- a/src/freedreno/vulkan/tu_pipeline.cc
++++ b/src/freedreno/vulkan/tu_pipeline.cc
+@@ -3008,6 +3008,10 @@ void
+ tu6_emit_sample_locations(struct tu_cs *cs, bool enable,
+                           const struct vk_sample_locations_state *samp_loc)
+ {
++   if (enable && tu_env.max_samples &&
++       (uint32_t) samp_loc->per_pixel > tu_env.max_samples)
++      enable = false;
++
+    tu_cs_emit_regs(cs, GRAS_SC_MSAA_SAMPLE_POS_CNTL(CHIP,
+       .location_enable = enable,
+    ));
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 76553e6178b..d7ae3c7e22f 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -1757,6 +1757,62 @@ tu_nir_visualize_fdm_instr(nir_builder *b, nir_intrinsic_instr *intrin,
+    return true;
+ }
+ 
++static bool
++tu_nir_clamp_sample_index_instr(nir_builder *b, nir_instr *instr, void *data)
++{
++   const uint32_t max_samples = *(const uint32_t *) data;
++
++   if (instr->type == nir_instr_type_tex) {
++      nir_tex_instr *tex = nir_instr_as_tex(instr);
++      if (tex->op != nir_texop_txf_ms)
++         return false;
++      int index = nir_tex_instr_src_index(tex, nir_tex_src_ms_index);
++      if (index < 0)
++         return false;
++      nir_def *sample = tex->src[index].src.ssa;
++      b->cursor = nir_before_instr(instr);
++      nir_src_rewrite(&tex->src[index].src,
++                      nir_umin(b, sample, nir_imm_intN_t(b, max_samples - 1,
++                                                         sample->bit_size)));
++      return true;
++   }
++
++   if (instr->type != nir_instr_type_intrinsic)
++      return false;
++
++   nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
++   switch (intrin->intrinsic) {
++   case nir_intrinsic_image_deref_load:
++   case nir_intrinsic_image_deref_sparse_load:
++   case nir_intrinsic_image_deref_store:
++   case nir_intrinsic_image_deref_atomic:
++   case nir_intrinsic_image_deref_atomic_swap:
++      break;
++   default:
++      return false;
++   }
++
++   nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
++   if (glsl_get_sampler_dim(glsl_without_array(deref->type)) !=
++       GLSL_SAMPLER_DIM_MS)
++      return false;
++
++   nir_def *sample = intrin->src[2].ssa;
++   b->cursor = nir_before_instr(instr);
++   nir_src_rewrite(&intrin->src[2],
++                   nir_umin(b, sample, nir_imm_intN_t(b, max_samples - 1,
++                                                      sample->bit_size)));
++   return true;
++}
++
++static bool
++tu_nir_clamp_sample_index(nir_shader *shader, uint32_t max_samples)
++{
++   return nir_shader_instructions_pass(shader, tu_nir_clamp_sample_index_instr,
++                                       nir_metadata_control_flow,
++                                       &max_samples);
++}
++
+ static bool
+ tu_nir_visualize_fdm(nir_shader *shader)
+ {
+@@ -3507,6 +3563,9 @@ tu_lower_nir(struct tu_device *dev,
+    };
+    NIR_PASS(_, nir, nir_opt_access, &access_options);
+ 
++   if (tu_env.max_samples)
++      NIR_PASS(_, nir, tu_nir_clamp_sample_index, tu_env.max_samples);
++
+    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+       const nir_input_attachment_options att_options = {
+          /* When using multiview rendering, we must use
+diff --git a/src/freedreno/vulkan/tu_util.cc b/src/freedreno/vulkan/tu_util.cc
+index c104e055443..9f9a4a91198 100644
+--- a/src/freedreno/vulkan/tu_util.cc
++++ b/src/freedreno/vulkan/tu_util.cc
+@@ -138,6 +138,14 @@ tu_env_init_once(void)
+ {
+    tu_env.start_debug = tu_env.debug = parse_debug_string(os_get_option("TU_DEBUG"), tu_debug_options);
+ 
++   const char *max_samples = os_get_option("TU_MAX_SAMPLES");
++   tu_env.max_samples = max_samples ? atoi(max_samples) : 0;
++   if (tu_env.max_samples != 1 && tu_env.max_samples != 2 &&
++       tu_env.max_samples != 4 && tu_env.max_samples != 8)
++      tu_env.max_samples = 0;
++   if (tu_env.max_samples)
++      mesa_logi("TU_MAX_SAMPLES=%u", tu_env.max_samples);
++
+    if (TU_DEBUG(STARTUP))
+       mesa_logi("TU_DEBUG=0x%" PRIx64, tu_env.debug.load());
+ 
+diff --git a/src/freedreno/vulkan/tu_util.h b/src/freedreno/vulkan/tu_util.h
+index 351542b75e0..1015b12d4ab 100644
+--- a/src/freedreno/vulkan/tu_util.h
++++ b/src/freedreno/vulkan/tu_util.h
+@@ -87,10 +87,18 @@ enum tu_debug_flags : uint64_t
+ struct tu_env {
+     std::atomic<uint64_t> debug;
+     uint64_t start_debug;
++    uint32_t max_samples;
+ };
+ 
+ extern struct tu_env tu_env;
+ 
++static inline VkSampleCountFlagBits
++tu_clamp_samples(VkSampleCountFlagBits samples)
++{
++   return tu_env.max_samples && (uint32_t) samples > tu_env.max_samples ?
++      (VkSampleCountFlagBits) tu_env.max_samples : samples;
++}
++
+ /*
+  * Note: tu_env_init() must be called before using the TU_DEBUG* macro.
+  */

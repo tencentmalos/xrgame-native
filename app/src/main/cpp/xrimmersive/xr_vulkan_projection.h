@@ -36,7 +36,7 @@ struct UpscaleSettings {
     uint32_t eyeBuffer = 0;       // 0 the runtime recommendation, 1 halfway to the limit, 2 the limit
     uint32_t frameGeneration = 1; // big screen: the largest output multiple of the game frame rate, 1 off
     uint32_t flowPercent = 50;    // frame generation's optical flow resolution, 25..100
-    bool debug = false;           // tint by actual fragment density
+    bool debug = false;           // ETFR debug view: tint by actual fragment density, cross at the gaze
 };
 
 // Per-eye size of an eye buffer tier: the recommendation, halfway from it to the limit, or the
@@ -57,6 +57,8 @@ public:
                     uint32_t recommendedHeight, uint32_t limitWidth, uint32_t limitHeight);
     bool render(windowsvr::WindowsFrameTransport &transport, XrSpace space, XrCompositionLayerProjection *layer);
     void setGaze(const GazeSample &gaze) { gaze_ = gaze; }
+    // The gaze the Windows game is given (for the ETFR debug view's cross).
+    void setGameGaze(const GazeSample &gaze) { gameGaze_ = gaze; }
     // Captured frames redraw the eyes (no reuse) and copy them before the release.
     void setCapture(capture::XrCapture *capture) { capture_ = capture; }
     bool lastRenderReused() const { return lastRenderReused_; }
@@ -86,6 +88,8 @@ private:
                       const std::array<bool, 2> &fresh);
     spatial::upscale::FoveatedEye foveate(const windowsvr::EyeFrame &frame, uint32_t width, uint32_t height,
                                           const UpscaleSettings &settings) const;
+    void drawGazeMarker(VkCommandBuffer command, VkImage target, uint32_t eye, const windowsvr::EyeFrame &frame,
+                        uint32_t width, uint32_t height);
     void releaseImported(Imported &imported);
 
     Context *context_ = nullptr;
@@ -110,6 +114,8 @@ private:
     uint32_t frameParity_ = 0;
     uint32_t upscaleFailures_ = 0;
     GazeSample gaze_{};
+    GazeSample gameGaze_{};
+    HostBuffer marker_{};  // the debug cross's pixels: green, then red
     UpscaleSettings drawnSettings_{};
     bool releasedImageValid_ = false;
     bool reuseReleased_ = true;

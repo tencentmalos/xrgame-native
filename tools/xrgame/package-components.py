@@ -249,7 +249,7 @@ def main():
         shutil.copy2(root / 'output/xcb/LICENSE', turnip / 'LICENSE-libxcb-MIT')
         xcb_sources = {name: digest(root / 'downloads' / name) for name in
                        ['libxcb-1.17.0.tar.xz', 'xcb-proto-1.17.0.tar.xz']}
-        version = 'turnip-adb7e30-xrg13'
+        version = 'turnip-adb7e30-xrg16'
         write_json(turnip / 'meta.json', {'schemaVersion': 1, 'name': version, 'author': 'Mesa contributors',
                    'description': 'XRGame KGSL, Android and X11 WSI source build; libvulkan_freedreno_android.so '
                                   'is the app-process build of the same source', 'vendor': 'Mesa',

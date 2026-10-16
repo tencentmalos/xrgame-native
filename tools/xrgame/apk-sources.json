@@ -729,6 +729,13 @@
       "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/gamenative_openxr_runtime64.dll"
     },
     {
+      "pattern": "assets/xrgame_guest_patch64.dll",
+      "kind": "repository-build",
+      "license": "GPL-2.0-or-later",
+      "source": "app/src/main/windows/guest_patch; tools/build-picoxr-xr-payload.sh",
+      "artifact": "app/build/generated/assets/buildXrGameNativePicoXrDebug/xrgame_guest_patch64.dll"
+    },
+    {
       "pattern": "assets/gamenative_xr_unixbridge.so",
       "kind": "repository-build",
       "license": "GPL-3.0-or-later",
@@ -865,8 +872,8 @@
       "pattern": "assets/opencomposite_x64.dll",
       "kind": "repository-build",
       "license": "GPL-3.0-only",
-      "source": "references/opencomposite: pinned OpenOVR + background-support.patch + openvr-system-026.patch + mailbox-forward.patch + displayed-bounds-copy.patch; source/build hashes in tools/xrgame/opencomposite-pin.json",
-      "sha256": "f5a979e0194eb567410587e3d05400f298ac6a54bc2223f8d26dcb0a995eb31d",
+      "source": "references/opencomposite: pinned OpenOVR + background-support.patch + openvr-system-026.patch + mailbox-forward.patch + displayed-bounds-copy.patch + eye-tracked-foveation.patch + vulkan-array-submit.patch; source/build hashes in tools/xrgame/opencomposite-pin.json",
+      "sha256": "25509aafee09c2ab8f8d523e8b30dba7e32ee395d9809db4d3be0c1e70f3c188",
       "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll"
     }
   ]

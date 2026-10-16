@@ -100,7 +100,7 @@ class WindowsVrPayloadManager(
             .filter { runCatching { peMachineOf(it) == 0x8664 }.getOrDefault(false) }
         check(targets.isNotEmpty()) { "No x64 openvr_api.dll was found under the launched game" }
         val adapter = context.assets.open("opencomposite_x64.dll").use { it.readBytes() }
-        if (BuildConfig.XRGAME) check(sha256(adapter) == "f5a979e0194eb567410587e3d05400f298ac6a54bc2223f8d26dcb0a995eb31d") {
+        if (BuildConfig.XRGAME) check(sha256(adapter) == "25509aafee09c2ab8f8d523e8b30dba7e32ee395d9809db4d3be0c1e70f3c188") {
             "OpenComposite payload checksum mismatch"
         }
         val record = File(File(container.rootDir, ".wine/drive_c/gamenative-xr"), "opencomposite.targets")
@@ -109,6 +109,7 @@ class WindowsVrPayloadManager(
             .joinToString("\n") { Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray()) }
         writeIfChanged(record, encodedTargets.toByteArray())
         openCompositeRecord = record
+        val vulkanRenderer = usesVulkanRenderer(container)
         targets.forEach { target ->
             val directory = checkNotNull(target.parentFile).canonicalFile
             val backup = File(directory, "openvr_api.dll.gamenative-original")
@@ -118,9 +119,28 @@ class WindowsVrPayloadManager(
             openCompositeDirectories += directory
             writeIfChanged(backup, target.readBytes())
             writeIfChanged(target, adapter)
-            diagnostics.record("opencomposite", "installed path=${target.path}")
+            configureOpenComposite(directory, vulkanRenderer)
+            diagnostics.record("opencomposite", "installed path=${target.path} vulkan=$vulkanRenderer")
         }
     }
+
+    /**
+     * OpenComposite starts its OpenXR session with temporary D3D11 graphics unless its config says
+     * Vulkan; a game rendering with Vulkan (Source 2's -vulkan) then makes it abort when the game
+     * asks for its Vulkan device. Our config lives next to the swapped DLL for the session only.
+     */
+    private fun configureOpenComposite(directory: File, vulkanRenderer: Boolean) {
+        val config = File(directory, OPENCOMPOSITE_CONFIG)
+        val ours = !config.exists() || (config.isFile && config.readText().startsWith(OPENCOMPOSITE_CONFIG_HEADER))
+        when {
+            !ours -> diagnostics.record("opencomposite", "kept the game's own $OPENCOMPOSITE_CONFIG path=${config.path}")
+            vulkanRenderer -> writeIfChanged(config, "$OPENCOMPOSITE_CONFIG_HEADER\ninitUsingVulkan=true\n".toByteArray())
+            else -> config.delete()
+        }
+    }
+
+    private fun usesVulkanRenderer(container: Container): Boolean =
+        container.execArgs.split(' ', '\t').any { it.equals("-vulkan", ignoreCase = true) }
 
     fun restore() {
         registryMutations.asReversed().forEach { mutation ->
@@ -284,6 +304,7 @@ class WindowsVrPayloadManager(
         if (backup.isFile) atomicReplace(backup, target)
         backup.delete()
         owner.delete()
+        configureOpenComposite(directory, vulkanRenderer = false)
         diagnostics.record("opencomposite", "restored path=${target.path}")
     }
 
@@ -378,5 +399,10 @@ class WindowsVrPayloadManager(
             ((bytes[0x3f].toInt() and 0xff) shl 24)
         check(offset >= 0x40 && offset + 6 <= bytes.size)
         return (bytes[offset + 4].toInt() and 0xff) or ((bytes[offset + 5].toInt() and 0xff) shl 8)
+    }
+
+    private companion object {
+        const val OPENCOMPOSITE_CONFIG = "opencomposite.ini"
+        const val OPENCOMPOSITE_CONFIG_HEADER = "; SteamPSP: the game renders with Vulkan (removed when the session ends)"
     }
 }

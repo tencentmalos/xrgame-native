@@ -199,6 +199,16 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeWaitWindowsFrame(
         views[base + 10] = view.fov.angleDown;
     }
     env->SetFloatArrayRegion(outViews, 0, 22, views);
+    // Callers that pass 30 floats also get the gaze: valid flag, orientation, position.
+    if (env->GetArrayLength(outViews) >= 30) {
+        const XrPosef &gaze = snapshot.gazePose;
+        const jfloat gazeValues[8] = {
+            snapshot.gazeValid ? 1.0f : 0.0f,
+            gaze.orientation.x, gaze.orientation.y, gaze.orientation.z, gaze.orientation.w,
+            gaze.position.x, gaze.position.y, gaze.position.z,
+        };
+        env->SetFloatArrayRegion(outViews, 22, 8, gazeValues);
+    }
     const auto &input = snapshot.input;
     jfloat inputValues[36]{};
     for (size_t hand = 0; hand < 2; ++hand) {

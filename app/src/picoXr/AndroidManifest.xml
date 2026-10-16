@@ -19,8 +19,11 @@
          SBS itself does not create a host OpenXR instance. -->
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
-    <!-- Eye-tracked foveation of the Windows VR reconstruction (XR_EXT_eye_gaze_interaction). -->
+    <!-- Eye-tracked foveation of the Windows VR reconstruction and of VR games that foveate
+         themselves (XR_EXT_eye_gaze_interaction). Pico's runtime also wants ETFR declared, or the
+         gaze fails with XR_ERROR_PERMISSION_INSUFFICIENT. -->
     <uses-permission android:name="com.picovr.permission.EYE_TRACKING" />
+    <uses-permission android:name="com.pico.xrpermission.ETFR" />
     <queries>
         <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
         <intent><action android:name="org.khronos.openxr.OpenXRRuntimeService" /></intent>

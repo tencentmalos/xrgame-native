@@ -10,12 +10,22 @@ reference="$base/src/mesa-turnip"
 pin=adb7e30a5646f1ae51e49c20ea4a0be4fa683355
 git -C "$reference" cat-file -e "$pin^{commit}"
 project=${XRGAME_PROJECT_ROOT:-"$base/project"}
-# Applied in order; together they equal feature/malos/xrgame-wine-icd. The third (xrg10)
+# Applied in order; the first three equal feature/malos/xrgame-wine-icd. The third (xrg10)
 # disables concurrent binning in render passes that emit LRZ CP_REG_RMWs; it has no effect while
 # drirc keeps concurrent binning globally off. xrg11 adds the app-process Android build below.
+# The fourth (xrg14) adds TU_DEBUG=fdmviz: fragment density map passes tint render target 0 by
+# each fragment's area, for the ETFR debug view; nothing changes without the flag. Since xrg16 the
+# tint keeps the colour's luminance (a tint of luminance 1 times it), so passes that read an
+# already tinted target, and exposure applied after HDR passes, do not compound it.
+# The fifth (xrg15) adds TU_MAX_SAMPLES=1|2|4|8, which caps multisampled images, render passes,
+# rasterization and shader sample indices, as shadPS4's MSAA override does. Turnip turns off a
+# render pass's fragment density map when a multisampled attachment is loaded or stored (Half-Life:
+# Alyx), so eye-tracked foveation runs single-sampled.
 patches=("$project/tools/xrgame/patches/turnip-x11-ahb.patch"
          "$project/tools/xrgame/patches/turnip-ahb-entrypoints.patch"
-         "$project/tools/xrgame/patches/turnip-lrz-rmw-no-cb.patch")
+         "$project/tools/xrgame/patches/turnip-lrz-rmw-no-cb.patch"
+         "$project/tools/xrgame/patches/turnip-fdm-visualize.patch"
+         "$project/tools/xrgame/patches/turnip-max-samples.patch")
 patch_sha=$( (echo "$pin"; cat "${patches[@]}") | sha256sum | cut -d ' ' -f1)
 work="$base/build/turnip-x11-ahb/${patch_sha:0:16}"
 src="$work/source"

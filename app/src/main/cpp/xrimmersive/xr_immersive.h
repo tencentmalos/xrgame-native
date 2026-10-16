@@ -128,6 +128,10 @@ struct WindowsRuntimeSnapshot {
     uint32_t recenterSerial = 0;
     XrExtent2Df stageBounds{0.0f, 0.0f};
     std::array<XrView, 2> views{{{XR_TYPE_VIEW}, {XR_TYPE_VIEW}}};
+    // The eye gaze in the views' space at their time, for games that move their own
+    // foveation (XR_FB_eye_tracking_social in the Windows runtime); -Z is the gaze direction.
+    bool gazeValid = false;
+    XrPosef gazePose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
     InputSnapshot input;
 };
 
@@ -259,9 +263,14 @@ private:
     uint32_t captureEyeWidth_ = 0;
     uint32_t captureEyeHeight_ = 0;
     XrDuration displayPeriod_ = 0;
-    // XR_EXT_eye_gaze_interaction for eye-tracked foveation of the Vulkan reconstruction.
+    // XR_EXT_eye_gaze_interaction for eye-tracked foveation of the Vulkan reconstruction
+    // and of Windows games that foveate themselves.
     std::unique_ptr<spatial::xr::XrEyeGazeTracker> gaze_;
     bool eyeGazeExtensionAvailable_ = false;
+    // The last locateGaze() sample in windowsTrackingSpace_ (XR thread).
+    bool gazeSampleValid_ = false;
+    XrPosef gazeSamplePose_{};
+    XrTime gazeSampleTime_ = 0;
     std::atomic<bool> stereoActive_{false};
     std::atomic<bool> windowsOverlayVisible_{false};
     std::atomic<bool> windowsInputBlocked_{false};

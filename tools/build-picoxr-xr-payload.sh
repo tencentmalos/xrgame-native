@@ -24,6 +24,14 @@ for arch in x64 x86; do
         "$work/pe/libws2_32_$arch.a" "$work/pe/libkernel32_$arch.a" \
         "$work/pe/libntdll_$arch.a" "$work/pe/libdxgi_$arch.a"
 done
+# Guest patch installer (x64 only): injected into Steam games by the client loader.
+patch_src="$repository/app/src/main/windows/guest_patch"
+for lib in kernel32 ntdll bcrypt; do
+    "$bin/llvm-dlltool" -m i386:x86-64 -d "$patch_src/${lib}_x64.def" -l "$work/pe/libguest_${lib}_x64.a"
+done
+"$bin/clang" --target=x86_64-w64-windows-gnu -shared -nostdlib -O2 -Wall -Wextra -Werror -mno-stack-arg-probe \
+    -Wl,-e,DllMain -o "$output/xrgame_guest_patch64.dll" "$patch_src/xrgame_guest_patch.c" \
+    "$work/pe/libguest_kernel32_x64.a" "$work/pe/libguest_ntdll_x64.a" "$work/pe/libguest_bcrypt_x64.a"
 "$sdk/cmake/3.22.1/bin/cmake" -S "$src/unix" -B "$work/xr-unixlib" -G Ninja \
     -DCMAKE_MAKE_PROGRAM="$sdk/cmake/3.22.1/bin/ninja" \
     -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \

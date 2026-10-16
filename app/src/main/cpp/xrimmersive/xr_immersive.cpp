@@ -18,6 +18,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <memory>
+#include <sys/system_properties.h>
 #include <mutex>
 #include <string>
 #include <unistd.h>
@@ -178,6 +179,50 @@ XrPosef IdentityPose() {
     pose.position.y = 0.0f;
     pose.position.z = 0.0f;
     return pose;
+}
+
+// The eye gaze tracker locates its space through this, so the flags of its last location tell a
+// tracked gaze from the resting direction a runtime reports while the eyes are not tracked
+// (XR thread only).
+XrSpaceLocationFlags gGazeLocationFlags = 0;
+
+XRAPI_ATTR XrResult XRAPI_CALL LocateGazeSpace(XrSpace space, XrSpace baseSpace, XrTime time,
+                                               XrSpaceLocation *location) {
+    const XrResult result = xrLocateSpace(space, baseSpace, time, location);
+    gGazeLocationFlags = XR_SUCCEEDED(result) ? location->locationFlags : 0;
+    return result;
+}
+
+bool GazeTracked() {
+    return (gGazeLocationFlags & XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT) != 0;
+}
+
+// Diagnostic (debug.xrgame.xr.gaze=<right>,<up>): Windows games get a gaze that many degrees
+// right of and above the head's forward, to check their foveation without a wearer.
+bool GazeOverride(const XrQuaternionf &head, XrQuaternionf *gaze) {
+    static uint32_t frames = 0;
+    static bool active = false;
+    static float right = 0.0f, up = 0.0f;
+    if (frames++ % 72 == 0) {
+        char value[PROP_VALUE_MAX] = {};
+        float nextRight = 0.0f, nextUp = 0.0f;
+        const bool next = __system_property_get("debug.xrgame.xr.gaze", value) > 0 &&
+                          std::sscanf(value, "%f,%f", &nextRight, &nextUp) == 2;
+        if (next != active || nextRight != right || nextUp != up) {
+            LOGI("Eye gaze: %s right=%.1f up=%.1f deg", next ? "overridden (diagnostic)" : "from the headset",
+                 nextRight, nextUp);
+        }
+        active = next;
+        right = nextRight;
+        up = nextUp;
+    }
+    if (!active) return false;
+    constexpr float kHalfRadians = 3.14159265f / 360.0f;
+    // A turn about +Y by -right moves -Z toward +X; one about +X by up moves it toward +Y.
+    const XrQuaternionf yaw{0.0f, std::sin(-right * kHalfRadians), 0.0f, std::cos(-right * kHalfRadians)};
+    const XrQuaternionf pitch{std::sin(up * kHalfRadians), 0.0f, 0.0f, std::cos(up * kHalfRadians)};
+    *gaze = QuatMultiply(QuatMultiply(head, yaw), pitch);
+    return true;
 }
 
 }  // namespace
@@ -559,6 +604,12 @@ void XrImmersiveSession::runLoop() {
                 LOGI("XR eye FOV (deg): left eye %.1f/%.1f/%.1f/%.1f, right eye %.1f/%.1f/%.1f/%.1f (left/right/up/down)",
                      fov.angleLeft * kDeg, fov.angleRight * kDeg, fov.angleUp * kDeg, fov.angleDown * kDeg,
                      right.angleLeft * kDeg, right.angleRight * kDeg, right.angleUp * kDeg, right.angleDown * kDeg);
+                // Canted displays turn each eye's view outward; the right eye's forward in the left eye's frame.
+                const XrVector3f forward = QuatRotate(
+                    QuatMultiply(QuatConjugate(runtimeSnapshot.views[0].pose.orientation),
+                                 runtimeSnapshot.views[1].pose.orientation), {0.0f, 0.0f, -1.0f});
+                LOGI("XR eye views: right eye turned %.2f deg right, %.2f deg up of the left eye",
+                     std::atan2(forward.x, -forward.z) * kDeg, std::atan2(forward.y, -forward.z) * kDeg);
                 if (perfHud_) perfHud_->setViewTop(std::min(fov.angleUp, right.angleUp));
             }
         } else {
@@ -583,6 +634,28 @@ void XrImmersiveSession::runLoop() {
             input.quickMenuClicked = input.menuButtonHeld = input.pointerModeToggled = false;
         }
         syncWindowsTrackingPoses(&runtimeSnapshot.input, poseTime);
+        // The gaze rides with the views it is relative to, so locate it at their time too. Games
+        // get it only while eye-tracked foveation is on (the launch panel's "eye").
+        runtimeSnapshot.gazeValid = false;
+        if (gaze_ && vulkan::GetUpscaleSettings().foveation == 2) {
+            if (poseTime == gazeSampleTime_) {
+                runtimeSnapshot.gazeValid = gazeSampleValid_;
+                runtimeSnapshot.gazePose = gazeSamplePose_;
+            } else {
+                const spatial::xr::EyeGazeSample gaze = gaze_->Locate(windowsTrackingSpace_, poseTime);
+                runtimeSnapshot.gazeValid = gaze.valid && GazeTracked();
+                runtimeSnapshot.gazePose = gaze.pose;
+            }
+        }
+        if (runtimeSnapshot.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) {
+            XrQuaternionf gaze;
+            if (GazeOverride(runtimeSnapshot.views[0].pose.orientation, &gaze)) {
+                runtimeSnapshot.gazeValid = true;
+                runtimeSnapshot.gazePose.orientation = gaze;
+                runtimeSnapshot.gazePose.position = runtimeSnapshot.views[0].pose.position;
+            }
+        }
+        if (vulkan_) vulkan_->projection().setGameGaze({runtimeSnapshot.gazeValid, runtimeSnapshot.gazePose.orientation});
         {
             std::lock_guard<std::mutex> lock(windowsSnapshotMutex_);
             windowsSnapshot_ = runtimeSnapshot;
@@ -1188,7 +1261,7 @@ bool XrImmersiveSession::setupInstanceAndSession() {
         functions.createActionSpace = xrCreateActionSpace;
         functions.destroySpace = xrDestroySpace;
         functions.getActionStatePose = xrGetActionStatePose;
-        functions.locateSpace = xrLocateSpace;
+        functions.locateSpace = LocateGazeSpace;
         functions.getInstanceProcAddr = xrGetInstanceProcAddr;
         spatial::xr::XrEyeGazeOptions options{};
         options.platform_hook = spatial::xr::EyeGazePlatformHook::PicoTrackingMode;
@@ -1638,19 +1711,30 @@ bool XrImmersiveSession::renderQuadImage(uint32_t imageIndex) {
 }
 
 void XrImmersiveSession::locateGaze(XrTime predictedDisplayTime) {
-    if (!gaze_ || !vulkan_) return;
+    if (!gaze_) return;
     const spatial::xr::EyeGazeSample sample = gaze_->Locate(windowsTrackingSpace_, predictedDisplayTime);
+    // Windows games are told about a gaze only while the eyes are tracked.
+    gazeSampleValid_ = sample.valid && GazeTracked();
+    gazeSamplePose_ = sample.pose;
+    gazeSampleTime_ = predictedDisplayTime;
+    static bool announced = false;
+    if (sample.valid && !announced) {
+        announced = true;
+        LOGI("Eye gaze: first valid sample");
+    }
+    static XrSpaceLocationFlags reportedFlags = ~XrSpaceLocationFlags{0};
+    if (gGazeLocationFlags != reportedFlags) {
+        reportedFlags = gGazeLocationFlags;
+        LOGI("Eye gaze: location flags 0x%llx (tracked=%d)", static_cast<unsigned long long>(reportedFlags),
+             GazeTracked() ? 1 : 0);
+    }
+    if (!vulkan_) return;
     vulkan_->projection().setGaze({sample.valid, sample.pose.orientation});
     // The 2D quad lives in LOCAL space, which VR games may not track in.
     const spatial::xr::EyeGazeSample local =
         windowsTrackingSpace_ == localSpace_ ? sample : gaze_->Locate(localSpace_, predictedDisplayTime);
     quadGazeValid_ = local.valid;
     if (local.valid) quadGazePose_ = local.pose;
-    static bool announced = false;
-    if (sample.valid && !announced) {
-        announced = true;
-        LOGI("Eye gaze: first valid sample");
-    }
 }
 
 bool XrImmersiveSession::renderWindowsProjection(XrCompositionLayerProjection *layer) {

@@ -25,7 +25,11 @@ object XrGameRuntime {
 
     /** Turnip builds carrying patches/turnip-x11-ahb.patch (Android X11 AHB presentation). */
     private val X11_AHB_TURNIP = setOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10",
-        "turnip-25ef164-xrg11", "turnip-04e1d66-xrg12", "turnip-adb7e30-xrg13")
+        "turnip-25ef164-xrg11", "turnip-04e1d66-xrg12", "turnip-adb7e30-xrg13", "turnip-adb7e30-xrg14", "turnip-adb7e30-xrg15",
+        "turnip-adb7e30-xrg16")
+
+    /** Turnip builds carrying patches/turnip-fdm-visualize.patch (TU_DEBUG=fdmviz). */
+    private val FDM_VISUALIZE_TURNIP = setOf("turnip-adb7e30-xrg14", "turnip-adb7e30-xrg15", "turnip-adb7e30-xrg16")
 
     fun configure(container: Container) {
         container.containerVariant = Container.BIONIC
@@ -185,6 +189,14 @@ object XrGameRuntime {
 
     /** Apply after user environment merging: this driver has no X11 DRM presentation path. */
     fun configurePresentation(env: EnvVars, turnipVersion: String = XrGameRuntimeVersions.TURNIP) {
+        // The ETFR debug view also has Turnip tint what the game's fragment density map passes
+        // draw by each fragment's area, so the game's own foveation shows in colour.
+        if (turnipVersion in FDM_VISUALIZE_TURNIP &&
+            env.get(app.gamenative.ui.screen.xr.windows.WindowsVrUpscale.ENV_DEBUG) == "1"
+        ) {
+            env.put("TU_DEBUG", (env.get("TU_DEBUG").split(',').map { it.trim() }.filter { it.isNotEmpty() } + "fdmviz")
+                .distinct().joinToString(","))
+        }
         if (turnipVersion in X11_AHB_TURNIP) {
             env.put("XRGAME_X11_AHB", "1")
             env.remove("MESA_VK_WSI_DEBUG")
