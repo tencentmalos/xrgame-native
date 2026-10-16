@@ -826,7 +826,8 @@ androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi
         repositoryDir.set(rootProject.layout.projectDirectory)
         nativeSources.from(fileTree("src/picoXr/cpp"), fileTree("src/main/cpp") {
             exclude("**/.git/**", "gn-download/**", "**/build/**")
-        }, fileTree("src/main/windows/openxr_runtime"), rootProject.file("tools/build-picoxr-native.sh"),
+        }, fileTree("src/main/windows/openxr_runtime"), fileTree("src/main/windows/guest_patch"),
+            rootProject.file("tools/build-picoxr-native.sh"),
             rootProject.file("tools/build-picoxr-xr-payload.sh"),
             rootProject.file("build/xrgame-runtime/opencomposite/opencomposite_x64.dll"),
             rootProject.file("tools/xrgame/opencomposite-pin.json"),

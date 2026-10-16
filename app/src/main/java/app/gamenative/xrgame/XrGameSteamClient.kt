@@ -22,7 +22,7 @@ object XrGameSteamClient {
     fun prepare(context: Context, prefix: File, game: File, drive: Char, appId: Int,
                 target: XrGameSteamLaunch.Launch, injectExtra: Boolean = false,
                 nestedGamePath: Boolean = false, followSelfRestart: Boolean = false,
-                language: String? = null): XrGameSteamLaunch.Launch {
+                language: String? = null, additionalDlls: List<File> = emptyList()): XrGameSteamLaunch.Launch {
         val xrProfile = XrGameProfiler.region("steamclient.prepare")
         try {
         check(target.executable.isFile && target.workingDirectory.isDirectory) {
@@ -52,7 +52,10 @@ object XrGameSteamClient {
         val gameBase = if (nestedGamePath) alias else "${drive.uppercaseChar()}:\\"
         val executable = gameBase + game.canonicalFile.toPath().relativize(target.executable.toPath()).toString().replace('/', '\\')
         val work = gameBase + game.canonicalFile.toPath().relativize(target.workingDirectory.toPath()).toString().replace('/', '\\')
-        writeAtomic(File(directory, "ColdClientLoader.ini"), configuration(appId, executable, work, target.arguments, windows, injectExtra, followSelfRestart))
+        val injectFolder = if (additionalDlls.isEmpty()) null else injectionFolder(driveC, appId,
+            listOfNotNull(File(directory, "extra/steamclient_extra_x64.dll").takeIf { injectExtra }) + additionalDlls)
+        writeAtomic(File(directory, "ColdClientLoader.ini"),
+            configuration(appId, executable, work, target.arguments, windows, injectExtra, followSelfRestart, injectFolder))
         val settings = File(directory, "steam_settings")
         settings.mkdirs()
         writeAtomic(File(settings, "configs.main.ini"), """
@@ -127,12 +130,31 @@ object XrGameSteamClient {
         return "C:\\xrgame\\games\\$appId\\"
     }
 
+    /**
+     * A per-game folder with the DLLs the loader injects (the client's extra DLL first, then e.g.
+     * the guest patch installer), ordered by load_order.txt. Returns its Windows path.
+     */
+    internal fun injectionFolder(driveC: File, appId: Int, dlls: List<File>): String {
+        require(appId > 0 && dlls.isNotEmpty() && dlls.map { it.name.lowercase() }.distinct().size == dlls.size)
+        val folder = File(driveC, "xrgame/inject/$appId")
+        folder.deleteRecursively()
+        folder.mkdirs()
+        for (dll in dlls) {
+            check(dll.isFile) { "DLL to inject is missing: ${dll.name}" }
+            dll.copyTo(File(folder, dll.name), overwrite = true)
+        }
+        writeAtomic(File(folder, "load_order.txt"), dlls.joinToString("") { it.name + "\n" })
+        return "C:\\xrgame\\inject\\$appId"
+    }
+
     internal fun configuration(appId: Int, executable: String, workingDirectory: String,
                                arguments: String, directory: String, injectExtra: Boolean = false,
-                               followSelfRestart: Boolean = false): String {
+                               followSelfRestart: Boolean = false, injectFolder: String? = null): String {
         require(appId > 0)
         require(!followSelfRestart || injectExtra) { "Self-restart requires an explicit bootstrap DLL" }
-        require(listOf(executable, workingDirectory, arguments, directory).none { value -> value.any { it.isISOControl() } })
+        require(!followSelfRestart || injectFolder == null) { "Self-restart injects exactly the bootstrap DLL" }
+        require(listOf(executable, workingDirectory, arguments, directory, injectFolder.orEmpty())
+            .none { value -> value.any { it.isISOControl() } })
         return """
             [SteamClient]
             AppId=$appId
@@ -142,7 +164,7 @@ object XrGameSteamClient {
             SteamClientDll=$directory\steamclient64.dll
             SteamClient64Dll=$directory\steamclient64.dll
             [Injection]
-            DllsToInjectFolder=${if (injectExtra) "$directory\\extra" else ""}
+            DllsToInjectFolder=${injectFolder ?: if (injectExtra) "$directory\\extra" else ""}
             ForceInjectSteamClient=0
             ForceInjectGameOverlayRenderer=0
             IgnoreInjectionError=0

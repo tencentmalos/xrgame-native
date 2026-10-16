@@ -1,0 +1,24 @@
+{
+  "schema": "xrgame.guest-patch.recipe.v1",
+  "abi": "x86_64-win64",
+  "id": "alyx_client_dllmain_probe",
+  "name": "Probe: client.dll DllMain",
+  "description": "Counts client.dll's DllMain calls (the engine loads it after start); changes nothing else. Checks DLLs patched at load.",
+  "title": "546560",
+  "module": "client.dll",
+  "module_sha256": "b63bebbbf5e669cf53bf5a7f972bb5336f816f3cc790d0aedb5ccb07c1c81af0",
+  "sources": ["entry_probe.cpp"],
+  "hooks": [
+    {
+      "name": "client_dllmain",
+      "offset": 10863656,
+      "expected": "48895c24084889742410",
+      "replacement": "patched_client_dllmain",
+      "original": "original_client_dllmain",
+      "prototype": "int original_client_dllmain(void* module, unsigned reason, void* reserved)",
+      "evidence": "game/hlvr/bin/win64/client.dll (Steam build of 2026-10-02 on Swan) PE AddressOfEntryPoint 0xa5c428: mov [rsp+8],rbx; mov [rsp+0x10],rsi; push rdi; sub rsp,0x20 (MSVC _DllMainCRTStartup)."
+    }
+  ],
+  "counters": [{"id": 1, "name": "dllmain_calls"}],
+  "logs": [{"id": 1, "name": "dllmain_reason"}]
+}

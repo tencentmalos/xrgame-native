@@ -1,0 +1,22 @@
+{
+  "schema": "xrgame.guest-patch.recipe.v1",
+  "abi": "x86_64-win64",
+  "id": "alyx_etfr_fdm_ab",
+  "name": "Diagnostic: FDM on/off switch",
+  "description": "Measurement only. Starts with the game's fragment density map off (as with vr_fdm 0) while the game runs with +vr_fdm 1; `guest_patch disable alyx_etfr_fdm_ab` turns it on and `enable` off again, for same-session A/B.",
+  "title": "546560",
+  "module": "renderingpipelines.dll",
+  "module_sha256": "f8d3f03beea8037748f762a3aa35ae447fafeb37056d313565f4a9d23be9e690",
+  "sources": ["etfr_fdm_ab.cpp"],
+  "sites": [
+    {
+      "name": "fdm_request",
+      "offset": 96364,
+      "mode": "replace",
+      "expected": "e8fff3ffff",
+      "handler": "skip_fdm",
+      "evidence": "renderingpipelines.dll 0x1786C (reverse_study 2026-10-16): the only call to the FDM create/lookup function 0x16C70, in the VR pipeline builder 0x171C0 (\"Static Opaque Forward\", \"Translucent Forward\"); rcx = rbp+0F0h (out), edx/r8d = RT size, r9d = layers; followed by mov rax,[rax]. 0x16C70 stores 0 in *out and returns out when vr_fdm is 0 or the device has no FDM."
+    }
+  ],
+  "counters": [{"id": 1, "name": "fdm_skipped"}]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "xrgame.guest-patch.recipe.v1",
+  "abi": "x86_64-win64",
+  "id": "alyx_etfr_offset_eye",
+  "name": "ETFR: per-eye gaze offset",
+  "description": "In the default stereo mode (both eyes in one double-wide layer) converts the eye-tracked foveation centre to an FDM offset in units of one eye's width instead of both eyes', so the full-density region follows the gaze. Use with \"ETFR: per-eye density map\". True multiview passes are left alone.",
+  "title": "546560",
+  "module": "rendersystemvulkan.dll",
+  "module_sha256": "7be3494e0874bc989864461b9c60fbbcb9d6e25eefffd8d823cf55268916fa0c",
+  "sources": ["etfr_offset_eye.cpp"],
+  "sites": [
+    {
+      "name": "fdm_offset_centres",
+      "offset": 214132,
+      "mode": "before",
+      "expected": "0f29b42410010000",
+      "handler": "halve_centre_x",
+      "evidence": "rendersystemvulkan.dll EndRendering 0x34320 (reverse_study 2026-10-16; the only reference to \"FDM Offset Info\"): after the VR interface call [vtable+110h] (rdx = rbp-80h, four floats: x, y per eye) returns true, 0x34474 (movaps [rsp+110h],xmm6) starts the conversion loop: optional y flip (vr_fdm_offset_flip_y), x * 0.5 * [rdi+1554h] / granularity, y * 0.5 * [rdi+1558h] / granularity, lroundf, times granularity; then vkCmdEndRendering2EXT with VkRenderPassFragmentDensityMapOffsetEndInfoEXT, two offsets. BeginRendering 0x347C0 copies the rendering description (dword 2 = view count, viewMask = (1 << n) - 1 when n > 1) to rdi+1310h and the render area to rdi+154Ch."
+    }
+  ],
+  "counters": [{"id": 1, "name": "offset_per_eye"}, {"id": 2, "name": "offset_kept"}, {"id": 3, "name": "centre_x_e4"}, {"id": 4, "name": "centre_y_e4"}]
+}

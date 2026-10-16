@@ -10,6 +10,30 @@ import org.junit.Test
 class XrGameSteamClientTest {
     private val names = listOf("steamclient_loader_x64.exe", "steamclient64.dll", "extra/steamclient_extra_x64.dll", "LICENSE", "provenance.json")
 
+    @Test fun extraDllsAreInjectedFromAPerGameFolderInOrder() {
+        val root = Files.createTempDirectory("xrgame-inject").toFile()
+        try {
+            val driveC = File(root, "drive_c").apply { mkdirs() }
+            val extra = File(root, "steamclient_extra_x64.dll").apply { writeText("extra") }
+            val installer = File(root, "xrgame_guest_patch64.dll").apply { writeText("installer") }
+            File(driveC, "xrgame/inject/546560/stale.dll").apply { parentFile!!.mkdirs(); writeText("old") }
+            val folder = XrGameSteamClient.injectionFolder(driveC, 546560, listOf(extra, installer))
+            assertEquals("C:\\xrgame\\inject\\546560", folder)
+            val files = File(driveC, "xrgame/inject/546560")
+            assertEquals(setOf("load_order.txt", "steamclient_extra_x64.dll", "xrgame_guest_patch64.dll"),
+                files.list()!!.toSet())
+            assertEquals("steamclient_extra_x64.dll\nxrgame_guest_patch64.dll\n", File(files, "load_order.txt").readText())
+            val ini = XrGameSteamClient.configuration(546560, "A:\\hlvr.exe", "A:\\", "", "C:\\xrgame\\client",
+                injectExtra = true, injectFolder = folder)
+            assertTrue(ini.contains("DllsToInjectFolder=C:\\xrgame\\inject\\546560\n"))
+            assertThrows(IllegalArgumentException::class.java) {
+                XrGameSteamClient.configuration(582010, "A:\\x.exe", "A:\\", "", "C:\\c", true, true, folder)
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun dlcConfigurationIsExplicitAndInstallPathResolvesOutsideTheClientCache() {
         val ini = XrGameSteamClient.appConfiguration(582010, mapOf(1118010 to "Iceborne\n[app::dlcs]\nunlock_all=1"))
         assertTrue(ini.contains("unlock_all=0\n"))

@@ -70,9 +70,11 @@ import app.gamenative.ui.screen.xserver.initialFpsLimiterEnabled
 import app.gamenative.ui.screen.xserver.initialFpsLimiterTarget
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.xrgame.XrGameApiCapture
+import app.gamenative.xrgame.XrGameGuestPatches
 import app.gamenative.xrgame.XrGameLaunchMode
 import app.gamenative.xrgame.XrGameLaunchMode.Mode
 import app.gamenative.xrgame.XrGameMemoryBudget
+import app.gamenative.xrgame.XrGameMsaa
 import app.gamenative.xrgame.XrGamePresentSettings
 import app.gamenative.xrgame.XrGameQualitySettings
 import app.gamenative.xrgame.XrGameResolution
@@ -126,6 +128,8 @@ fun XrGameLaunchPanel(
     var frameLimit by remember(appId) { mutableStateOf<FrameLimit?>(null) }
     var advanced by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    // This game's guest patch packages; empty for other sources or when there are none.
+    var guestPatches by remember(appId) { mutableStateOf(emptyList<XrGameGuestPatches.Package>()) }
     val launchFocus = remember { FocusRequester() }
 
     LaunchedEffect(appId) {
@@ -138,6 +142,12 @@ fun XrGameLaunchPanel(
             )
         }
         title = name
+        guestPatches = withContext(Dispatchers.IO) {
+            if (!appId.startsWith("STEAM_")) emptyList()
+            else runCatching { XrGameGuestPatches.list(ContainerUtils.extractGameIdFromContainerId(appId)).packages }
+                .onFailure { Timber.w(it, "Launch panel: listing guest patches of %s failed", appId) }
+                .getOrDefault(emptyList())
+        }
         initial = data
         draft = data
         initialFrameLimit = limit
@@ -232,6 +242,7 @@ fun XrGameLaunchPanel(
                                 mode = mode,
                                 statusLayer = statusLayer,
                                 frameLimit = frameLimit,
+                                guestPatches = guestPatches,
                                 advanced = advanced,
                                 captureAvailable = captureAvailable,
                                 twoColumns = twoColumns,
@@ -281,6 +292,7 @@ private fun LaunchOptions(
     mode: Mode,
     statusLayer: Boolean,
     frameLimit: FrameLimit?,
+    guestPatches: List<XrGameGuestPatches.Package>,
     advanced: Boolean,
     captureAvailable: Boolean,
     twoColumns: Boolean,
@@ -417,6 +429,22 @@ private fun LaunchOptions(
                 },
             )
         }
+        main += {
+            // The ETFR debug view draws in the Vulkan composite, so switching it on picks Vulkan.
+            ChoiceRow(
+                label = stringResource(R.string.xrgame_launch_etfr_debug),
+                choices = listOf(off, on),
+                selected = if (upscale.debug && reconstructs) 1 else 0,
+                note = stringResource(R.string.xrgame_launch_etfr_debug_note),
+                onSelect = { index ->
+                    var envVars = WindowsVrUpscale.withSettings(data.envVars, upscale.copy(debug = index == 1))
+                    if (index == 1 && !reconstructs) {
+                        envVars = WindowsVrUpscale.withBackend(envVars, WindowsVrUpscale.BACKEND_VULKAN)
+                    }
+                    onData(data.copy(envVars = envVars))
+                },
+            )
+        }
     }
     if (upscaling && vrGame) {
         main += {
@@ -467,7 +495,8 @@ private fun LaunchOptions(
             )
         }
     }
-    if (upscaling) {
+    // VR games also get the eye gaze for their own foveation (ETFR) while this is "eye".
+    if (upscaling || (mode == Mode.XR && vrGame)) {
         main += {
             ChoiceRow(
                 label = stringResource(R.string.xrgame_launch_foveation),
@@ -477,9 +506,29 @@ private fun LaunchOptions(
                     stringResource(R.string.xrgame_vr_foveation_eye),
                 ),
                 selected = upscale.foveation.ordinal,
+                note = if (!upscaling) stringResource(R.string.xrgame_launch_foveation_game_note) else null,
                 onSelect = { updateUpscale(upscale.copy(foveation = WindowsVrUpscale.Foveation.entries[it])) },
             )
         }
+    }
+    main += {
+        // A cap on the game's MSAA in Turnip; VR games run single-sampled while they get the gaze.
+        val forced = XrGameMsaa.forcedOff(data.envVars, mode == Mode.XR && vrGame)
+        val msaa = if (forced) XrGameMsaa.Mode.OFF else XrGameMsaa.stored(data.envVars)
+        ChoiceRow(
+            label = stringResource(R.string.xrgame_launch_msaa),
+            choices = listOf(
+                stringResource(R.string.xrgame_launch_msaa_game),
+                stringResource(R.string.xrgame_launch_off),
+                "2x",
+            ),
+            selected = msaa.ordinal,
+            enabled = { !forced || it == XrGameMsaa.Mode.OFF.ordinal },
+            note = if (forced) stringResource(R.string.xrgame_launch_msaa_forced) else null,
+            onSelect = { onData(data.copy(envVars = XrGameMsaa.withMode(data.envVars, XrGameMsaa.Mode.entries[it]))) },
+        )
+    }
+    if (upscaling) {
         if (upscale.foveation != WindowsVrUpscale.Foveation.OFF) {
             main += {
                 ChoiceRow(
@@ -587,6 +636,30 @@ private fun LaunchOptions(
             selected = qualities.indexOf(quality),
             onSelect = { onData(data.copy(envVars = XrGameQualitySettings.withTextureQuality(data.envVars, qualities[it]))) },
         )
+    }
+
+    // One switch per guest patch package, installed in name order; a package that changes
+    // code a selected one changes cannot be switched on.
+    val selectedPatches = XrGameGuestPatches.selection(data.envVars)
+    for (patch in guestPatches) {
+        main += {
+            val selected = patch.name in selectedPatches
+            val blocked = patch.conflicts.filter { it in selectedPatches }
+            ChoiceRow(
+                label = stringResource(R.string.xrgame_launch_guest_patch, patch.displayName),
+                choices = listOf(off, on),
+                selected = if (selected) 1 else 0,
+                enabled = { it == 0 || selected || (blocked.isEmpty() && selectedPatches.size < XrGameGuestPatches.MAX_PACKAGES) },
+                note = if (blocked.isNotEmpty()) stringResource(R.string.xrgame_launch_guest_patch_conflict, blocked.joinToString())
+                else patch.description.ifEmpty { null },
+                onSelect = { on ->
+                    val names = guestPatches.map { it.name }.filter { name ->
+                        if (name == patch.name) on == 1 else name in selectedPatches
+                    }
+                    onData(data.copy(envVars = XrGameGuestPatches.withSelection(data.envVars, names)))
+                },
+            )
+        }
     }
 
     val extra = mutableListOf<OptionItem>()

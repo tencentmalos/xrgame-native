@@ -61,6 +61,14 @@
     <string name="xrgame_launch_frame_limit_note">限制游戏自身的帧率，与快捷菜单里的 FPS 限制器是同一个设置。</string>
     <string name="xrgame_launch_memory_budget">显存预算</string>
     <string name="xrgame_launch_memory_budget_note">报给 D3D 游戏的显存大小，游戏据此分配纹理和缓存。不读这个值的游戏仍按自身设置。</string>
+    <string name="xrgame_launch_guest_patch">补丁：%1$s</string>
+    <string name="xrgame_launch_guest_patch_conflict">与 %1$s 冲突</string>
+    <string name="xrgame_launch_msaa">MSAA</string>
+    <string name="xrgame_launch_msaa_game">游戏</string>
+    <string name="xrgame_launch_msaa_forced">眼动注视点开启时自动关闭：Turnip 只对不读写多重采样图像的渲染通道做注视点渲染。</string>
+    <string name="xrgame_launch_foveation_game_note">选「眼动」时把注视点交给游戏做注视点渲染（ETFR），并关闭游戏的 MSAA。</string>
+    <string name="xrgame_launch_etfr_debug">ETFR 调试视图</string>
+    <string name="xrgame_launch_etfr_debug_note">在每只眼的注视点画绿色十字（没有注视数据时在中心画品红色十字）。Turnip 按片元面积给 FDM 渲染通道着色（保留亮度）：绿 2、黄 4、橙 8、红 16 像素；开启超分时还按渲染密度着色。使用 Vulkan 合成。</string>
     <string name="xrgame_launch_texture_quality">纹理质量</string>
     <string name="xrgame_launch_texture_quality_high">高</string>
     <string name="xrgame_launch_texture_quality_medium">中</string>

@@ -4083,6 +4083,7 @@ private fun setupXEnvironment(
         envVars.putAll(container.envVars)
         immersiveHooks?.windowsVr?.afterContainerEnvironmentMerged(envVars, container)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configurePresentation(envVars)
+        if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameMsaa.configure(envVars, immersiveHooks?.windowsVr != null)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameApiCapture.configure(context, container, envVars)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configureSync(
             File(context.filesDir, "xrgame-sync"), envVars, ProcessHelper.listRunningWineProcesses().isNotEmpty(),
@@ -4447,9 +4448,14 @@ private fun getWineStartCommand(
         check(target.executable.isFile) { "Steam executable is missing: ${target.executable.name}" }
         check(target.workingDirectory.isDirectory) { "Steam working directory is missing" }
         val launch = if (app.gamenative.xrgame.XrGameSteamLaunch.usesBundledClient(target.executable)) {
+            // Guest patches ride on the client loader's injection, before the game's main thread runs.
+            val guestPatches = app.gamenative.xrgame.XrGameGuestPatches.prepare(context, container, gameId,
+                profile?.followSelfRestart == true)
+            guestPatches?.environment?.forEach { (key, value) -> envVars.put(key, value) }
             app.gamenative.xrgame.XrGameSteamClient.prepare(context, File(container.rootDir, ".wine"),
                 gameDirectory, drive, gameId, target, profile?.injectExtra == true, profile?.nestedGamePath == true,
-                profile?.followSelfRestart == true, container.getExtra("language", null) ?: container.language)
+                profile?.followSelfRestart == true, container.getExtra("language", null) ?: container.language,
+                listOfNotNull(guestPatches?.installer))
         } else target
         guestProgramLauncherComponent.workingDir = launch.workingDirectory
         envVars.put("SteamAppId", gameId.toString())

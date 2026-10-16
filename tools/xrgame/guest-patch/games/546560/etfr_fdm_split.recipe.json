@@ -1,0 +1,33 @@
+{
+  "schema": "xrgame.guest-patch.recipe.v1",
+  "abi": "x86_64-win64",
+  "id": "alyx_etfr_fdm_split",
+  "name": "ETFR: per-eye density map",
+  "description": "In the default stereo mode (both eyes in one double-wide layer) builds the game's fragment density map pattern once per eye instead of once across both, so each eye gets its own full-density region. Use with \"ETFR: per-eye gaze offset\". True multiview maps are left alone.",
+  "title": "546560",
+  "module": "renderingpipelines.dll",
+  "module_sha256": "f8d3f03beea8037748f762a3aa35ae447fafeb37056d313565f4a9d23be9e690",
+  "sources": ["etfr_fdm_split.cpp"],
+  "hooks": [
+    {
+      "name": "create_fdm",
+      "offset": 93296,
+      "expected": "44894c242089542410",
+      "replacement": "patched_create_fdm",
+      "original": "original_create_fdm",
+      "prototype": "void* original_create_fdm(void* out, int rt_width, int rt_height, unsigned layers)",
+      "evidence": "renderingpipelines.dll 0x16C70 (reverse_study 2026-10-16): the only function referencing \"foveated_fdm_texture_%d_%d_%d\" and logging \"Creating fragment density map with size: %ux%ux%u (RT: %ux%ux%u)\"; size = (RT + 31) >> 5, cached per size; calls 0x5D60 (map builder) and, for layers > 1, copies layer 0 to layer 1. Entry: mov [rsp+20h],r9d; mov [rsp+10h],edx."
+    },
+    {
+      "name": "fdm_pattern",
+      "offset": 21584,
+      "expected": "488bc444894820",
+      "replacement": "patched_fdm_pattern",
+      "original": "original_fdm_pattern",
+      "prototype": "xrg_i64 original_fdm_pattern(int level, char square, unsigned width, unsigned height, void* out)",
+      "evidence": "renderingpipelines.dll 0x5450 (reverse_study 2026-10-16), called by the builder 0x5D60 (fove_square && !fove_square_use_legacy, or radial): level presets inner/outer/min (0.3/0.6/80 .. 0.2/0.4/32) overridden by fove_radial_inner/outer/min; side = min(width, height) centred in the map; pushes two bytes (density, density) per texel into an MSVC std::vector<unsigned char> (grow through 0x6410) that 0x5D60 reserved for 2 * width * height and emptied. Entry: mov rax,rsp; mov [rax+20h],r9d."
+    }
+  ],
+  "counters": [{"id": 1, "name": "fdm_split"}, {"id": 2, "name": "fdm_kept"}],
+  "logs": [{"id": 1, "name": "fdm_split_size"}]
+}

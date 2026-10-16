@@ -61,6 +61,14 @@
     <string name="xrgame_launch_frame_limit_note">Caps the game\'s own frame rate; the same setting as the quick menu\'s FPS limiter.</string>
     <string name="xrgame_launch_memory_budget">Video memory budget</string>
     <string name="xrgame_launch_memory_budget_note">The video memory D3D games are told they have; they size textures and caches from it. Games that ignore it keep their own settings.</string>
+    <string name="xrgame_launch_guest_patch">Patch: %1$s</string>
+    <string name="xrgame_launch_guest_patch_conflict">Conflicts with %1$s</string>
+    <string name="xrgame_launch_msaa">MSAA</string>
+    <string name="xrgame_launch_msaa_game">Game</string>
+    <string name="xrgame_launch_msaa_forced">Off while eye-tracked foveation is on: Turnip foveates only passes that do not load or store multisampled images.</string>
+    <string name="xrgame_launch_foveation_game_note">\"Eye\" gives the game the eye gaze for its own foveation (ETFR) and turns its MSAA off.</string>
+    <string name="xrgame_launch_etfr_debug">ETFR debug view</string>
+    <string name="xrgame_launch_etfr_debug_note">A green cross where the eye gaze lands in each eye (magenta in the centre while there is no gaze). Turnip tints what fragment density map passes draw by fragment area, keeping its brightness: green 2, yellow 4, orange 8, red 16 pixels; our upscaling tints by density too. Uses the Vulkan composite.</string>
     <string name="xrgame_launch_texture_quality">Texture quality</string>
     <string name="xrgame_launch_texture_quality_high">High</string>
     <string name="xrgame_launch_texture_quality_medium">Medium</string>

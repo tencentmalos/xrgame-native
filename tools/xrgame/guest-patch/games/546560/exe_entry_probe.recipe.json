@@ -1,0 +1,25 @@
+{
+  "schema": "xrgame.guest-patch.recipe.v1",
+  "abi": "x86_64-win64",
+  "id": "alyx_exe_entry_probe",
+  "name": "Probe: hlvr.exe entry",
+  "description": "Counts the game's entry point and logs when it ran; changes nothing else. Checks the guest patch chain.",
+  "title": "546560",
+  "module": "hlvr.exe",
+  "module_sha256": "154e3e5a654fa5c076c08b2a1bd2489ff7019e0f8b9dfd8618739d6bfff442cc",
+  "sources": ["entry_probe.cpp"],
+  "defines": ["XRG_ALYX_EXE"],
+  "hooks": [
+    {
+      "name": "exe_entry",
+      "offset": 5744,
+      "expected": "4883ec28e85b020000",
+      "replacement": "patched_exe_entry",
+      "original": "original_exe_entry",
+      "prototype": "int original_exe_entry(void* peb)",
+      "evidence": "hlvr.exe (Steam build of 2026-10-02 on Swan) PE AddressOfEntryPoint 0x1670: sub rsp,0x28; call 0x18d4 (__security_init_cookie); add rsp,0x28; jmp 0x14fc (__scrt_common_main_seh). MSVC CRT entry, rcx = PEB."
+    }
+  ],
+  "counters": [{"id": 1, "name": "entry_calls"}],
+  "logs": [{"id": 1, "name": "entry_ms"}]
+}
