@@ -87,7 +87,7 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 | 命令 | 作用与边界 |
 | --- | --- |
 | `launch <steamAppId>` / `launch status` | 与点「开始游戏」走同一路径：向 `MainActivity` 发 `app.gamenative.LAUNCH_GAME`（Int `app_id`，`game_source=STEAM`）。已有游戏、沉浸式会话或 X server 时返回 `game_running`。Android 只允许应用有可见窗口时由服务拉起 Activity，否则请求会被系统静默拦下，可改用 `adb shell am start -a app.gamenative.LAUNCH_GAME -n com.tencentmalos.xrgamenative/app.gamenative.MainActivity --ei app_id <id> --es game_source STEAM`。登录、未安装、云存档冲突等对话框仍需人工处理。`status` 返回最近请求、活跃 App ID 和沉浸式会话状态 |
-| `launch <steamAppId> load=<存档>` | 只对这一次启动追加 `+load <存档>`（Source 2，如 Alyx 的 `s0/autosave`），不经主菜单直接读档；不改容器的启动参数，只在下次启动该游戏时生效一次。存档名为 `名字` 或 `目录/名字`（字母、数字、下划线）。`status` 的 `pendingArguments` 显示尚未用掉的参数 |
+| `launch <steamAppId> load=<存档> [trigger=auto\|off]` | 只对这一次启动追加 `+load <存档>`（Source 2，如 Alyx 的 `s0/autosave`），不经主菜单直接读档；不改容器的启动参数，只在下次启动该游戏时生效一次。存档名为 `名字` 或 `目录/名字`（字母、数字、下划线）。`status` 的 `pendingArguments` 显示尚未用掉的参数。默认 `trigger=auto`（2026-10-15）：游戏读完档发出提示（Alyx 的 `hlvr/interstitials` `show_message`，即「按下 Trigger 以开始」）时，约 1 s 后自动扣一次右扳机（同 `input axis rt 1 600`；戴着头显时 300 ms 曾连续 3 次没被游戏收到），提示还在就 2 s 后再扣，最多 3 次；logcat 记为 `DebugBus automatic trigger`。只对用掉这组参数的那次启动生效，之后任何不带参数的启动（包括用户手动启动）都会清掉；`trigger=off` 留给人来按。`status` 的 `autoTrigger` 显示当前启动是否开着 |
 | `game_state` | 从运行中游戏的 Source 2 控制台日志（`-condebug`，Alyx 为 `game/hlvr/console.log`）判断是否已进场景：`hostState`/`target`（如 `Restoring Save`/`s0/autosave`、`Loading`/`startup` 即主菜单）、尚在加载的 `pendingState`、`paused`、`inScene`。只返回状态名、存档/地图名和时间戳，不返回日志原文（含玩家名）。日志最后写入早于本次沉浸式会话时 `current=false`，`inScene` 恒为 false。Alyx 每次读档约 3 s 后自动暂停，扣扳机（`input axis rt 1 300`）后继续；测量前应确认 `inScene` 持续为 true |
 | `vr_oc [full_copy=0\|1]` | OpenComposite 同局 A/B 开关：`full_copy=1` 在当前游戏容器的 `C:\gamenative-xr\` 下创建 `opencomposite-full-copy`，恢复整张纹理拷贝；`0` 删除。DLL 每秒检查一次。测完务必设回 0 |
 | `input btn <名>[_<名>…] [ms]` | 按住手柄键，默认 150 ms，最长 10 s。键名 `a b x y lb rb back start l3 r3 menu`，组合用 `_` 连接。`menu` 不足 600 ms 相当于给游戏按 Start，600 ms 及以上切换快捷菜单 |
@@ -97,6 +97,7 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 | `quickmenu exit` | 打开快捷菜单（如未打开），直接执行「退出」项本身的动作，游戏按菜单退出的原路径结束（退出云同步、OpenComposite DLL 还原）。立即返回 `exitRequested`，约 0.5 s 后执行；用 `launch status` 确认会话已结束。比连续 `nav down` 再按 A 可靠。2026-10-14 前它合成确认键，按键会送到持有焦点的 Android View（游戏中是 TouchpadView），两次落空、菜单停在暂停的游戏上 |
 | `quickmenu nav <up\|down\|left\|right\|ok\|back\|next\|prev>` | 用 `input` 发一次菜单导航：左摇杆、A、B、RB、LB |
 | `vr_hud [status\|on\|off]` | 头显性能 HUD（见下）。`on/off` 同时改状态层开关（`PrefManager.xrgameStatusLayer`，即启动面板的「状态层」，默认开；游戏画面里的 2D 性能 HUD 仍由 `PrefManager.showFps` 控制）；`status` 返回是否已创建图层、重绘/复用次数、最近与最长重绘耗时、当前 FPS 和面板位置，以及面板上 10 个格子的当前内容（`cells`，Foundation `StatusCells`）和它们的新鲜度（`cellsAgeMs`），供 PC 旁观窗口的跟随面板显示 |
+| `guest_debugger start target=<pid>,<startTicks> wine=<winePid> dbg=<sha16>,<port>[,<fcsd>]` / `status` / `stop` | 从 app 进程启动 x64 WineDbg（`--gdb --no-start`），使它与游戏同在 `untrusted_app` 域；经 `run-as` 启动时是 `runas_app`，Swan 上拿不到 wineserver 的 fd。先按 UID 和 start ticks 核对目标，环境取自游戏进程（去掉继承的 `WINESERVERSOCKET`），可执行文件必须已在前缀 `C:\xrgame-debugger\xrgame-winedbg-<sha16>.exe` 且 SHA 前缀一致。标志：`f` 放行首次异常，`c` 记录挂起/恢复，`s` 软件断点（实验性，fixture 与 Swan 上的 Alyx 已验证），`d` 开 `+winedbg`。输出写 `files/xrgame-debugger/winedbg.log`，回复里只有状态和路径名。`stop` 向这个子进程发 SIGKILL（Android 的 `destroyForcibly` 只发 SIGTERM，WineDbg 不理会），kill-on-exit 已关，游戏继续运行。通常由 `tools/xrgame/run-guest-debugger.py` 调用。host 调试器停住 app 时 DebugBus 无法响应，此时用 helper 的 `--launcher run-as-app-domain`（需 root 与 patched run-as） |
 
 `input` 在原生 `syncControllerInputs` 中与真实手柄合并，所以平面游戏的 XInput、快捷菜单导航、
 指针模式双击和 Windows VR（OpenXR action）都会收到。只在沉浸式 XR 会话运行时生效，到期自动释放。
@@ -104,7 +105,7 @@ python3 tools/xrgame/debugbus.py --serial <device> quickmenu exit
 **无人值守进场景（2026-10-10，Swan + Alyx 验证）**：GPU 测量必须在游戏场景里做。
 1. 先 `am start` 打开 SteamPSP，再 `--start`，然后 `launch 546560 load=s0/autosave`。
 2. 轮询 `game_state`，直到 `current=true` 且 `hostState=Restoring Save`。
-3. 出现 `paused=true` 后发 `input axis rt 1 300`。
+3. 读档后的「按下 Trigger」提示由 `trigger=auto`（默认）自动应答；若仍是 `paused=true`，再手动发 `input axis rt 1 300`。
 4. 等 `inScene` 持续为 true 后开始测量。
 5. 结束时用 `quickmenu exit`。
 

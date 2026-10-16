@@ -7,6 +7,7 @@ import android.os.IBinder
 import android.os.Process
 import android.os.SystemClock
 import android.system.Os
+import android.system.OsConstants
 import androidx.annotation.Keep
 import app.gamenative.BuildConfig
 import app.gamenative.MainActivity
@@ -39,10 +40,14 @@ class DebugBusService : Service() {
     companion object {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
-            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard")
+            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard", "guest_patch", "guest_debugger")
         private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video", "capture_config")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
+        @Volatile private var guestDebugger: java.lang.Process? = null
+        @Volatile private var guestDebuggerTarget = 0
+        @Volatile private var guestDebuggerExe = ""
+        @Volatile private var guestDebuggerStartedMs = 0L
     }
     private val worker = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(1)) {
         Thread(it, "XRGame:DebugBus").apply { isDaemon = true }
@@ -106,6 +111,8 @@ class DebugBusService : Service() {
             "vr_keyboard" -> vrKeyboard(args)
             "game_state" -> gameState()
             "vr_oc" -> vrOpenComposite(args)
+            "guest_patch" -> guestPatch(args)
+            "guest_debugger" -> guestDebuggerCommand(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -162,22 +169,27 @@ class DebugBusService : Service() {
      * Starts a Steam game the same way as its Play button (MainActivity's LAUNCH_GAME intent);
      * `status` or no argument reports progress. `load=<save>` makes this one launch load a Source 2
      * save (`+load <save>`, e.g. `s0/autosave`) instead of stopping at the main menu; the container's
-     * own arguments are not changed. Android only lets the service start the activity while SteamPSP
-     * has a visible window.
+     * own arguments are not changed. Such a launch also presses the trigger when the game asks for it
+     * after loading (`trigger=off` leaves it to a person). Android only lets the service start the
+     * activity while SteamPSP has a visible window.
      */
     private fun launch(args: Array<String>): JSONObject {
-        val usage = "usage: launch <steamAppId> [load=<save>]|status"
+        val usage = "usage: launch <steamAppId> [load=<save> [trigger=auto|off]]|status"
         val action = args.firstOrNull() ?: "status"
-        require(args.size <= 2 && (action != "status" || args.size <= 1)) { usage }
+        require(args.size <= 3 && (action != "status" || args.size <= 1)) { usage }
         if (action != "status") {
             val appId = action.toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException(usage)
             val save = args.getOrNull(1)?.let {
                 require(it.startsWith("load=") && XrGameDebugLaunch.isSaveName(it.removePrefix("load="))) { usage }
                 it.removePrefix("load=")
             }
+            val trigger = args.getOrNull(2)?.let {
+                require(it == "trigger=auto" || it == "trigger=off") { usage }
+                it == "trigger=auto"
+            } ?: true
             require(ActiveGameRegistry.get() == null && ImmersiveXrActivity.current?.get() == null &&
                 PluviaApp.xServerView == null) { "game_running" }
-            if (save != null) XrGameDebugLaunch.loadSave(appId, save)
+            if (save != null) XrGameDebugLaunch.loadSave(appId, save, trigger)
             startActivity(Intent(LAUNCH_GAME).setClass(this, MainActivity::class.java)
                 .putExtra("app_id", appId).putExtra("game_source", "STEAM")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -189,6 +201,7 @@ class DebugBusService : Service() {
             .put("xServerPresent", PluviaApp.xServerView != null)
             .put("immersive", immersive?.let { JSONObject(it.debugQuickMenu("status")) } ?: JSONObject.NULL)
             .put("pendingArguments", XrGameDebugLaunch.pendingArguments() ?: JSONObject.NULL)
+            .put("autoTrigger", XrGameDebugLaunch.autoTrigger)
     }
 
     /** Synthetic controller input through the immersive session; see [XrDebugInput]. */
@@ -311,6 +324,44 @@ class DebugBusService : Service() {
             .put("scope", "trigger_file_checked_by_opencomposite_once_a_second")
     }
 
+    /**
+     * Guest patches (XrGameGuestPatches): `status [appId]` lists a game's packages, selection and
+     * the installer's status; `select <appId> [name,name]` sets the selection for the next launch
+     * (no names clears it); `enable|disable [package|hook|package/hook]` switches hooks of the
+     * running game (no name: all).
+     */
+    private fun guestPatch(args: Array<String>): JSONObject {
+        val usage = "usage: guest_patch [status [appId]] | select <appId> [name,...] | enable|disable [target]"
+        val action = args.firstOrNull() ?: "status"
+        fun appId(index: Int): Int = args.getOrNull(index)?.let { requireNotNull(it.toIntOrNull()?.takeIf { id -> id > 0 }) { usage } }
+            ?: ActiveGameRegistry.get()?.appId ?: lastLaunch ?: error("no_active_game")
+        return when (action) {
+            "status" -> {
+                require(args.size <= 2) { usage }
+                val appId = appId(1)
+                XrGameGuestPatches.describe(ContainerUtils.getContainer(this, "STEAM_$appId"), appId)
+            }
+            "select" -> {
+                require(args.size in 2..3) { usage }
+                val appId = appId(1)
+                val names = args.getOrNull(2)?.split(',')?.filter { it.isNotEmpty() }.orEmpty()
+                val container = ContainerUtils.getContainer(this, "STEAM_$appId")
+                container.envVars = XrGameGuestPatches.withSelection(container.envVars, names)
+                container.saveData()
+                XrGameGuestPatches.describe(container, appId).put("scope", "next_launch")
+            }
+            "enable", "disable" -> {
+                require(args.size <= 2) { usage }
+                val appId = ActiveGameRegistry.get()?.appId ?: error("no_active_game")
+                val container = ContainerUtils.getContainer(this, "STEAM_$appId")
+                val sequence = XrGameGuestPatches.control(container, appId, action == "enable", args.getOrNull(1))
+                JSONObject().put("appId", appId).put("sequence", sequence)
+                    .put("scope", "control_file_polled_by_the_installer_every_250_ms")
+            }
+            else -> throw IllegalArgumentException(usage)
+        }
+    }
+
     private fun runtime(): JSONObject {
         val catalog = assets.open(XrGameComponents.ASSET).use { it.readBytes() }
         val hash = MessageDigest.getInstance("SHA-256").digest(catalog).joinToString("") { "%02x".format(it) }
@@ -399,6 +450,116 @@ class DebugBusService : Service() {
         }
         return JSONObject().put("action", action).put("containers", containers)
             .put("scope", "trigger_files_not_capture_completion")
+    }
+
+    /**
+     * Starts the WineDbg that tools/xrgame/run-guest-debugger.py staged in the prefix, from this app
+     * process so it runs in the game's SELinux domain. Started through run-as it runs as runas_app:
+     * on Swan (enforcing) the wineserver's socket fds then never reach it (recv fails with
+     * STATUS_TOO_MANY_OPENED_FILES) and the game may not signal it. The target is checked by PID and
+     * start time, and WineDbg gets the target's environment. Output goes to
+     * files/xrgame-debugger/winedbg.log, which the helper reads with run-as; replies carry no paths.
+     */
+    private fun guestDebuggerCommand(args: Array<String>): JSONObject {
+        val usage = "usage: guest_debugger start target=<pid>,<startTicks> wine=<winePid> " +
+            "dbg=<sha16>,<port>[,<flags f|c|s|d>] | status | stop"
+        val action = args.firstOrNull() ?: "status"
+        val running = guestDebugger?.takeIf { it.isAlive }
+        val log = File(File(filesDir, "xrgame-debugger"), "winedbg.log")
+        when (action) {
+            "status" -> require(args.size <= 1) { usage }
+            "stop" -> {
+                // A fallback: WineDbg detaches by itself when its RSP client disconnects. It ignores
+                // SIGTERM, the only signal Android's Process.destroy*() sends, so it gets a SIGKILL;
+                // once it is gone the wineserver drops its debug object, so the debuggee continues
+                // (kill on exit is off).
+                require(args.size == 1) { usage }
+                if (running != null) {
+                    killChild(guestDebuggerExe)
+                    running.waitFor(1, TimeUnit.SECONDS)
+                }
+            }
+            "start" -> {
+                require(args.size == 4) { usage }
+                require(running == null) { "debugger_running" }
+                val values = args.drop(1).associate { it.substringBefore('=', "") to it.substringAfter('=', "") }
+                val target = values["target"]?.split(',')?.takeIf { it.size == 2 } ?: throw IllegalArgumentException(usage)
+                val pid = target[0].toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException(usage)
+                val startTicks = target[1].toLongOrNull() ?: throw IllegalArgumentException(usage)
+                val winePid = values["wine"]?.toIntOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException(usage)
+                val debugger = values["dbg"]?.split(',')?.takeIf { it.size in 2..3 } ?: throw IllegalArgumentException(usage)
+                val sha16 = debugger[0].takeIf { Regex("[0-9a-f]{16}").matches(it) } ?: throw IllegalArgumentException(usage)
+                val port = debugger[1].toIntOrNull()?.takeIf { it in 1024..65535 } ?: throw IllegalArgumentException(usage)
+                val flags = debugger.getOrElse(2) { "" }
+                require(flags.all { it in "fcsd" }) { usage }
+                require(runCatching { Os.stat("/proc/$pid").st_uid }.getOrNull() == Process.myUid()) { "target_not_found" }
+                val stat = readBounded(File("/proc/$pid/stat"), 4096) ?: throw IllegalArgumentException("target_not_found")
+                require(stat.substringAfterLast(") ").split(' ').getOrNull(19)?.toLongOrNull() == startTicks) {
+                    "target_identity_mismatch"
+                }
+                val environ = File("/proc/$pid/environ").readBytes().also { require(it.size <= 1 shl 20) { "environment_too_large" } }
+                // The game's whole environment: from the app domain the loader can only start through the
+                // same no-exec path (WINELOADERNOEXEC, the exec shim in LD_PRELOAD) the game uses.
+                val env = String(environ, Charsets.UTF_8).split('\u0000').filter { '=' in it }
+                    .associate { it.substringBefore('=') to it.substringAfter('=') }.toMutableMap()
+                // An fd the game inherited from its parent; WineDbg connects to the wineserver itself.
+                env.remove("WINESERVERSOCKET")
+                val prefix = File(env["WINEPREFIX"] ?: throw IllegalArgumentException("no_prefix"))
+                val exe = File(prefix, "drive_c/xrgame-debugger/xrgame-winedbg-$sha16.exe")
+                require(exe.isFile) { "debugger_not_staged" }
+                val digest = MessageDigest.getInstance("SHA-256").let { md ->
+                    exe.inputStream().use { input ->
+                        val buffer = ByteArray(1 shl 16)
+                        while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
+                    }
+                    md.digest().joinToString("") { "%02x".format(it) }
+                }
+                require(digest.startsWith(sha16)) { "debugger_hash_mismatch" }
+                // The game's PATH starts with the runtime's bin directory (Proton's), which holds the loader.
+                val loader = env["PATH"]?.split(':')?.map { File(it, "wine") }?.firstOrNull { it.isFile }
+                    ?: throw IllegalArgumentException("no_wine_loader")
+                env["WINEDEBUG"] = if ('d' in flags) "err+all,+winedbg" else "-all"
+                env["WINE_GDB_REMOTE_NTDLL_BREAKIN"] = "1"
+                env["WINE_GDB_EXPECT_UNIX_PID"] = pid.toString()
+                if ('c' in flags) env["WINE_GDB_CONTROL_TRACE"] = "1"
+                if ('s' in flags) env["WINE_GDB_SOFTWARE_BREAKPOINTS"] = "1"
+                if ('f' in flags) env["WINE_GDB_FEX_EXCEPTIONS"] = "1"
+                log.parentFile?.mkdirs()
+                guestDebugger = ProcessBuilder("/system/bin/linker64", loader.path,
+                    "C:\\xrgame-debugger\\xrgame-winedbg-$sha16.exe", "--gdb", "--no-start", "--port", port.toString(),
+                    winePid.toString())
+                    .directory(filesDir).redirectErrorStream(true).redirectOutput(log)
+                    .also { builder -> builder.environment().clear(); builder.environment().putAll(env) }
+                    .start()
+                guestDebuggerTarget = pid
+                guestDebuggerExe = "xrgame-winedbg-$sha16.exe"
+                guestDebuggerStartedMs = SystemClock.elapsedRealtime()
+            }
+            else -> throw IllegalArgumentException(usage)
+        }
+        val process = guestDebugger
+        val output = readBounded(log, 1 shl 20).orEmpty()
+        return JSONObject().put("action", action)
+            .put("running", process?.isAlive == true)
+            .put("exitCode", process?.takeIf { !it.isAlive }?.exitValue() ?: JSONObject.NULL)
+            .put("targetPid", guestDebuggerTarget.takeIf { it > 0 } ?: JSONObject.NULL)
+            .put("ageMs", if (guestDebuggerStartedMs > 0) SystemClock.elapsedRealtime() - guestDebuggerStartedMs else JSONObject.NULL)
+            .put("listening", "target remote localhost" in output)
+            .put("pidVerified", "Verified Wine pid" in output)
+            .put("log", "files/xrgame-debugger/winedbg.log")
+            .put("scope", "app_process_selinux_domain")
+    }
+
+    /** SIGKILLs this process's children whose command line names [exe] (the Wine loader rewrites argv). */
+    private fun killChild(exe: String) {
+        if (exe.isEmpty()) return
+        val self = Process.myPid()
+        File("/proc").listFiles { file -> file.name.all(Char::isDigit) }.orEmpty().forEach { dir ->
+            val stat = readBounded(File(dir, "stat"), 4096) ?: return@forEach
+            val parent = stat.substringAfterLast(") ").split(' ').getOrNull(1)?.toIntOrNull()
+            val command = readBounded(File(dir, "cmdline"), 4096) ?: return@forEach
+            if (parent == self && exe in command) runCatching { Os.kill(dir.name.toInt(), OsConstants.SIGKILL) }
+        }
     }
 
     private fun readBounded(file: File, limit: Int): String? = runCatching {

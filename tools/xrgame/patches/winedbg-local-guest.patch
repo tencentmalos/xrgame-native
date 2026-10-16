@@ -11,7 +11,7 @@ index f3b02e9..03caa04 100644
  
    /* tgt_minidump.c */
 diff --git a/programs/winedbg/gdbproxy.c b/programs/winedbg/gdbproxy.c
-index e937c4e..2b2514e 100644
+index e937c4e..59fa376 100644
 --- a/programs/winedbg/gdbproxy.c
 +++ b/programs/winedbg/gdbproxy.c
 @@ -88,6 +88,7 @@ struct gdb_context
@@ -145,17 +145,37 @@ index e937c4e..2b2514e 100644
      gdbctx->other_tid = de->dwThreadId;
      gdbctx->de_reply = DBG_REPLY_LATER;
  
-@@ -599,8 +680,20 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
-         TRACE("%04lx:%04lx: exception code=0x%08lx\n", de->dwProcessId,
-               de->dwThreadId, de->u.Exception.ExceptionRecord.ExceptionCode);
+@@ -596,11 +677,37 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
+         return TRUE;
  
+     case EXCEPTION_DEBUG_EVENT:
+-        TRACE("%04lx:%04lx: exception code=0x%08lx\n", de->dwProcessId,
+-              de->dwThreadId, de->u.Exception.ExceptionRecord.ExceptionCode);
+-
++        TRACE("%04lx:%04lx: exception code=0x%08lx at %p first=%lu info %lu: %Ix %Ix\n", de->dwProcessId,
++              de->dwThreadId, de->u.Exception.ExceptionRecord.ExceptionCode,
++              de->u.Exception.ExceptionRecord.ExceptionAddress, de->u.Exception.dwFirstChance,
++              de->u.Exception.ExceptionRecord.NumberParameters,
++              de->u.Exception.ExceptionRecord.ExceptionInformation[0],
++              de->u.Exception.ExceptionRecord.ExceptionInformation[1]);
++
++        /* First-chance exceptions belong to the game and FEX: C++ throws, FEX's suspend trap
++         * (brk #0xCAFE), its unaligned atomics (misalignment) and the access violations that
++         * commit its caches. A plain RSP continue would answer DBG_CONTINUE and swallow them, so
++         * they go back unhandled without a stop. Breakpoints, single steps and second-chance
++         * exceptions still stop. */
 +        if (de->u.Exception.dwFirstChance && GetEnvironmentVariableA("WINE_GDB_FEX_EXCEPTIONS", NULL, 0) &&
-+            (de->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_ACCESS_VIOLATION ||
-+             (de->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION &&
-+              ReadProcessMemory(gdbctx->process->handle, de->u.Exception.ExceptionRecord.ExceptionAddress,
-+                                &instruction, sizeof(instruction), &read) && read == sizeof(instruction) &&
-+              (instruction == 0xd4395fc0 || instruction == 0xd4200000))))
++            de->u.Exception.ExceptionRecord.ExceptionCode != EXCEPTION_BREAKPOINT &&
++            de->u.Exception.ExceptionRecord.ExceptionCode != EXCEPTION_SINGLE_STEP &&
++            de->u.Exception.ExceptionRecord.ExceptionCode != STATUS_WX86_BREAKPOINT &&
++            de->u.Exception.ExceptionRecord.ExceptionCode != STATUS_WX86_SINGLE_STEP)
 +        {
++            if (de->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION &&
++                ReadProcessMemory(gdbctx->process->handle, de->u.Exception.ExceptionRecord.ExceptionAddress,
++                                  &instruction, sizeof(instruction), &read) && read == sizeof(instruction))
++                TRACE("illegal instruction %08lx passed to the guest\n", instruction);
++            TRACE("first-chance exception 0x%08lx passed to the guest\n",
++                  de->u.Exception.ExceptionRecord.ExceptionCode);
 +            gdbctx->de_reply = DBG_EXCEPTION_NOT_HANDLED;
 +            return TRUE;
 +        }
@@ -166,7 +186,7 @@ index e937c4e..2b2514e 100644
          break;
  
      case CREATE_THREAD_DEBUG_EVENT:
-@@ -648,7 +741,15 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
+@@ -648,7 +755,15 @@ static BOOL handle_debug_event(struct gdb_context* gdbctx, BOOL stop_on_dll_load
  
      LIST_FOR_EACH_ENTRY(thread, &gdbctx->process->threads, struct dbg_thread, entry)
      {
@@ -183,7 +203,7 @@ index e937c4e..2b2514e 100644
          thread->suspended = TRUE;
      }
  
-@@ -671,11 +772,16 @@ static void handle_step_or_continue(struct gdb_context* gdbctx, int tid, BOOL st
+@@ -671,11 +786,16 @@ static void handle_step_or_continue(struct gdb_context* gdbctx, int tid, BOOL st
              gdbctx->de_reply = (sig == -1 ? DBG_CONTINUE : DBG_EXCEPTION_NOT_HANDLED);
  
          dbg_thread_set_single_step(thread, step);
@@ -202,7 +222,7 @@ index e937c4e..2b2514e 100644
  {
  	char pkt;
          fd_set read_fds;
-@@ -688,7 +794,7 @@ static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
+@@ -688,7 +808,7 @@ static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
          {
              if (recv(gdbctx->sock, &pkt, 1, 0) != 1) {
                  ERR("read failed\n");
@@ -211,7 +231,7 @@ index e937c4e..2b2514e 100644
              }
              if (pkt != '\003') {
                  ERR("Unexpected break packet %#02x\n", pkt);
-@@ -701,8 +807,9 @@ static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
+@@ -701,8 +821,9 @@ static BOOL	check_for_interrupt(struct gdb_context* gdbctx)
  
  static void    wait_for_debuggee(struct gdb_context* gdbctx)
  {
@@ -222,7 +242,7 @@ index e937c4e..2b2514e 100644
  
      for (;;)
      {
-@@ -710,8 +817,13 @@ static void    wait_for_debuggee(struct gdb_context* gdbctx)
+@@ -710,8 +831,13 @@ static void    wait_for_debuggee(struct gdb_context* gdbctx)
  		{
  			if (GetLastError() == ERROR_SEM_TIMEOUT)
  			{
@@ -238,7 +258,7 @@ index e937c4e..2b2514e 100644
  						ERR("Failed to break into debuggee\n");
  						break;
  					}
-@@ -725,21 +837,33 @@ static void    wait_for_debuggee(struct gdb_context* gdbctx)
+@@ -725,21 +851,33 @@ static void    wait_for_debuggee(struct gdb_context* gdbctx)
  		}
          if (!handle_debug_event(gdbctx, TRUE))
              break;
@@ -277,7 +297,7 @@ index e937c4e..2b2514e 100644
  }
  
  static void get_process_info(struct gdb_context* gdbctx, char* buffer, size_t len)
-@@ -1029,6 +1153,11 @@ static enum packet_return packet_reply_status(struct gdb_context* gdbctx)
+@@ -1029,6 +1167,11 @@ static enum packet_return packet_reply_status(struct gdb_context* gdbctx)
      dbg_ctx_t ctx;
      size_t i;
  
@@ -289,7 +309,7 @@ index e937c4e..2b2514e 100644
      switch (gdbctx->de.dwDebugEventCode)
      {
      default:
-@@ -1191,7 +1320,13 @@ static enum packet_return packet_delete_breakpoint(struct gdb_context* gdbctx)
+@@ -1191,7 +1334,13 @@ static enum packet_return packet_delete_breakpoint(struct gdb_context* gdbctx)
          return packet_error;
  
      if (type == '0')
@@ -304,7 +324,7 @@ index e937c4e..2b2514e 100644
  
      LIST_FOR_EACH_ENTRY(thread, &process->threads, struct dbg_thread, entry)
      {
-@@ -1239,7 +1374,11 @@ static enum packet_return packet_insert_breakpoint(struct gdb_context* gdbctx)
+@@ -1239,7 +1388,11 @@ static enum packet_return packet_insert_breakpoint(struct gdb_context* gdbctx)
          return packet_error;
  
      if (type == '0')
@@ -317,7 +337,7 @@ index e937c4e..2b2514e 100644
  
      LIST_FOR_EACH_ENTRY(thread, &process->threads, struct dbg_thread, entry)
      {
-@@ -1259,7 +1398,7 @@ static enum packet_return packet_insert_breakpoint(struct gdb_context* gdbctx)
+@@ -1259,7 +1412,7 @@ static enum packet_return packet_insert_breakpoint(struct gdb_context* gdbctx)
  
  static enum packet_return packet_detach(struct gdb_context* gdbctx)
  {
@@ -326,7 +346,7 @@ index e937c4e..2b2514e 100644
      return packet_ok | packet_last_f;
  }
  
-@@ -2109,7 +2248,7 @@ static enum packet_return packet_query(struct gdb_context* gdbctx)
+@@ -2109,7 +2262,7 @@ static enum packet_return packet_query(struct gdb_context* gdbctx)
              size_t i;
  
              packet_reply_open(gdbctx);
@@ -335,7 +355,7 @@ index e937c4e..2b2514e 100644
              for (i = 0; i < ARRAY_SIZE(qxfer_handlers); i++)
              {
                  packet_reply_add(gdbctx, "qXfer:");
-@@ -2227,7 +2366,7 @@ static enum packet_return packet_step(struct gdb_context* gdbctx)
+@@ -2227,7 +2380,7 @@ static enum packet_return packet_step(struct gdb_context* gdbctx)
      if (sscanf(gdbctx->in_packet, "%p", &addr) == 1)
          FIXME("Continue at address %p not supported\n", addr);
  
@@ -344,7 +364,7 @@ index e937c4e..2b2514e 100644
  
      wait_for_debuggee(gdbctx);
      return packet_reply_status(gdbctx);
-@@ -2287,6 +2426,21 @@ static BOOL extract_packets(struct gdb_context* gdbctx)
+@@ -2287,6 +2440,21 @@ static BOOL extract_packets(struct gdb_context* gdbctx)
      unsigned int cksum;
      int i, len;
  
@@ -366,7 +386,7 @@ index e937c4e..2b2514e 100644
      /* ptr points to the beginning ('$') of the current packet
       * sum points to the beginning ('#') of the current packet checksum ("#xx")
       * len is the length of the current packet data (sum - ptr - 1)
-@@ -2343,6 +2497,7 @@ static BOOL extract_packets(struct gdb_context* gdbctx)
+@@ -2343,6 +2511,7 @@ static BOOL extract_packets(struct gdb_context* gdbctx)
              else if (((ret = (packet_entries[i].handler)(gdbctx)) & ~packet_last_f) == packet_error)
                  WARN("Failed: %s\n", debugstr_an(ptr + 1, len));
  
@@ -374,7 +394,7 @@ index e937c4e..2b2514e 100644
              switch (ret & ~packet_last_f)
              {
              case packet_error:  packet_reply(gdbctx, ""); break;
-@@ -2458,7 +2613,7 @@ static BOOL gdb_startup(struct gdb_context* gdbctx, unsigned flags, unsigned por
+@@ -2458,7 +2627,7 @@ static BOOL gdb_startup(struct gdb_context* gdbctx, unsigned flags, unsigned por
      setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
  
      s_addrs.sin_family = AF_INET;
@@ -383,7 +403,7 @@ index e937c4e..2b2514e 100644
      s_addrs.sin_port = htons(port);
      if (bind(sock, (struct sockaddr *)&s_addrs, sizeof(s_addrs)) == -1)
          goto cleanup;
-@@ -2518,6 +2673,7 @@ static BOOL gdb_init_context(struct gdb_context* gdbctx, unsigned flags, unsigne
+@@ -2518,6 +2687,7 @@ static BOOL gdb_init_context(struct gdb_context* gdbctx, unsigned flags, unsigne
      list_init(&gdbctx->xpoint_list);
      gdbctx->process = NULL;
      gdbctx->no_ack_mode = FALSE;
@@ -391,7 +411,7 @@ index e937c4e..2b2514e 100644
      for (i = 0; i < ARRAY_SIZE(gdbctx->wine_segs); i++)
          gdbctx->wine_segs[i] = 0;
  
-@@ -2538,7 +2694,8 @@ static BOOL gdb_init_context(struct gdb_context* gdbctx, unsigned flags, unsigne
+@@ -2538,7 +2708,8 @@ static BOOL gdb_init_context(struct gdb_context* gdbctx, unsigned flags, unsigne
          }
          else if (!handle_debug_event(gdbctx, FALSE))
              break;
@@ -401,7 +421,7 @@ index e937c4e..2b2514e 100644
      }
      return TRUE;
  }
-@@ -2547,6 +2704,7 @@ static int gdb_remote(unsigned flags, unsigned port)
+@@ -2547,33 +2718,22 @@ static int gdb_remote(unsigned flags, unsigned port)
  {
      struct gdb_context  gdbctx;
  
@@ -409,35 +429,37 @@ index e937c4e..2b2514e 100644
      if (!gdb_init_context(&gdbctx, flags, port)) return 0;
      /* don't handle ctrl-c, but let gdb do the job */
      SetConsoleCtrlHandler(NULL, TRUE);
-@@ -2559,13 +2717,16 @@ static int gdb_remote(unsigned flags, unsigned port)
-         FD_SET( gdbctx.sock, &read_fds );
-         FD_SET( gdbctx.sock, &err_fds );
- 
+     for (;;)
+     {
+-        fd_set read_fds, err_fds;
+-
+-        FD_ZERO( &read_fds );
+-        FD_ZERO( &err_fds );
+-        FD_SET( gdbctx.sock, &read_fds );
+-        FD_SET( gdbctx.sock, &err_fds );
+-
 -        if (select( 0, &read_fds, NULL, &err_fds, NULL ) == -1) break;
-+        if (select( 0, &read_fds, NULL, &err_fds, NULL ) == -1)
-+        {
-+            detach_debuggee(&gdbctx, FALSE);
-+            break;
-+        }
- 
-         if (FD_ISSET( gdbctx.sock, &err_fds ))
+-
+-        if (FD_ISSET( gdbctx.sock, &err_fds ))
++        /* A blocking read; a closed or failed connection detaches and leaves the debuggee running. */
++        if (fetch_data(&gdbctx) > 0)
          {
-             ERR("gdb hung up\n");
+-            ERR("gdb hung up\n");
 -            /* kill also debuggee process - questionnable - */
 -            detach_debuggee(&gdbctx, TRUE);
-+            detach_debuggee(&gdbctx, FALSE);
-             break;
+-            break;
++            if (extract_packets(&gdbctx)) break;
          }
-         if (FD_ISSET( gdbctx.sock, &read_fds ))
-@@ -2574,6 +2735,11 @@ static int gdb_remote(unsigned flags, unsigned port)
-             {
-                 if (extract_packets(&gdbctx)) break;
-             }
-+            else
-+            {
-+                detach_debuggee(&gdbctx, FALSE);
-+                break;
-+            }
+-        if (FD_ISSET( gdbctx.sock, &read_fds ))
++        else
+         {
+-            if (fetch_data(&gdbctx) > 0)
+-            {
+-                if (extract_packets(&gdbctx)) break;
+-            }
++            ERR("gdb hung up: %u\n", WSAGetLastError());
++            detach_debuggee(&gdbctx, FALSE);
++            break;
          }
      }
      /* wait for gdb to terminate */

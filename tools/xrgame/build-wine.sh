@@ -61,6 +61,14 @@ if git -C "$src" apply --check "$host_ahb_patch" 2>/dev/null; then
 else
     git -C "$src" apply --reverse --check "$host_ahb_patch"
 fi
+# Enable VK_EXT_host_image_copy on the host device when the driver has it: Windows drivers return
+# its commands unconditionally, and Source 2's Vulkan renderer calls them without enabling it.
+host_image_copy_patch="$project/tools/xrgame/patches/wine-vulkan-host-image-copy.patch"
+if git -C "$src" apply --check "$host_image_copy_patch" 2>/dev/null; then
+    git -C "$src" apply "$host_image_copy_patch"
+else
+    git -C "$src" apply --reverse --check "$host_image_copy_patch"
+fi
 # Map the unused rest of a small allocation's 64k granule so neighbouring views share one
 # kernel VMA; Source 2 games otherwise exceed vm.max_map_count (WINE_MERGE_SMALL_VIEWS=0 disables).
 merge_views_patch="$project/tools/xrgame/patches/wine-merge-small-views.patch"
@@ -68,6 +76,14 @@ if git -C "$src" apply --check "$merge_views_patch" 2>/dev/null; then
     git -C "$src" apply "$merge_views_patch"
 else
     git -C "$src" apply --reverse --check "$merge_views_patch"
+fi
+# New threads start with only the server signals blocked: one created for a debugger's break-in
+# by a thread waiting in a fault handler otherwise inherits SIGTRAP blocked and dies on its first brk.
+sigmask_patch="$project/tools/xrgame/patches/wine-new-thread-sigmask.patch"
+if git -C "$src" apply --check "$sigmask_patch" 2>/dev/null; then
+    git -C "$src" apply "$sigmask_patch"
+else
+    git -C "$src" apply --reverse --check "$sigmask_patch"
 fi
 if [[ "$phase" == all || "$phase" == host ]]; then
     if [[ ! -f "$host/Makefile" ]]; then

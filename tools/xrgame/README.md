@@ -171,13 +171,38 @@ Use the guest MCP with `serial`, `port: 41731`, `remotePort: 41731`,
 Then explicitly pause and use the returned stop epoch for registers/memory/control.
 The initial handshake may report `connected_unknown` until that pause.
 
+By default (`--launcher debugbus`) the helper asks the picoXr debug APK's DebugBus
+(`guest_debugger start`) to start WineDbg from the app process, in the game's SELinux
+domain, with the game's own environment; it then mirrors `files/xrgame-debugger/winedbg.log`
+and stops WineDbg on Ctrl-C. Through `run-as` (`--launcher run-as`) WineDbg runs as
+`runas_app`: on an enforcing device (Swan) the wineserver's socket fds never reach it,
+so it fails with `STATUS_TOO_MANY_OPENED_FILES`. `--trace` adds `+winedbg` (debug
+events, exception codes and addresses, replies) to the log.
+
+`--launcher run-as-app-domain` needs `adb root` and the patched run-as with
+`--app-domain` (native-debugger MCP asset `patched-run-as-2db6782d`; pass
+`--run-as-path` to try a candidate copied to `/data/local/tmp`). It starts WineDbg
+from the adb shell with the package's UID in the app's own SELinux domain and the
+game's environment, streams its output to the host, and kills it on Ctrl-C. Unlike
+DebugBus it does not go through the app process, so it still works while a host
+debugger holds SteamPSP stopped; use it when debugging guest and host together.
+
 The patch handles interrupts while already stopped, resolves remote break-in from
 the target's own ntdll exports, and detaches on disconnect both while stopped and
-while waiting for a running target. `--fex-exceptions` passes first-chance access
-violations to the application's exception handlers and passes FEX's exact
-`brk #0xCAFE` suspension trap and `brk #0` guest-trap conversion; second-chance faults still stop. Omit this option
-when investigating first-chance access violations themselves. Its register view
-is Wine's x64/ARM64EC context; this is not FEX's Linux mixed-stack provider.
+while waiting for a running target. `--fex-exceptions` passes every first-chance
+exception except breakpoints and single steps to the application without a stop:
+FEX commits its lookup caches on access violations, handles unaligned atomics
+(`0x80000002`) and its `brk #0xCAFE` suspension trap there, and the game has its own
+handlers; second-chance faults still stop. Omit this option when investigating
+first-chance exceptions themselves. Its register view is Wine's x64/ARM64EC context;
+this is not FEX's Linux mixed-stack provider.
+
+The break-in needs Proton xrg7 or later (`patches/wine-new-thread-sigmask.patch`).
+Wine creates a `CreateRemoteThread` thread on whichever target thread is in a server
+wait, and while a debugger is attached that is often one waiting for it inside a
+fault handler, with SIGTRAP blocked. Older Wine let the new thread inherit that mask,
+so its first `brk` killed the game (Half-Life: Alyx died on about half the attaches);
+see [the record](../../docs/validation/swan-guest-debugger-20261015.md).
 
 End with `guest_debug.stop_session`. Verify the helper exits, WineDbg disappears,
 the owned forward is removed, and the game PID/start ticks remain unchanged.
@@ -274,6 +299,13 @@ Half-Life: Alyx exceeded Swan's `vm.max_map_count` of 65530 while loading its fi
 The tail is released with its view; `WINE_MERGE_SMALL_VIEWS=0` in a container disables it.
 The private validation archive `proton-11.0-2-arm64ec-xrg5` derives from xrg4 with only
 `ntdll.so` rebuilt; device validation is pending.
+
+`wine-vulkan-host-image-copy.patch` enables `VK_EXT_host_image_copy` on the host device whenever
+the driver has it. Windows drivers return its commands whether or not an application enables it.
+Half-Life: Alyx's Vulkan renderer (a Vulkan 1.0 instance) calls `vkCopyMemoryToImageEXT` without
+enabling it, and Mesa returns NULL for that. `package-proton-validation.py` builds the private
+`proton-11.0-2-arm64ec-xrg6` from xrg5 with only the unix `win32u.so` rebuilt. See
+[the record](../../docs/validation/swan-alyx-vulkan-20261015.md).
 
 ## Publication check
 

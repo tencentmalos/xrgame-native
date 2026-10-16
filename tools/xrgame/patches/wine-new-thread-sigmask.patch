@@ -1,0 +1,16 @@
+diff --git a/dlls/ntdll/unix/thread.c b/dlls/ntdll/unix/thread.c
+--- a/dlls/ntdll/unix/thread.c
++++ b/dlls/ntdll/unix/thread.c
+@@ -1124,6 +1124,12 @@ static void start_thread( TEB *teb )
+     struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
+     BOOL suspend;
+ 
++    /* pthread_create() hands the creator's signal mask to the new thread. A thread created for an
++     * APC_CREATE_THREAD request (CreateRemoteThread, a debugger's break-in) may be created by a thread
++     * that waits for the debugger inside a fault handler, with SIGTRAP or SIGSEGV blocked; the new
++     * thread's first breakpoint or fault then kills the whole process. Start with only the server
++     * signals blocked, as NtCreateThreadEx intends. */
++    pthread_sigmask( SIG_SETMASK, &server_block_set, NULL );
+     thread_data->syscall_table = KeServiceDescriptorTable;
+     thread_data->syscall_trace = TRACE_ON(syscall);
+     thread_data->pthread_id = pthread_self();

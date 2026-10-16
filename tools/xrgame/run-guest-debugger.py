@@ -12,6 +12,8 @@ import uuid
 
 from debug_identity import Device, IdentityError
 
+DEBUGBUS = "com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService"
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -28,10 +30,21 @@ def main():
     parser.add_argument("--debugger", required=True, type=pathlib.Path)
     parser.add_argument("--port", type=int, default=41731)
     parser.add_argument("--fex-exceptions", action="store_true",
-                        help="Pass first-chance access violations and FEX suspension traps to guest handlers")
+                        help="Pass first-chance exceptions other than breakpoints and single steps to guest handlers")
     parser.add_argument("--control-trace", action="store_true", help="Log Wine thread suspend/resume counts")
+    parser.add_argument("--trace", action="store_true",
+                        help="WINEDEBUG=err+all,+winedbg: debug events and replies")
     parser.add_argument("--experimental-software-breakpoints", action="store_true",
-                        help="Fixture-only Z0 support; requires the validated FEX callback and RET fixes")
+                        help="Experimental Z0 support (fixtures; Half-Life: Alyx on Swan); requires the "
+                             "validated FEX callback and RET fixes")
+    parser.add_argument("--launcher", choices=("debugbus", "run-as", "run-as-app-domain"), default="debugbus",
+                        help="debugbus (default) starts WineDbg from the app process, in the game's SELinux "
+                             "domain; run-as runs it as runas_app, which an enforcing device (Swan) cuts off "
+                             "from the wineserver's sockets; run-as-app-domain needs adb root and the patched "
+                             "run-as with --app-domain: the app's UID in the app's own domain, like debugbus")
+    parser.add_argument("--run-as-path", default="/system/bin/run-as",
+                        help="run-as-app-domain only: the patched run-as to use, for example a candidate "
+                             "smoke-tested from /data/local/tmp before it replaces /system/bin/run-as")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535 or min(args.pid, args.wine_pid, args.start_time_ticks, args.uid) <= 0:
         parser.error("Invalid port or process identity")
@@ -109,7 +122,7 @@ def launch_checked(args, device, adb, shell, check_generation, event, run_id):
     loader = device.resolved_private_path(args.wine_loader)
     env["WINEPREFIX"] = prefix
     check_generation()
-    env["WINEDEBUG"] = "-all"
+    env["WINEDEBUG"] = "err+all,+winedbg" if args.trace else "-all"
     env["WINE_GDB_REMOTE_NTDLL_BREAKIN"] = "1"
     env["WINE_GDB_EXPECT_UNIX_PID"] = str(args.pid)
     if args.control_trace:
@@ -140,10 +153,65 @@ def launch_checked(args, device, adb, shell, check_generation, event, run_id):
                       "winePid": args.wine_pid, "port": args.port, "sha256": digest,
                       "fexExceptionPassThrough": args.fex_exceptions}), flush=True)
     # The MCP guest controller owns forwarding, RSP control and detach.
-    shell("env", *[key + "=" + value for key, value in sorted(env.items())],
-          "/system/bin/linker64", loader,
-          "C:\\xrgame-debugger\\" + name, "--gdb", "--no-start", "--port", str(args.port),
-          str(args.wine_pid))
+    if args.launcher == "run-as":
+        shell("env", *[key + "=" + value for key, value in sorted(env.items())],
+              "/system/bin/linker64", loader,
+              "C:\\xrgame-debugger\\" + name, "--gdb", "--no-start", "--port", str(args.port),
+              str(args.wine_pid))
+        return
+    if args.launcher == "run-as-app-domain":
+        # The game's whole environment, as DebugBus uses: the loader starts through the same no-exec
+        # path (WINELOADERNOEXEC, the exec shim in LD_PRELOAD). WINESERVERSOCKET is an fd the game
+        # inherited; WineDbg connects to the wineserver itself.
+        full = {key: value for key, value in values.items() if key != "WINESERVERSOCKET"}
+        full.update({key: value for key, value in env.items() if key.startswith("WINE") or key == "WINEPREFIX"})
+        command = shlex.join([args.run_as_path, args.app, "--app-domain", "env", "-i",
+                              *[key + "=" + value for key, value in sorted(full.items())],
+                              "/system/bin/linker64", loader,
+                              "C:\\xrgame-debugger\\" + name, "--gdb", "--no-start", "--port",
+                              str(args.port), str(args.wine_pid)])
+        event("run-as-app-domain-started", runAs=args.run_as_path)
+        try:
+            subprocess.run(adb + ["shell", command], check=True)
+        except KeyboardInterrupt:
+            # WineDbg ignores SIGTERM; kill-on-exit is off, so the debuggee continues.
+            subprocess.run(adb + ["shell", shlex.join(["pkill", "-9", "-f", name])], timeout=15)
+            raise
+        event("debugger-exited")
+        return
+    flags = ("f" if args.fex_exceptions else "") + ("c" if args.control_trace else "") + \
+        ("s" if args.experimental_software_breakpoints else "") + ("d" if args.trace else "")
+    reply = debugbus(adb, "guest_debugger", "start", f"target={args.pid},{args.start_time_ticks}",
+                     f"wine={args.wine_pid}", f"dbg={digest[:16]},{args.port}" + (f",{flags}" if flags else ""))
+    if "error" in reply:
+        raise IdentityError("DebugBus guest_debugger: " + str(reply["error"]))
+    event("debugbus-started", running=reply.get("running"), targetPid=reply.get("targetPid"))
+    shown = 0
+    try:
+        while True:
+            time.sleep(1)
+            status = debugbus(adb, "guest_debugger", "status")
+            output = shell("cat", "files/xrgame-debugger/winedbg.log", capture=True).decode(errors="replace")
+            if len(output) > shown:
+                sys.stdout.write(output[shown:])
+                sys.stdout.flush()
+                shown = len(output)
+            if not status.get("running"):
+                event("debugger-exited", exitCode=status.get("exitCode"))
+                return
+    except KeyboardInterrupt:
+        debugbus(adb, "guest_debugger", "stop")
+        raise
+
+
+def debugbus(adb, *request):
+    """One DebugBus request; returns its JSON reply (the last line starting with '{')."""
+    result = subprocess.run(adb + ["shell", "dumpsys", "activity", "service", DEBUGBUS, *request],
+                            capture_output=True, text=True, timeout=15, check=True)
+    bodies = [line.strip() for line in result.stdout.splitlines() if line.lstrip().startswith("{")]
+    if not bodies:
+        raise IdentityError("DebugBus gave no reply; is the picoXr debug APK running?")
+    return json.loads(bodies[-1])
 
 
 if __name__ == "__main__":

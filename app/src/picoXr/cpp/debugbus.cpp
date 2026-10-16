@@ -138,6 +138,10 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
             {"game_state", "Scene readiness from the running game's Source 2 console log (-condebug)"},
             {"vr_oc", "OpenComposite full-texture copy A/B switch; vr_oc [full_copy=0|1]"},
             {"vr_keyboard", "XR on-screen keyboard; vr_keyboard [status|show|hide]"},
+            {"guest_patch", "Guest patches; guest_patch [status [appId]] | select <appId> [name,...] | "
+                            "enable|disable [package|hook|package/hook]"},
+            {"guest_debugger", "WineDbg started by the app (the game's SELinux domain); guest_debugger start "
+                               "target=<pid>,<startTicks> wine=<winePid> dbg=<sha16>,<port>[,<fcsd>] | status | stop"},
             // scrcpy capture SDK (capturectl.py, scrcpy MCP): key: value lines, not JSON.
             {"capture_source", "Capture source; capture_source [canvas|xr|status]"},
             {"capture_screenshot", "Lossless PNG of the immersive session; capture_screenshot request TOKEN "
