@@ -972,14 +972,39 @@ fun XServerScreen(
         clearOverlayPauseState()
     }
 
-    fun startExitWatchForUnmappedGameWindow(window: Window) {
+    fun startExitWatchForUnmappedGameWindow(window: Window, wasTrackedGameWindow: Boolean) {
         val winHandler = xServerView?.getxServer()?.winHandler ?: return
         if (exitWatchJob?.isActive == true) return
         val rockstarExecutable = realSteamRockstarDirectory?.let(RockstarHelperDeployment::gameExecutable)
         val targetExecutable = extractExecutableBasename(
             rockstarExecutable ?: if (container.isLaunchRealSteam && realSteamGameExecutable.isNotEmpty()) realSteamGameExecutable else container.executablePath,
         )
-        if (!windowMatchesExecutable(window, targetExecutable)) return
+        if (!windowMatchesExecutable(window, targetExecutable) && !wasTrackedGameWindow) return
+
+        if (BuildConfig.XRGAME) {
+            // picoXr does not launch winhandler.exe: its UDP process-list request
+            // never answers. The official steam.exe also waits for Wine's whole
+            // user session, so waiting for that helper to exit creates a cycle.
+            exitWatchJob = scope.launch(Dispatchers.IO) {
+                val official = app.gamenative.xrgame.XrGameOfficialSteam.isOfficialGame(gameId)
+                val essential = buildEssentialProcessAllowlist(container.isLaunchRealSteam || official) +
+                    setOf("conhost", "wineconsole", "wine", "wine64", "wine-preloader", "wine64-preloader")
+                val state = app.gamenative.xrgame.XrGameExitState(targetExecutable, essential)
+                Timber.i("Game exit watch started: target=%s official=%s", targetExecutable, official)
+                while (isActive && !isExiting.get()) {
+                    val snapshot = WineProcessSnapshotHelper.readSnapshot()
+                    if (state.update(snapshot.processes.map { it.name }, snapshot.complete, SystemClock.elapsedRealtime())) {
+                        Timber.i("Game exit watch complete: only session helpers remain")
+                        withContext(Dispatchers.Main) {
+                            exit(winHandler, frameRating, currentAppInfo, container, appId, onExit, navigateBack, "game_processes_exited")
+                        }
+                        break
+                    }
+                    delay(EXIT_PROCESS_POLL_INTERVAL_MS)
+                }
+            }
+            return
+        }
 
         exitWatchJob = CoroutineScope(Dispatchers.IO).launch {
             val allowlist = buildEssentialProcessAllowlist(container.isLaunchRealSteam)
@@ -2239,6 +2264,8 @@ fun XServerScreen(
                         }
 
                         override fun onUnmapWindow(window: Window) {
+                            val wasTrackedGameWindow = window.id == frameRatingWindowId &&
+                                !WineProcessSnapshotHelper.isSystemProcessName(window.className)
                             runCatching { windowActivity.onWindowUnmapped(window) }
                             Timber.i(
                                 "onUnmapWindow:" +
@@ -2249,7 +2276,7 @@ fun XServerScreen(
                                         "\n\tchildrenSize: ${window.children.size}",
                             )
                             refreshFrameRatingTracking("unmap-window")
-                            startExitWatchForUnmappedGameWindow(window)
+                            startExitWatchForUnmappedGameWindow(window, wasTrackedGameWindow)
                             onWindowUnmapped?.invoke(window)
                         }
 

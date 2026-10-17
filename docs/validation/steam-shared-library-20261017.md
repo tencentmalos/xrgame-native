@@ -1,8 +1,10 @@
 # Official / Custom Steam：同一游戏目录与存档
 
-2026-10-17，`feature/linux_steam_support`，未提交的候选。设备与 APK 验证见文末；未验证项不得视为完成。
+2026-10-17，`feature/linux_steam_support` 的共享库实现已随 `8c15fe11` 合入 `malos/main`。设备与 APK 验证见文末；未验证项不得视为完成。
 
-**当前结果（v42）**：已保留数据安装 RelWithDebInfo APK。AYN 上 Official 大屏 → Hades II 标题 → 原大屏通过，JavaSteam 全程关闭；显式切回 Custom 后 JavaSteam 恢复，原 GBE 路线也进入同一游戏标题。共享 prefix 在真实 PRoot 映射内可见。52 项 Kotlin + 23 项 Python 测试通过。设备已关闭 phantom 子进程限制，否则 Steam + Wine 会被系统裁剪。官方 Cloud 当前仍关闭，未验证云同步往返、游戏内读档或长时间游玩；不能由标题画面推定这些通过。以下各 v25–v41 段落为保留的历史证据，v42 为当前安装版本。
+**共享库阶段结果（v42）**：已保留数据安装 RelWithDebInfo APK。AYN 上 Official 大屏 → Hades II 标题 → 原大屏通过，JavaSteam 全程关闭；显式切回 Custom 后 JavaSteam 恢复，原 GBE 路线也进入同一游戏标题。共享 prefix 在真实 PRoot 映射内可见。52 项 Kotlin + 23 项 Python 测试通过。设备已关闭 phantom 子进程限制，否则 Steam + Wine 会被系统裁剪。该阶段官方 Cloud 仍关闭，未验证云同步往返、游戏内读档或长时间游玩；不能由标题画面推定这些通过。以下各 v25–v41 段落为保留的历史证据。
+
+**后续退出与 Cloud（v43）**：已安装退出修复包，MHW 从标题菜单正常退出后自动返回官方大屏，并由官方客户端完成存档上传。用户授权以本机进度解决 MHW 冲突，存档已先备份；详见 [退出和云存档记录](steam-exit-cloud-20261017.md)。
 
 ## 用户要求与目录规则
 
