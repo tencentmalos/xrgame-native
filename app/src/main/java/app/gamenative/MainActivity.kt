@@ -74,7 +74,8 @@ import okio.Path.Companion.toOkioPath
 import timber.log.Timber
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
+    open val hostsOfficialSteam: Boolean = false
     companion object {
         private val nxmIntentMutex = Mutex()
 
@@ -355,6 +356,7 @@ class MainActivity : ComponentActivity() {
         try {
             val launchRequest = IntentLaunchManager.parseLaunchIntent(intent)
             if (launchRequest != null) {
+                current = java.lang.ref.WeakReference(this)
                 Timber.d("[IntentLaunch]: Received external launch intent for app ${launchRequest.appId}")
 
                 if (isNewIntent) {
@@ -449,10 +451,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (current?.get() === this) current = null
+        val ownsGameHost = current?.get() === this
+        if (ownsGameHost) current = null
         // emit before super so Compose DisposableEffects (which unregister
         // listeners during super.onDestroy's lifecycle transition) still fire
-        if (!isChangingConfigurations) {
+        if (!isChangingConfigurations && ownsGameHost) {
             PluviaApp.events.emit(AndroidEvent.ActivityDestroyed)
 
             // if exit() didn't run (listener already unregistered, race, etc.)
@@ -513,6 +516,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        current = java.lang.ref.WeakReference(this)
         PowerManager.resume()
         PluviaApp.isActivityInForeground = true
 

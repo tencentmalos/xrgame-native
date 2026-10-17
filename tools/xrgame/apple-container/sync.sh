@@ -41,6 +41,9 @@ elif [[ -d "$repo/build/xrgame-gfxr" ]]; then
     # Do not silently reuse optional payloads left by a different source snapshot.
     mv "$repo/build/xrgame-gfxr" "$XRGAME_DEV_ROOT/gfxr-previous-$(date -u +%Y%m%dT%H%M%SZ)"
 fi
+[[ -d /project/build/xrgame-linux-steam ]] || { echo 'Stage the source-built Linux Steam userspace first.' >&2; exit 1; }
+mkdir -p "$repo/build/xrgame-linux-steam"
+rsync -a --delete --no-owner --no-group /project/build/xrgame-linux-steam/ "$repo/build/xrgame-linux-steam/"
 mkdir -p "$repo/build/apple-container-provenance"
 git -C /project rev-parse HEAD > "$repo/build/apple-container-provenance/host-head.txt"
 git -C /project status --short > "$repo/build/apple-container-provenance/host-status.txt"

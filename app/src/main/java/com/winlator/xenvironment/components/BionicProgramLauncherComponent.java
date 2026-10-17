@@ -397,7 +397,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         // Bionic-Steam mode: env vars required by Proton's lsteamclient.dll +
         // native libsteamclient.so bridge (loader path, IPC endpoint, VDF root).
-        if (container != null && container.isLaunchBionicSteam()) {
+        if (!BuildConfig.XRGAME && container != null && container.isLaunchBionicSteam()) {
             addRealSteamEnvVars(envVars, imageFs);
             // Boot the native libsteamclient.so inside *this* (Android) process
             // so Wine-side lsteamclient.dll has something to connect to.

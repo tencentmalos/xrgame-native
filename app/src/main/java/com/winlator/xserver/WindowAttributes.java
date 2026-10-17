@@ -23,6 +23,7 @@ public class WindowAttributes {
     public enum BitGravity {FORGET, NORTH_WEST, NORTH, NORTH_EAST, WEST, CENTER, EAST, SOUTH_WEST, SOUTH, SOUTH_EAST, STATIC}
     public enum WinGravity {UNMAP, NORTH_WEST, NORTH, NORTH_EAST, WEST, CENTER, EAST, SOUTH_WEST, SOUTH, SOUTH_EAST, STATIC}
     private int backingPixel = 0;
+    private int colormapId;
     private int backingPlanes = 1;
     private BackingStore backingStore = BackingStore.NOT_USEFUL;
     private BitGravity bitGravity = BitGravity.CENTER;
@@ -44,6 +45,13 @@ public class WindowAttributes {
     public int getBackingPixel() {
         return backingPixel;
     }
+
+    public int getColormapId() {
+        Window parent = window.getParent();
+        return colormapId == 0 && parent != null ? parent.attributes.getColormapId() : colormapId;
+    }
+
+    public void setColormapId(int id) { colormapId = id; }
 
     public int getBackingPlanes() {
         return backingPlanes;
@@ -149,8 +157,10 @@ public class WindowAttributes {
                 case FLAG_BACKGROUND_PIXMAP:
                 case FLAG_BORDER_PIXMAP:
                 case FLAG_BORDER_PIXEL:
-                case FLAG_COLORMAP:
                     inputStream.skip(4);
+                    break;
+                case FLAG_COLORMAP:
+                    setColormapId(inputStream.readInt());
                     break;
             }
         }

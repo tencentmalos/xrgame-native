@@ -10,6 +10,7 @@ import com.winlator.xconnector.XStreamLock;
 import com.winlator.xserver.errors.XRequestError;
 import com.winlator.xserver.extensions.Extension;
 import com.winlator.xserver.requests.AtomRequests;
+import com.winlator.xserver.requests.ColorRequests;
 import com.winlator.xserver.requests.CursorRequests;
 import com.winlator.xserver.requests.DrawRequests;
 import com.winlator.xserver.requests.ExtensionRequests;
@@ -81,7 +82,7 @@ public class XClientRequestHandler implements RequestHandler {
             Visual rootVisual = client.xServer.windowManager.rootWindow.getContent().visual;
 
             outputStream.writeInt(client.xServer.windowManager.rootWindow.id);
-            outputStream.writeInt(0);
+            outputStream.writeInt(client.xServer.colormapManager.defaultColormap.id);
             outputStream.writeInt(0xffffff);
             outputStream.writeInt(0x000000);
             outputStream.writeInt((int)client.xServer.windowManager.rootWindow.getAllEventMasks().getBits());
@@ -169,6 +170,10 @@ public class XClientRequestHandler implements RequestHandler {
         client.generateSequenceNumber();
         client.setRequestData(requestData);
         client.setRequestLength(requestLength);
+
+        XServer.RequestObserver observer = client.xServer != null ? client.xServer.requestObserver : null;
+        if (observer != null) observer.onRequest(client.resourceIDBase, client.getSequenceNumber() & 65535,
+                opcode & 255, requestData & 255, requestLength, false);
 
         try {
             switch (opcode) {
@@ -304,7 +309,10 @@ public class XClientRequestHandler implements RequestHandler {
                     }
                     break;
                 case ClientOpcodes.QUERY_KEYMAP:
-                    try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER)) {
+                    // Closing the stream lock flushes the reply. Without it Xlib
+                    // waits forever for QueryKeymap and never sends its next request.
+                    try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER);
+                         XStreamLock streamLock = outputStream.lock()) {
                         outputStream.writeByte(RESPONSE_CODE_SUCCESS);
                         outputStream.writeByte((byte) 0);
                         outputStream.writeShort(client.getSequenceNumber());
@@ -383,10 +391,23 @@ public class XClientRequestHandler implements RequestHandler {
                     }
                     break;
                 case ClientOpcodes.CREATE_COLORMAP:
-                    client.skipRequest();
-                    break;
                 case ClientOpcodes.FREE_COLORMAP:
-                    client.skipRequest();
+                case ClientOpcodes.ALLOC_COLOR:
+                case ClientOpcodes.ALLOC_NAMED_COLOR:
+                case ClientOpcodes.LOOKUP_COLOR:
+                case ClientOpcodes.QUERY_COLORS:
+                case ClientOpcodes.FREE_COLORS:
+                    try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER)) {
+                        switch (opcode) {
+                            case ClientOpcodes.CREATE_COLORMAP: ColorRequests.create(client, inputStream); break;
+                            case ClientOpcodes.FREE_COLORMAP: ColorRequests.free(client, inputStream); break;
+                            case ClientOpcodes.ALLOC_COLOR: ColorRequests.alloc(client, inputStream, outputStream); break;
+                            case ClientOpcodes.ALLOC_NAMED_COLOR: ColorRequests.named(client, inputStream, outputStream, true); break;
+                            case ClientOpcodes.LOOKUP_COLOR: ColorRequests.named(client, inputStream, outputStream, false); break;
+                            case ClientOpcodes.QUERY_COLORS: ColorRequests.query(client, inputStream, outputStream); break;
+                            case ClientOpcodes.FREE_COLORS: ColorRequests.freeColors(client, inputStream); break;
+                        }
+                    }
                     break;
                 case ClientOpcodes.CREATE_CURSOR:
                     try (XLock lock = client.xServer.lock(XServer.Lockable.PIXMAP_MANAGER, XServer.Lockable.DRAWABLE_MANAGER, XServer.Lockable.CURSOR_MANAGER)) {
@@ -433,8 +454,7 @@ public class XClientRequestHandler implements RequestHandler {
                 case ClientOpcodes.GRAB_SERVER:
                     try (XLock lock = client.xServer.lockAll()){
                         client.xServer.setGrabbed(true, client);
-                        outputStream.writeSuccessReply(client.getSequenceNumber(), 0);
-                        Log.d("XClientRequestHandler", "X_GrabServer request handled successfully:" + outputStream.buffer.position());
+                        // Core GrabServer has no reply (xproto opcode 36).
                     }
                     break;
                 case ClientOpcodes.UNGRAB_SERVER:
@@ -442,21 +462,23 @@ public class XClientRequestHandler implements RequestHandler {
                         if (client.xServer.isGrabbedBy(client)) {
                             client.xServer.setGrabbed(false, null);
                         }
-                        outputStream.writeSuccessReply(client.getSequenceNumber(), 0);
-                        Log.d("XClientRequestHandler", "X_UngrabServer request handled successfully:" + outputStream.buffer.position());
+                        // Core UngrabServer has no reply (xproto opcode 37).
                     }
                     break;
                 default:
                     if (opcode < 0) {
                         Extension extension = client.xServer.extensions.get(opcode);
-                        if (extension != null)
+                        if (extension != null) {
                             extension.handleRequest(client, inputStream, outputStream);
-                        else
-                            Timber.w("handleNormalRequest: unhandled opcode=%d, requestData=%d, requestLength=%d", opcode, requestData, requestLength);
-
+                            break;
+                        }
                     }
-                    else Timber.w("handleNormalRequest: unsupported opcode " + opcode);
-                    break;
+                    // An unknown request still owns its whole payload. Leaving it in
+                    // the stream turns text/image bytes into subsequent X requests.
+                    // Report core BadRequest and let the common error path drain it.
+                    Timber.w("Unsupported X opcode=%d data=%d length=%d sequence=%d",
+                            opcode & 255, requestData & 255, requestLength, client.getSequenceNumber() & 65535);
+                    throw new XRequestError(1, 0);
             }
         }
         catch (XRequestError e) {
@@ -464,6 +486,9 @@ public class XClientRequestHandler implements RequestHandler {
             Timber.e("handleNormalRequest: XRequestError for opcode=%d: %s", opcode, e);
             e.sendError(client, opcode);
         }
+
+        if (observer != null) observer.onRequest(client.resourceIDBase, client.getSequenceNumber() & 65535,
+                opcode & 255, requestData & 255, requestLength, true);
 
         return true;
     }

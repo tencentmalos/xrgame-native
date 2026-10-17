@@ -156,6 +156,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import okio.Path.Companion.toPath
 import kotlinx.coroutines.channels.Channel
@@ -507,11 +508,12 @@ class SteamService : Service(), IChallengeUrlChanged {
             return prior ?: created
         }
 
-        private fun tryAcquireSync(appId: Int): Boolean {
+        private fun tryAcquireSync(appId: Int): Boolean = synchronized(app.gamenative.xrgame.XrGameOfficialSteam) {
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active) return@synchronized false
             val flag = getSyncFlag(appId)
             val acquired = flag.compareAndSet(false, true)
             if (acquired) instance?.notifierOrNull?.showSyncing(NotificationHelper.NOTIFICATION_ID_STEAM)
-            return acquired
+            acquired
         }
 
         private fun releaseSync(appId: Int) {
@@ -1197,6 +1199,8 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         suspend fun kickPlayingSession(onlyGame: Boolean = true): Boolean = withContext(Dispatchers.IO) {
+            // The official client owns the game session. JavaSteam must never kick it.
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active) return@withContext false
             val user = instance?._steamUser ?: return@withContext false
             try {
                 instance?._isPlayingBlocked?.value = true
@@ -1274,6 +1278,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         fun getAppInfoOf(appId: Int): SteamApp? {
             return runBlocking(Dispatchers.IO) { instance?.appDao?.findApp(appId) }
+                ?: app.gamenative.xrgame.XrGameOfficialSteam.cachedApp(appId)
         }
 
         fun getDownloadingAppInfoOf(appId: Int): DownloadingAppInfo? {
@@ -1324,6 +1329,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         fun getInstalledApp(appId: Int): AppInfo? {
             return runBlocking(Dispatchers.IO) { instance?.appInfoDao?.getInstalledApp(appId) }
+                ?: app.gamenative.xrgame.XrGameOfficialSteam.cachedInstall(appId)
         }
 
         fun getAllInstalledApps(): List<AppInfo>? {
@@ -1379,6 +1385,7 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         fun isAppInstalled(appId: Int): Boolean {
+            app.gamenative.xrgame.XrGameOfficialSteam.installed(appId)?.let { return it }
             return MarkerUtils.hasMarker(getAppDirPath(appId), Marker.DOWNLOAD_COMPLETE_MARKER)
         }
 
@@ -1764,6 +1771,7 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         fun getAppDirPath(gameId: Int): String {
+            app.gamenative.xrgame.XrGameOfficialSteam.directory(gameId)?.let { return it }
             val info = getAppInfoOf(gameId)
 
             // For installed game, check whether it has customInstallPath and return it
@@ -2005,6 +2013,12 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         suspend fun deleteApp(appId: Int): Boolean = withContext(Dispatchers.IO) {
+            if (!app.gamenative.xrgame.XrGameOfficialSteam.beginCustomMutation()) return@withContext false
+            try { deleteAppFiles(appId) }
+            finally { app.gamenative.xrgame.XrGameOfficialSteam.endCustomMutation() }
+        }
+
+        private suspend fun deleteAppFiles(appId: Int): Boolean {
             // snapshot path before marker removal (removing the marker changes resolution)
             val appInfo = getInstalledApp(appId)
             val result = if (appInfo?.isImported == true) {
@@ -2054,7 +2068,8 @@ class SteamService : Service(), IChallengeUrlChanged {
                 }
             }
 
-            return@withContext result
+            if (result) app.gamenative.xrgame.XrGameOfficialSteam.customInstallRemoved(appId)
+            return result
         }
 
         fun downloadApp(appId: Int): DownloadInfo? {
@@ -2433,6 +2448,15 @@ class SteamService : Service(), IChallengeUrlChanged {
             branch: String,
             containerLanguage: String,
             isUpdateOrVerify: Boolean,
+        ): DownloadInfo? {
+            if (!app.gamenative.xrgame.XrGameOfficialSteam.beginCustomMutation()) return null
+            try { return downloadSharedApp(appId, downloadableDepots, userSelectedDlcAppIds, branch, containerLanguage, isUpdateOrVerify) }
+            finally { app.gamenative.xrgame.XrGameOfficialSteam.endCustomMutation() }
+        }
+
+        private fun downloadSharedApp(
+            appId: Int, downloadableDepots: Map<Int, DepotInfo>, userSelectedDlcAppIds: List<Int>,
+            branch: String, containerLanguage: String, isUpdateOrVerify: Boolean,
         ): DownloadInfo? {
             val appDirPath = getAppDirPath(appId)
 
@@ -2883,6 +2907,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                     MarkerUtils.removeMarker(appDirPath, Marker.STEAM_DLL_REPLACED)
                     MarkerUtils.removeMarker(appDirPath, Marker.STEAM_COLDCLIENT_USED)
                     MarkerUtils.removeMarker(appDirPath, Marker.STEAM_CEG_WRAPPED)
+                    app.gamenative.xrgame.XrGameOfficialSteam.customInstallChanged(downloadInfo.gameId)
                 }
 
                 // clean up DB record BEFORE notifying UI to avoid stale "Resume" button
@@ -2949,6 +2974,10 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         suspend fun notifyRunningProcesses(vararg gameProcesses: GameProcessInfo) = withContext(Dispatchers.IO) {
+            // Two GamesPlayed publishers on this account continually displace each other.
+            // Official Steam receives the real game through lsteamclient; JavaSteam
+            // remains disconnected until the user explicitly selects Custom Steam.
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active) return@withContext
             instance?.let { steamInstance ->
                 if (isConnected) {
                     // Disconnect can clear steamID before isConnected changes.
@@ -3025,7 +3054,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             isOffline: Boolean = false,
             onProgress: ((message: String, progress: Float) -> Unit)? = null,
         ): Deferred<PostSyncInfo> = parentScope.asyncIsolated {
-            if (isOffline || !isConnected) {
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active || isOffline || !isConnected) {
                 return@asyncIsolated PostSyncInfo(SyncResult.UpToDate)
             }
             if (!tryAcquireSync(appId)) {
@@ -3063,7 +3092,8 @@ class SteamService : Service(), IChallengeUrlChanged {
                                         postSyncInfo?.let { info ->
                                             syncResult = info
 
-                                            if (info.syncResult == SyncResult.Success || info.syncResult == SyncResult.UpToDate) {
+                                            if (!app.gamenative.xrgame.XrGameOfficialSteam.active &&
+                                                (info.syncResult == SyncResult.Success || info.syncResult == SyncResult.UpToDate)) {
                                                 Timber.i(
                                                     "Signaling app launch:\n\tappId: %d\n\tclientId: %s\n\tosType: %s",
                                                     appId,
@@ -3179,6 +3209,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         suspend fun closeApp(context: Context, appId: Int, isOffline: Boolean, prefixToPath: (String) -> String) = withContext(Dispatchers.IO) {
             async {
+                if (app.gamenative.xrgame.XrGameOfficialSteam.active) return@async
                 if (isOffline || !isConnected) {
                     instance?.addPendingSyncApp(appId)
                     return@async
@@ -3212,7 +3243,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                                                 prefixToPath = prefixToPath,
                                             ).await()
 
-                                            steamCloud.signalAppExitSyncDone(
+                                            if (!app.gamenative.xrgame.XrGameOfficialSteam.active) steamCloud.signalAppExitSyncDone(
                                                 appId = appId,
                                                 clientId = clientId,
                                                 uploadsCompleted = postSyncInfo?.uploadsCompleted == true,
@@ -3293,6 +3324,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             emailAuth: String? = null,
             clientId: Long? = null,
         ) {
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active) return
             val steamUser = instance!!._steamUser!!
 
             // Sensitive info, only print in DEBUG build.
@@ -3499,6 +3531,20 @@ class SteamService : Service(), IChallengeUrlChanged {
             Timber.i("Stopping QR polling")
 
             isWaitingForQRAuth = false
+        }
+
+        /** Close the CM transport before the desktop client starts; retain credentials and cached data. */
+        suspend fun suspendForOfficial() = withContext(Dispatchers.IO) {
+            check(app.gamenative.xrgame.XrGameOfficialSteam.active)
+            check(!hasActiveOperations()) { "Custom Steam still has active operations." }
+            clearPlayingConflict()
+            val service = instance ?: return@withContext
+            service.reconnectJob?.cancel()
+            service.offlineAchievementSyncJob?.cancel()
+            cancelLongLivedSteamJobs()
+            withTimeout(15000) { service.stop() }
+            check(!isConnected && !isRunning) { "JavaSteam did not disconnect." }
+            withContext(Dispatchers.Main) { service.stopSelf() }
         }
 
         fun stop() {
@@ -3908,6 +3954,8 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         suspend fun syncAchievementsFromGoldberg(context: Context, appId: Int) {
+            // Do not upload historical GBE achievements over the live official session.
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active) return
             val gseSaveDirs = getGseSaveDirs(context, appId).filter { it.isDirectory }
             if (gseSaveDirs.isEmpty()) {
                 Timber.d("No GSE save directory found for appId=$appId")
@@ -4154,6 +4202,12 @@ class SteamService : Service(), IChallengeUrlChanged {
             Timber.w(e, "startForeground not allowed, continuing as a background service")
         }
 
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) {
+            Timber.i("JavaSteam start suppressed: Official Steam owns the session")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         when (intent?.action) {
             NotificationHelper.ACTION_EXIT -> {
                 Timber.d("Exiting app via notification intent")
@@ -4230,7 +4284,7 @@ class SteamService : Service(), IChallengeUrlChanged {
             // is little or no sleep."
             // source: https://stackoverflow.com/a/59040920
             scope.launch {
-                while (isRunning) {
+                while (isRunning && instance === this@SteamService) {
                     // logD("runWaitCallbacks")
 
                     try {
@@ -4268,7 +4322,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         connectivityManager.unregisterNetworkCallback(networkCallback)
 
-        scope.launch { stop() }
+        scope.launch { try { stop() } finally { scope.cancel() } }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -4284,9 +4338,12 @@ class SteamService : Service(), IChallengeUrlChanged {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun connectToSteam() {
-        CoroutineScope(Dispatchers.Default).launch {
+        if (instance !== this) return
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) return
+        scope.launch {
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active || !isRunning) return@launch
             // this call errors out if run on the main thread
-            steamClient!!.connect()
+            steamClient?.connect() ?: return@launch
 
             delay(5000)
 
@@ -4313,6 +4370,7 @@ class SteamService : Service(), IChallengeUrlChanged {
     }
 
     private suspend fun stop() {
+        if (instance !== this) return
         Timber.i("Stopping Steam service")
         if (steamClient != null && steamClient!!.isConnected) {
             isStopping = true
@@ -4331,6 +4389,7 @@ class SteamService : Service(), IChallengeUrlChanged {
     }
 
     private fun clearValues() {
+        if (instance !== this) return
         _loginResult = LoginResult.Failed
         isRunning = false
         isConnected = false
@@ -4365,12 +4424,15 @@ class SteamService : Service(), IChallengeUrlChanged {
         retryAttempt = 0
 
         PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
-        PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
+        if (!app.gamenative.xrgame.XrGameOfficialSteam.active)
+            PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
 
         LogManager.removeListener(logger)
     }
 
     private fun reconnect() {
+        if (instance !== this) return
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) { steamClient?.disconnect(); return }
         notificationHelper.notify("Retrying...")
 
         isConnected = false
@@ -4386,6 +4448,8 @@ class SteamService : Service(), IChallengeUrlChanged {
     // region [REGION] callbacks
     @Suppress("UNUSED_PARAMETER", "unused")
     private fun onConnected(callback: ConnectedCallback) {
+        if (instance !== this) return
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) { steamClient?.disconnect(); return }
         Timber.i("Connected to Steam")
 
         reconnectJob?.cancel()
@@ -4409,12 +4473,19 @@ class SteamService : Service(), IChallengeUrlChanged {
     }
 
     private fun onDisconnected(callback: DisconnectedCallback) {
+        if (instance !== this) return
         Timber.i("Disconnected from Steam. User initiated: ${callback.isUserInitiated}")
 
         isConnected = false
         offlineAchievementSyncJob?.cancel()
         offlineAchievementSyncJob = null
 
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) {
+            clearPlayingConflict()
+            clearValues()
+            stopSelf()
+            return
+        }
         if (!isStopping && retryAttempt < MAX_RETRY_ATTEMPTS) {
             retryAttempt++
             val backoffMs = (1000L * minOf(1 shl (retryAttempt - 1), 60)).coerceAtMost(60_000L)
@@ -4508,6 +4579,8 @@ class SteamService : Service(), IChallengeUrlChanged {
 
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     private fun onLoggedOn(callback: LoggedOnCallback) {
+        if (instance !== this) return
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) { steamClient?.disconnect(); return }
         Timber.i("Logged onto Steam: ${callback.result}")
 
         if (userSteamId?.isValid == true) {
@@ -4767,6 +4840,14 @@ class SteamService : Service(), IChallengeUrlChanged {
             cancelLongLivedSteamJobs()
             scope.launch { stop() }
         } else if (callback.result == EResult.LoggedInElsewhere) {
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active) {
+                // A late callback from the disconnected Custom client cannot close
+                // the Official game or reconnect JavaSteam.
+                _isPlayingBlocked.value = false
+                _isHandlingConflict.set(false)
+                steamClient?.disconnect()
+                return
+            }
             // received when a client runs an app and wants to forcibly close another
             // client running an app. The callback doesn't carry the remote app id, so the
             // dialog falls back to a generic "another game" label.
@@ -4786,6 +4867,10 @@ class SteamService : Service(), IChallengeUrlChanged {
     }
 
     private fun onPlayingSessionState(callback: PlayingSessionStateCallback) {
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) {
+            _isPlayingBlocked.value = false
+            return
+        }
         Timber.d("onPlayingSessionState: blocked=${callback.isPlayingBlocked} remoteAppId=${callback.playingAppID}")
         _isPlayingBlocked.value = callback.isPlayingBlocked
 

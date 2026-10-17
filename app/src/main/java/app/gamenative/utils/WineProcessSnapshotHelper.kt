@@ -65,19 +65,10 @@ object WineProcessSnapshotHelper {
                 if (uid == null || uid != myUid) continue
 
                 val comm = try { File(pidDir, "comm").readText().trim() } catch (_: Exception) { "" }
-                val stat = try { File(pidDir, "stat").readText() } catch (_: Exception) { "" }
                 val cmdlineBytes = try { File(pidDir, "cmdline").readBytes() } catch (_: Exception) { ByteArray(0) }
                 val cmdlineArgs = cmdlineBytes.toNullSeparatedStrings()
-                val searchableText = buildString {
-                    append(comm)
-                    append(' ')
-                    append(stat)
-                    append(' ')
-                    append(cmdlineArgs.joinToString(" "))
-                }
 
-                if (!searchableText.contains("wine", ignoreCase = true) &&
-                    !searchableText.contains(".exe", ignoreCase = true)) {
+                if (!com.winlator.core.ProcessHelper.isWineCommandLine(String(cmdlineBytes, Charsets.UTF_8))) {
                     continue
                 }
 

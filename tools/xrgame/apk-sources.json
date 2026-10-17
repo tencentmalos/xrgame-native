@@ -22,6 +22,34 @@
   ],
   "rules": [
     {
+      "pattern": "lib/arm64-v8a/libxrgame_steam_session.so",
+      "kind": "repository-build",
+      "license": "GPL-3.0-or-later",
+      "source": "tools/xrgame/linux-steam/session-probe.c; tools/xrgame/linux-steam/stage.py",
+      "artifact": "build/xrgame-linux-steam/jniLibs/arm64-v8a/libxrgame_steam_session.so"
+    },
+    {
+      "pattern": "assets/linux-steam/*",
+      "kind": "repository-build",
+      "license": "Mixed open-source licences; rootfs usr/share/doc/*/copyright, Wine LGPL-2.1-or-later, PRoot GPL-2.0-or-later; internal validation only",
+      "source": "tools/xrgame/linux-steam/build-rootfs.sh, build-wine-client.py and stage.py; no Valve client binaries",
+      "repositoryPrefix": "build/xrgame-linux-steam/assets/linux-steam/"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libproot.so",
+      "kind": "repository-build",
+      "license": "GPL-2.0-or-later; statically linked talloc LGPL-3.0-or-later",
+      "source": "references/proot @ 4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f; references/DroidDeck/tools/proot patches; tools/xrgame/build-linux-steam-proot.sh",
+      "artifact": "build/xrgame-linux-steam/jniLibs/arm64-v8a/libproot.so"
+    },
+    {
+      "pattern": "lib/arm64-v8a/libproot-loader.so",
+      "kind": "repository-build",
+      "license": "GPL-2.0-or-later",
+      "source": "references/proot @ 4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f; tools/xrgame/build-linux-steam-proot.sh",
+      "artifact": "build/xrgame-linux-steam/jniLibs/arm64-v8a/libproot-loader.so"
+    },
+    {
       "pattern": "assets/xrgame-gfxr/*",
       "kind": "repository-build",
       "license": "MIT (GFXReconstruct, LunarG); picoXr debug validation APK only",

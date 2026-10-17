@@ -136,6 +136,7 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
                           "ok|back|next|prev>]"},
             {"vr_hud", "Immersive performance HUD (Vulkan composite); vr_hud [status|on|off]"},
             {"game_state", "Scene readiness from the running game's Source 2 console log (-condebug)"},
+            {"linux_steam", "Official Linux Steam client: status|open|start|stop|check (no account data)"},
             {"vr_oc", "OpenComposite full-texture copy A/B switch; vr_oc [full_copy=0|1]"},
             {"vr_keyboard", "XR on-screen keyboard; vr_keyboard [status|show|hide]"},
             {"guest_patch", "Guest patches; guest_patch [status [appId]] | select <appId> [name,...] | "

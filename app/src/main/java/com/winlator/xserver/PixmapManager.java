@@ -10,7 +10,12 @@ public class PixmapManager extends XResourceManager {
     private final SparseArray<Pixmap> pixmaps = new SparseArray<>();
 
     public PixmapManager() {
-        visual = new Visual(IDGenerator.generate(), true, 32, 24, 0xff0000, 0x00ff00, 0x0000ff);
+        this(32);
+    }
+
+    public PixmapManager(int rootDepth) {
+        if (rootDepth != 24 && rootDepth != 32) throw new IllegalArgumentException("Unsupported root depth");
+        visual = new Visual(IDGenerator.generate(), true, rootDepth, rootDepth == 24 ? 8 : 24, 0xff0000, 0x00ff00, 0x0000ff);
         supportedVisuals = new Visual[]{visual, new Visual(IDGenerator.generate(), false, 1, 1, 0, 0, 0)};
 
         supportedPixmapFormats = new PixmapFormat[] {

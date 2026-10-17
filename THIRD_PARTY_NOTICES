@@ -578,3 +578,44 @@ Apache-2.0 OR MIT) and the Vulkan-Loader import definition
 Apache-2.0). Their copyright/license headers are retained in the build source
 snapshot. The import library only supplies symbol bindings; runtime Vulkan is
 provided by Wine and the separately source-pinned Turnip driver.
+
+Official Linux Steam integration (internal candidate, 2026-10-16)
+---------------------------------------------------------------
+PRoot: https://github.com/tencentmalos/proot (upstream termux/proot),
+4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f, GPL-2.0-or-later; statically linked
+talloc 2.4.3, LGPL-3.0-or-later. Sources, patches and hashes are recorded by
+tools/xrgame/build-linux-steam-proot.sh.
+
+DroidDeck: pinned references/DroidDeck, GPL-3.0. Its PRoot patches and the
+client-only sysv.c, net.c, udevmon.c, binfmt.c, tracer.c and lock.c are built from that
+checkout without copying source into this repository. tracer.c and lock.c retain their
+WinNative attribution. These adapters run only in the glibc Steam userspace.
+They do not replace this application's game input, audio or rendering path.
+
+Ubuntu 24.04 ARM64 client userspace: packages retain their individual licences
+under usr/share/doc/*/copyright. tools/xrgame/linux-steam/build-rootfs.sh records
+package and source-package versions in usr/share/steampsp/rootfs-packages.tsv.
+This is an internal candidate; corresponding-source publication is not complete.
+The client-only nested display uses Ubuntu's X.Org Xephyr and Mesa llvmpipe
+(their MIT/BSD and other component notices remain under usr/share/doc). It is
+not used by Windows games or the AHB/XR game presentation path.
+Chinese/Japanese/Korean client glyphs use Ubuntu fonts-noto-cjk (SIL Open Font
+License 1.1); its copyright/OFL text is retained in usr/share/doc/fonts-noto-cjk.
+Legacy X11 startup dialogs additionally use Ubuntu xfonts-base (X.Org font
+licences retained in usr/share/doc/xfonts-base/copyright) and xfonts-wqy
+(WenQuanYi bitmap fonts, GPL-2.0 with the font embedding exception). WenQuanYi
+source: https://sourceforge.net/projects/wqy/files/wqy-bitmapfont/ . Its full
+notice and exception remain in usr/share/doc/xfonts-wqy/copyright.
+
+Wine lsteamclient: LGPL-2.1-or-later, maintained proton-wine source pin
+5d0d333e7beef02fbb455cc3163b4e8e25615458 plus the versioned absolute library-path
+patch. It bridges the Windows Steam ABI to Valve's official Bionic client library.
+
+Valve Steam client and androidarm64/libsteamclient.so: proprietary Valve software,
+downloaded unmodified directly from Valve by the user-facing client bootstrap.
+No Valve binaries, account data, tokens or credentials are included in this APK
+or source repository. Valve's supplied legal notices remain with the download.
+
+steam-arm64-termux: MIT for its original code; its third-party sources retain
+their own licences. references/steam-arm64-termux is comparison-only; its RPC
+client bridge is not shipped by this implementation.

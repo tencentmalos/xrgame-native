@@ -79,6 +79,7 @@ Ubuntu apt 包版本记录在本地 `logs/ubuntu-packages.tsv`，不是仓库快
 
 - `build/xrgame-runtime/bundle`：Proton、FEX、DXVK、VKD3D、Turnip、imagefs、Steam client。
 - `build/xrgame-runtime/pulseaudio` 与 `build/xrgame-runtime/opencomposite`。
+- `feature/linux_steam_support` 另需 `build/xrgame-linux-steam`：源码构建的 PRoot、会话探针、客户端兼容库和 ARM64 glibc userspace；不包含 Valve 二进制。
 - 可选 `build/xrgame-gfxr`：仅存在时同步；缺失时不会复用上一轮遗留的录制载荷。
 
 本机当前没有 staged GFXReconstruct 载荷。这不影响基础 APK 构建，但不能据此声明此 APK
@@ -156,6 +157,68 @@ container exec steampsp-linux bash -lc \
 Apple Container 会复用 builder，给已有 builder 再传 `--dns` 不保证改变其配置。
 换网后需要检查 builder 的 DNS；仅在没有别的构建使用它时停止并重新创建 builder。
 不要把 `docker` 全局别名为 `container`；完整运行时的 Docker 入口仍单独保留。
+
+## 官方 Linux Steam 候选（2026-10-17）
+
+此分支只为官方客户端添加 glibc userspace。游戏继续使用既有 Bionic Wine/FEX，
+不进入 PRoot；JavaSteam 游戏库、下载和云同步仍保留。登录与在线游戏验收见
+[进行中的验证记录](../validation/linux-steam-20261016.md)。
+
+客户端构建使用两个本地容器：现有 amd64 `steampsp-linux` 做 NDK 交叉编译，
+独立 ARM64 Ubuntu `steampsp-linux-steam-rootfs` 生成客户端 userspace。
+ARM64 容器使用 Ubuntu digest
+`sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55`，
+仓库只读挂载到 `/project`，本机 artifacts 目录挂载到 `/output`。它不安装 Wine、FEX、
+游戏或 Valve 客户端。包版本及许可证保存在 userspace 和导出的 `linux-steam-rootfs-packages.tsv`。
+APT 包未做仓库快照锁定，不能声明跨日期字节复现。
+
+Steam VGUI 即使禁用 CEF GPU 仍要求 GLX。客户端候选由 `launch-client.py` 管理
+Xephyr（`:1`、Unix socket only）和官方 Steam，Xephyr 用 Mesa llvmpipe 软件渲染，
+最终图像通过 `:0` 的既有 Android X server 显示；仅这一客户端路径需要额外 CPU 拷贝。
+游戏继续在 PRoot 外使用 Bionic Wine/FEX/AHB，不连接 `:1`。这不是游戏 X server
+或 Turnip 的替换。候选的 GLX/字体/输入和生命周期都须设备验证，不能仅以打包通过验收。
+
+桌面图标进入 `LaunchActivity`：Official Steam 自动启动 Big Picture，Custom Steam
+进入现有游戏库/设置。官方界面在每次启动时跟随 Android 系统语言；userspace 包含
+Noto CJK（SC/TC/JP/KR）并生成 fontconfig 缓存，不能只带 DejaVu。升级 userspace 时
+保留根目录外的 Steam HOME 和 machine-id，不重置用户登录。
+
+构建步骤（在各自容器执行；输出路径为示例，Wine 适配库要求新建目录）：
+
+```sh
+# ARM64 容器
+bash /project/tools/xrgame/linux-steam/build-rootfs.sh
+
+# amd64 开发容器
+source /project/tools/xrgame/apple-container/environment.sh
+bash /project/tools/xrgame/build-linux-steam-proot.sh /opt/steampsp/linux-steam/proot
+python3 /project/tools/xrgame/linux-steam/build-wine-client.py \
+  /opt/steampsp/linux-steam/wine-client-new \
+  --base /project/build/xrgame-runtime/bundle/components/proton-11.0-2-arm64ec-xrg3.wcp
+python3 /project/tools/xrgame/linux-steam/stage.py \
+  --proot /opt/steampsp/linux-steam/proot \
+  --wine /opt/steampsp/linux-steam/wine-client-new \
+  --rootfs /work/artifacts/linux-steam-rootfs.tar.gz \
+  --output /work/artifacts/linux-steam-staged
+```
+
+现有开发容器需补装 `gawk gcc-aarch64-linux-gnu g++-aarch64-linux-gnu x11proto-dev`；
+Dockerfile 已列入这些包，新建镜像会安装。PRoot 与 DroidDeck 必须是主仓 gitlink 指定版本，
+不使用 `submodule update --remote`。`stage.py` 输出逐文件 SHA manifest；复制整个输出到 Mac
+`build/xrgame-linux-steam` 后，正常 `apple-container.sh build` 会同步、校验和打包。
+userspace 的 APK 资产后缀必须是 `.tgz`：aapt 会自动解压 `.gz` 并去掉后缀，破坏逐字节校验。
+
+Wine 候选通过 `package-proton-validation.py --release linux-steam1` 打包，明确绑定 xrg3
+基线 SHA、Wine pin 和路径补丁，只替换 `lsteamclient.so`，再用 `prepare-runtime-bundle.py`
+更新私有 catalog。不能把这个增量说成完整 Proton 重编，或声称包含主干后续 xrg6/xrg7。
+客户端首次打开时从 Valve CDN 下载；不会把 Valve 程序写进公开仓库或 APK。
+
+官方 Steam 的设备条件：Android 12+ 需检查开发者选项的子进程限制。AYN/API 33
+实测 Steam + Wine 超过默认数量后，系统以 `Trimming phantom processes` 杀掉 PRoot；
+本机验证使用 `adb shell settings put global settings_enable_monitor_phantom_procs false`。
+这是设备级设置，不由 APK 自动写入；Android 12/API 31 的 DeviceConfig 路径不同，
+参考 pinned DroidDeck 的 `PhantomProcessLimit.kt`。原值与恢复方式见
+[共享库验收记录](../validation/steam-shared-library-20261017.md)。
 
 ## 验证边界
 

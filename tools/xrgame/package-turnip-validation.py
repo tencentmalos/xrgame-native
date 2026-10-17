@@ -22,6 +22,9 @@ import zipfile
 
 BASE = 'turnip-adb7e30-xrg13.zip'
 BASE_SHA256 = 'f039931cf9b78572a1cd4128893d1fa5ca4458a8b59a1784de308ff955447d8e'
+# The same pinned xrg13 sources and XCB dependencies, rebuilt in Apple Container on Oct 11.
+# See mhr-odin3-container-20261011.md; this is an internal baseline, never a public release.
+LOCAL_BASE_SHA256 = '99a669633b312d523c95e0e174276e6c3b79fe9c89b2faa60ee3bf373b122c03'
 VERSION = 'turnip-adb7e30-xrg16'
 PATCHES = ('turnip-fdm-visualize.patch', 'turnip-max-samples.patch')
 MARKERS = (b'fdmviz\0', b'TU_MAX_SAMPLES\0')
@@ -46,7 +49,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
-    if sha(args.base.read_bytes()) != BASE_SHA256:
+    base_sha = sha(args.base.read_bytes())
+    if base_sha not in (BASE_SHA256, LOCAL_BASE_SHA256):
         raise SystemExit('Expected the validated Turnip xrg13 archive')
     with zipfile.ZipFile(args.base) as source:
         files = {info.filename: source.read(info) for info in source.infolist()}
@@ -77,7 +81,7 @@ def main():
         inventory['recipes']['tools/xrgame/' + name] = sha(text_bytes(here / name))
     inventory['component'] = VERSION
     inventory['derivedFrom'] = {'file': BASE, 'patches': ['tools/xrgame/patches/' + patch for patch in PATCHES],
-                                'rebuilt': sorted(rebuilt), 'sha256': BASE_SHA256}
+                                'rebuilt': sorted(rebuilt), 'sha256': base_sha}
     inventory['validation'] = VALIDATION
     files['xrgame-build.json'] = (json.dumps(inventory, indent=2, sort_keys=True) + '\n').encode()
     args.output.mkdir(parents=True, exist_ok=True)

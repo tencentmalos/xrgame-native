@@ -68,3 +68,14 @@
 [submodule "references/fmt"]
 	path = references/fmt
 	url = https://github.com/tencentmalos/fmt.git
+[submodule "references/DroidDeck"]
+	path = references/DroidDeck
+	url = https://github.com/tencentmalos/DroidDeck.git
+	branch = main
+	shallow = true
+[submodule "references/proot"]
+	path = references/proot
+	url = https://github.com/tencentmalos/proot.git
+[submodule "references/steam-arm64-termux"]
+	path = references/steam-arm64-termux
+	url = https://github.com/tencentmalos/steam-arm64-termux.git

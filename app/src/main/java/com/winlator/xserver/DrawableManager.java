@@ -42,7 +42,10 @@ public class DrawableManager extends XResourceManager implements XResourceManage
 //            Objects.requireNonNull(texture);
 //            xServerView.queueEvent(() -> VortekRendererComponent.destroyTexture(texture));
 //        }
-        if (texture != null) xServer.getRenderer().getRendererView().queueEvent(texture::destroy);
+        // A background client may close a window after its display Activity has
+        // detached. Its old EGL context owns any GL objects and is being released.
+        if (texture != null && xServer.getRenderer() != null)
+            xServer.getRenderer().getRendererView().queueEvent(texture::destroy);
 
         Callback<Drawable> onDestroyListener = drawable.getOnDestroyListener();
         if (onDestroyListener != null) onDestroyListener.call(drawable);

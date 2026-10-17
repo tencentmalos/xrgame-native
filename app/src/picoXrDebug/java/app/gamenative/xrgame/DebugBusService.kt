@@ -40,10 +40,11 @@ class DebugBusService : Service() {
     companion object {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
-            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard", "guest_patch", "guest_debugger")
+            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard", "guest_patch", "guest_debugger", "linux_steam")
         private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video", "capture_config")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
+        @Volatile private var linuxSteamCheck = -1
         @Volatile private var guestDebugger: java.lang.Process? = null
         @Volatile private var guestDebuggerTarget = 0
         @Volatile private var guestDebuggerExe = ""
@@ -98,6 +99,7 @@ class DebugBusService : Service() {
                 .put("xServerPresent", PluviaApp.xServerView != null)
                 .put("guestControl", false)
             "runtime" -> runtime()
+            "linux_steam" -> linuxSteam(args)
             "processes" -> processes()
             "present" -> present(args)
             "api_capture" -> apiCapture(args)
@@ -132,6 +134,46 @@ class DebugBusService : Service() {
         XrNative.nativeCaptureCommand(command, args, File(filesDir, "captures").absolutePath)
     } catch (e: Throwable) {
         "status: failed\nerror: ${e.javaClass.simpleName}\n"
+    }
+
+    /** Bounded official-client diagnostics. Login remains in Valve's UI; no identifiers returned. */
+    private fun linuxSteam(args: Array<String>): JSONObject {
+        val action = args.firstOrNull() ?: "status"
+        require(args.size <= 1 && action in listOf("status", "open", "start", "stop", "check", "trace", "library")) {
+            "usage: linux_steam status|open|start|stop|check|trace|library"
+        }
+        when (action) {
+            "open" -> startActivity(Intent(this, app.gamenative.xrgame.steam.LinuxSteamActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            "start" -> startForegroundService(Intent(this, app.gamenative.xrgame.steam.LinuxSteamService::class.java))
+            "stop" -> stopService(Intent(this, app.gamenative.xrgame.steam.LinuxSteamService::class.java))
+            "check" -> if (linuxSteamCheck != -2) {
+                linuxSteamCheck = -2
+                Thread({ linuxSteamCheck = try {
+                    app.gamenative.xrgame.steam.LinuxSteamRuntime(this).checkSession()
+                } catch (_: Exception) { 12 } }, "SteamSessionCheck").start()
+            }
+        }
+        return JSONObject().put("running", app.gamenative.xrgame.steam.LinuxSteamService.running)
+            .put("display", app.gamenative.xrgame.steam.LinuxSteamService.xServerState.value != null)
+            .put("sessionCheck", linuxSteamCheck)
+            .put("libraryOwned", app.gamenative.xrgame.XrGameOfficialSteam.ownsLibrary)
+            .put("mode", if (app.gamenative.xrgame.XrGameOfficialSteam.active) "official" else "custom")
+            .put("javaRunning", SteamService.isRunning).put("javaConnected", SteamService.isConnected)
+            .put("javaLoggedIn", SteamService.isLoggedIn)
+            .apply { if (action == "library") {
+                val records = JSONArray()
+                for (root in app.gamenative.xrgame.steam.LinuxSteamLibrary.roots(this@DebugBusService)) {
+                    for (file in File(root, "steamapps").listFiles().orEmpty()) {
+                        app.gamenative.xrgame.steam.SteamLibraryManifest.read(file)?.let { install ->
+                            records.put(JSONObject().put("appId", install.appId).put("complete", install.complete)
+                                .put("depots", install.depots.size).put("external", !root.path.startsWith(filesDir.path)))
+                        }
+                    }
+                }
+                put("installs", records)
+                put("saveConflicts", JSONArray(app.gamenative.xrgame.steam.SteamSaveSharing.conflicts.toList()))
+            } }
+            .apply { if (action == "trace") put("x11Requests", app.gamenative.xrgame.steam.LinuxSteamService.x11Trace()) }
     }
 
     /** Windows VR pacing/latency experiments; no arguments reports the current values. */

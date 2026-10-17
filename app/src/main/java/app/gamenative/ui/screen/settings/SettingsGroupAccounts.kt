@@ -22,6 +22,14 @@ import com.alorma.compose.settings.ui.SettingsMenuLink
 fun SettingsGroupAccounts() {
     val context = LocalContext.current
     SettingsGroup {
+        if (app.gamenative.BuildConfig.XRGAME) {
+            SettingsMenuLink(
+                colors = settingsTileColors(),
+                title = { Text("Official Linux Steam") },
+                subtitle = { Text("Open the official client and sign in") },
+                onClick = { context.startActivity(android.content.Intent().setClassName(context, "app.gamenative.xrgame.steam.LinuxSteamActivity")) },
+            )
+        }
         var eaName by remember { mutableStateOf(EaAuthManager.displayName(context)) }
         SettingsMenuLink(
             colors = settingsTileColors(),

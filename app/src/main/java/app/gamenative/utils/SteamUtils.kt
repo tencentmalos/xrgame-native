@@ -1672,11 +1672,13 @@ object SteamUtils {
     }
 
     fun getSteamId64(): Long? {
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) return app.gamenative.xrgame.XrGameOfficialSteam.accountId64()
         return SteamService.userSteamId?.convertToUInt64()?.toLong()
             ?: PrefManager.steamUserSteamId64.takeIf { it != 0L }
     }
 
     fun getSteam3AccountId(): Long? {
+        if (app.gamenative.xrgame.XrGameOfficialSteam.active) return getSteamId64()?.and(0xffffffffL)
         return SteamService.userSteamId?.accountID?.toLong()
             ?: PrefManager.steamUserAccountId.takeIf { it != 0 }?.toLong()
     }

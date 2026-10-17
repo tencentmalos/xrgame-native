@@ -50,6 +50,7 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 | --- | --- |
 | `bridge` | Foundation 固定提交、宿主 PID、transport、scope |
 | `status` | 宿主 PID/UID、系统与目标 API、设备 build/boot id、服务起始时刻、活跃 Steam App ID、X server 是否存在 |
+| `linux_steam status/open/start/stop/check/trace` | 官方 Linux Steam 独立客户端：打开页面、启动/停止前台会话，或异步检查官方 Bionic 客户端能否连接。`check` 的 0=会话已登录、5=无 IPC pipe、6=客户端未运行或不能连接全局 user、7=尚未登录/离线、8=账号不匹配、9=超时；打开页面不能证明在线或游戏联机通过。`trace` 另返回最近 64 条 X11 请求记录，每项为 `[connection, sequence, opcode, data, payloadBytes, complete]`；不含正文、输入文本、账号或票据，游戏服务器默认不记录 |
 | `runtime` | APK catalog SHA、默认组件版本、安装回执是否对应 catalog；**不重新哈希大文件，不证明已装文件完整或该进程实际加载了全部默认项** |
 | `processes` | 当前 UID 可见进程的 PID/PPID、comm、state、start-time ticks；进程退出竞争会计入 skipped，超量/超时标 truncated |
 | `modules [exact-basename]` | 当前 Android host 已加载 ELF 的名称、基址、GNU Build ID；超过 256 个时显式标记 truncated，可按完整文件名查询；不是 Wine PE/FEX guest 模块表 |
@@ -233,3 +234,9 @@ Foundation 管理命令分发。Android Service 承担 dumpsys transport，因�
   推断 guest 的 DXVK 调用参数。
 
 实机证据见 [首次接入验收](../validation/debugbus-20260927.md)。
+
+### 共用 Steam 目录诊断（2026-10-17 候选）
+
+`linux_steam library` 返回每个 ACF 的 app ID、完成状态、depot 数以及存档冲突 app ID；不返回账户身份。`status` 的 `mode=official|custom` 是管理归属，`javaRunning/javaConnected/javaLoggedIn` 用于核验官方运行时 JavaSteam 全部关闭；`libraryOwned` 表示 Official 持有同一游戏目录写入权。旧 `cloud <appId>` 已移除：它建立 AppID 管道后会令 Steam 登记 PID 0，干扰真正的启动。新的 `check` 只查询会话，不携带游戏身份。见[目录共用记录](../validation/steam-shared-library-20261017.md)。
+
+需要诊断官方读取安装记录时，可在客户端停止后创建 app-private `files/linux-steam/library-trace` 空 marker 再启动。只在客户端进程记录有界的 ACF/libraryfolders 文件访问元数据，不记录文件内容；结束后删除 marker 并重启客户端。Steam 更新可能以 42 退出后重开，活动日志会从 `client-0.log` 变为 `client-1.log`，应以运行进程的输出文件为准，不能只检查旧日志。

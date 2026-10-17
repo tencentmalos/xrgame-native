@@ -19,7 +19,8 @@ import timber.log.Timber
 /**
  * XRGame Native (picoXr) install root on shared external storage (spec WP1-3, WP1-9).
  *
- * Games go to `<primary external storage>/XRGameNative/Steam/steamapps/common`,
+ * New installations use `<primary external storage>/SteamPSP/Steam/steamapps/common`.
+ * Existing XRGameNative libraries are reused in place, including by the official client,
  * which survives uninstalling, reinstalling or re-signing the app. That needs "All files access"
  * (MANAGE_EXTERNAL_STORAGE, declared only in the picoXr manifest).
  *
@@ -29,14 +30,39 @@ import timber.log.Timber
  * user's own storage choice is left alone. Installed by [XrGame.install]; picoXr only.
  */
 object XrGameStorage {
-    const val ROOT_DIR_NAME = "XRGameNative"
+    const val ROOT_DIR_NAME = "SteamPSP"
+    const val LEGACY_ROOT_DIR_NAME = "XRGameNative"
     private const val PREFS = "xrgame"
     private const val KEY_NOTICE_ACCEPTED = "unofficial_client_notice_v1"
     private const val KEY_DEFAULTS_APPLIED = "install_root_defaults_v1"
 
-    /** `<primary external storage>/XRGameNative`, or null for upstream flavors. */
+    /** One install root. Preserve an existing old-app library rather than create a second one. */
     val installRoot: File?
-        get() = if (XrGame.enabled) File(Environment.getExternalStorageDirectory(), ROOT_DIR_NAME) else null
+        get() = if (XrGame.enabled) selectRoot(Environment.getExternalStorageDirectory()) else null
+
+    internal fun selectRoot(storage: File): File {
+        val preferred = File(storage, ROOT_DIR_NAME)
+        val legacy = File(storage, LEGACY_ROOT_DIR_NAME)
+        if (File(preferred, ".steampsp-library").isFile) return preferred
+        if (File(legacy, ".steampsp-library").isFile) return legacy
+        return if (File(legacy, "Steam/steamapps").isDirectory &&
+            File(preferred, "Steam/steamapps/common").listFiles().isNullOrEmpty()) legacy else preferred
+    }
+
+    fun rememberLibraryRoot() {
+        val root = installRoot ?: return
+        check(root.isDirectory || root.mkdirs())
+        File(root, ".steampsp-library").writeText("1\n")
+    }
+
+    fun requireSingleLibrary() {
+        if (!XrGame.enabled) return
+        val storage = Environment.getExternalStorageDirectory()
+        fun populated(name: String) = File(storage, "$name/Steam/steamapps/common").listFiles()?.isNotEmpty() == true
+        check(!populated(ROOT_DIR_NAME) || !populated(LEGACY_ROOT_DIR_NAME)) {
+            "SteamPSP and XRGameNative both contain games. Both directories were preserved; consolidate them before starting shared Steam."
+        }
+    }
 
     fun hasAllFilesAccess(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
@@ -121,6 +147,7 @@ object XrGameStorage {
             Timber.w("[XrGameStorage] cannot create %s", common)
             return
         }
+        rememberLibraryRoot()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_DEFAULTS_APPLIED, false)) return
         PrefManager.useExternalStorage = true // clears externalStoragePath, so set it afterwards

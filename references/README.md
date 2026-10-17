@@ -1,5 +1,28 @@
 # references/
 
+## Official Linux Steam integration (2026-10-16)
+
+`feature/linux_steam_support` keeps the Bionic Proton/FEX game runtime and adds a
+separate ARM64 glibc userspace for Valve's official client. See
+[the integration record](../docs/validation/linux-steam-20261016.md).
+
+- `references/proot`: `tencentmalos/proot`, upstream `termux/proot`, pinned at
+  `4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f`, matching DroidDeck's recipe.
+  `build-linux-steam-proot.sh` applies the pinned DroidDeck patches in a build copy.
+- `references/DroidDeck` at `2503d6929332de2a4a22c8a31c1b3ce84e5a8831` supplies
+  PRoot patches and the client-only System V IPC/local socket compatibility code.
+  Its game renderer, GPU, input, audio and full Proton stack are not adopted.
+- `references/steam-arm64-termux`: `tencentmalos/steam-arm64-termux`, upstream
+  `moio9/steam-arm64-termux`, pin `9782c5154cf6217661b05bed30b160556f8c7885`.
+  This is a comparison reference for glibc/Bionic Steam bridging. Its RPC bridge
+  is not the selected implementation: Valve's ARM64 manifest supplies an official
+  Bionic `androidarm64/libsteamclient.so`, whose load/export probe passes on AYN.
+
+Valve client binaries are downloaded from Valve at runtime, never committed or
+included in the APK. The Ubuntu userspace is limited to the client; package/source
+versions and licences are retained. This internal candidate is not a public runtime
+release or evidence that login and online games already work.
+
 Independently versioned source checkouts used for comparison, porting and pinned builds. JavaSteam supplies the app's source-built protocol dependency; `tools/xrgame/` builds pinned runtime components from the documented Wine/FEX/Proton/Mesa sources. Other ports into `app/` retain their origin and license in `THIRD_PARTY_NOTICES`.
 
 The authoritative revision of each checkout is the gitlink recorded by this repository, not the tip of the tracked branch. Do not run `git submodule update --remote` as an incidental setup step.
@@ -14,6 +37,7 @@ For XRGame's embedded Proton 11 default, FEX maintenance starts from the same `t
 | `shadPS4` | [tencentmalos/Bachata-S4](https://github.com/tencentmalos/Bachata-S4) (shadPS4 Android/FEX port) | `malos/main` | `a562e810` (2026-09-24) | Android host components to port: session lifecycle, Vulkan presenter, Turnip loading, Oboe audio, input, diagnostics, Litep/KGSL tooling and validation methodology. Its own submodules are **not** initialized. | GPL-2.0-or-later per SPDX headers (compatible with this repo's GPL-3.0); its private Foundation dependency is separately authorized for internal debug builds (2026-09-27), pinned at root `foundation/`; see `docs/debugging/debugbus.md` |
 | `mesa-turnip` | [tencentmalos/mesa-mirror](https://github.com/tencentmalos/mesa-mirror) | `feature/malos/xrgame-wine-icd` | `4815dc71` (2026-10-10, Turnip xrg13 source) | Turnip fork used by shadPS4 on Adreno (KGSL zero-timeout poll, gralloc/Mapper metadata, fragment density map 2 for XR). Shallow. | MIT |
 | `WinNative` | [tencentmalos/WinNative](https://github.com/tencentmalos/WinNative) | default | `e9e5d307` (2026-09-23) | Comparison frontend: Vulkan compositor, FEX UnixLibs toggle, and its own Rust Steam client `wnsteam` (`app/src/main/cpp/wn-steam-client/rust`: CM client, auth, depot download; no JVM). Shallow. | GPL-3.0 |
+| `DroidDeck` | [tencentmalos/DroidDeck](https://github.com/tencentmalos/DroidDeck) (fork of Droid-Deck/DroidDeck) | `main` | `2503d692` (2026-10-13 reference; upstream commit 2026-10-12 UTC) | Source comparison: full Linux Steam client, glibc/PRoot, ARM64EC Proton/FEX, gamescope/Xwayland, Android Wayland/AHB presentation, input and session automation. Shallow, reference only; not a build or APK input. See [comparison](../docs/background/droiddeck-comparison-20261013.md). | GPL-3.0; bundled components retain their own licenses |
 | `gfxreconstruct` | [tencentmalos/gfxreconstruct](https://github.com/tencentmalos/gfxreconstruct) (fork of LunarG/gfxreconstruct) | `feature/malos/xrgame-wine-capture` | `3868cd12` (LunarG `dev` `6dc9b65` + Wine capture, 2026-10-05) | API capture and replay for picoXr debug APKs: D3D12/DXGI capture proxies, the Android Vulkan capture layer and the Windows replay tools. See [the API replay spec](../docs/specs/xrgame-native-api-replay-v1.md). Shallow. Its own submodules are **not** initialized. | MIT |
 
 ### Steam client implementations (spec WP1 / WP6)
@@ -33,6 +57,9 @@ git submodule update --init references/proton references/FEX references/shadPS4 
     references/JavaSteam references/Pluvia references/DepotDownloader
 git submodule update --init --depth 1 references/proton-wine references/mesa-turnip references/WinNative \
     references/SteamKit references/gbe_fork references/gfxreconstruct
+
+# Optional comparison checkout; not required for SteamPSP builds.
+git submodule update --init --depth 1 references/DroidDeck
 ```
 
 On Windows, mesa needs long paths: `git -C references/mesa-turnip config core.longpaths true`.
@@ -64,6 +91,16 @@ At the original fork migration, all 13 direct submodules were moved to `tencentm
 Existing upstream remotes were retained for initialized checkouts. GBE uses our
 `gbe_fork` fork at `7a319f0b`; its relative third-party submodules resolve within
 the same fork, which includes all upstream branches.
+
+DroidDeck was added on 2026-10-13 after creating the owned fork. Its authoritative
+gitlink is `2503d6929332de2a4a22c8a31c1b3ce84e5a8831`, from upstream
+[`Droid-Deck/DroidDeck`](https://github.com/Droid-Deck/DroidDeck) `main`, after the
+0.4.0 release. The clone retains that upstream remote for comparison. On a fresh
+checkout it can be added with
+`git -C references/DroidDeck remote add upstream https://github.com/Droid-Deck/DroidDeck.git`.
+Its runtime downloads and component repositories are not adopted as SteamPSP
+dependencies. Review and fork any component separately before integrating it;
+do not copy its bundled binaries or signing material into our build.
 
 The runtime recipes also use owned forks for `ntsync-android`, `dxvk`,
 `vkd3d-proton`, and `pulseaudio-android`, retaining their exact source pins.

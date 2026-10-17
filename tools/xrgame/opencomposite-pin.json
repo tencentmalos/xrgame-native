@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "artifact": "build/xrgame-runtime/opencomposite/opencomposite_x64.dll",
-  "sha256": "25509aafee09c2ab8f8d523e8b30dba7e32ee395d9809db4d3be0c1e70f3c188",
-  "status": "internal validation candidate; MSVC build of the pinned recipe plus eye-tracked-foveation.patch and vulkan-array-submit.patch (SubmitWithArrayIndex submits a layer of one Vulkan image); see docs/validation/swan-alyx-vulkan-20261015.md",
+  "sha256": "ce6bafc13b81313c0cd541a4f41215ee3e7c337c7679f5ca1107db70bb2fbc70",
+  "status": "Internal candidate: current pinned recipe rebuilt in Apple Container with Clang MSVC ABI; device validation pending (2026-10-16)",
   "recipeRepository": "https://github.com/tencentmalos/opencomposite",
   "recipeBase": "7fd3276ac0ffda518a7f5a9157620f292e2032e6",
   "recipeCommit": "20de29d94fc9560e9a99ec4744694b1e6a92da5f",
@@ -18,7 +18,8 @@
     "references/opencomposite/build.ps1": "86ecd8b6ea4cf0e25e9d5416f789211aea1ffe86eae471af0eb8fa6fd6371a51",
     "references/opencomposite/patches/displayed-bounds-copy.patch": "1c297d747cad4f476148d08970ef4c779e8e4cbc4a2639dc13825e4504d7b68e",
     "references/opencomposite/patches/eye-tracked-foveation.patch": "d577744c5b862622dd5fff6a61378e101e95b0973e03488d8f63609fcf2f1650",
-    "references/opencomposite/patches/vulkan-array-submit.patch": "f9ea90749a1258cd230d6026ed247e2fe72f1d60cc4c4f43ca2666bcd4d8c34f"
+    "references/opencomposite/patches/vulkan-array-submit.patch": "f9ea90749a1258cd230d6026ed247e2fe72f1d60cc4c4f43ca2666bcd4d8c34f",
+    "tools/xrgame/build-opencomposite-clangcl.sh": "aa25ff50b3531b030f45fd1d3f34a7adfcb10a00f848c2d85329e721b43f2548"
   },
   "dependencies": {
     "glm": "bf71a834948186f4097caa076cd2663c69a10e1e",
@@ -35,25 +36,17 @@
     }
   },
   "build": {
-    "host": "Windows 11 x64",
-    "compiler": "MSVC 19.51.36241.0 (Visual Studio 18 Insiders, selected by CMake's default generator)",
+    "host": "Apple Container Ubuntu 24.04 x86_64 on macOS ARM64",
+    "compiler": "bylaws LLVM 21.1.0 / clang-cl MSVC ABI",
+    "windowsSdk": "10.0.26100",
+    "crt": "Microsoft.VC.14.44.17.14 via xwin 0.10.0",
     "configuration": "Release x64 /MD",
     "target": "OCOVR",
-    "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
-    "patches": [
-      "background-support",
-      "openvr-system-026",
-      "mailbox-forward",
-      "displayed-bounds-copy",
-      "eye-tracked-foveation",
-      "vulkan-array-submit"
-    ],
-    "evidence": "docs/validation/swan-alyx-vulkan-20261015.md",
-    "windowsSdk": "10.0.26100.0",
-    "vulkanImportLibrary": "Vulkan SDK Lib/vulkan-1.lib and headers on the Windows host (same build directory as 8a8b65ea); runtime uses Wine Vulkan",
+    "recipe": "tools/xrgame/build-opencomposite-clangcl.sh",
+    "evidence": "docs/validation/linux-steam-20261016.md",
     "previousValidatedBuild": {
-      "sha256": "54e702ca083f8a88f6fbd794406ba0e8dade343392967bfb882edd90d6c3be06",
-      "status": "internal validation candidate; MSVC build of the pinned recipe plus eye-tracked-foveation.patch (XR_FB_eye_tracking_social foveation centres); see docs/validation/swan-alyx-vulkan-20261015.md",
+      "sha256": "25509aafee09c2ab8f8d523e8b30dba7e32ee395d9809db4d3be0c1e70f3c188",
+      "status": "internal validation candidate; MSVC build of the pinned recipe plus eye-tracked-foveation.patch and vulkan-array-submit.patch (SubmitWithArrayIndex submits a layer of one Vulkan image); see docs/validation/swan-alyx-vulkan-20261015.md",
       "build": {
         "host": "Windows 11 x64",
         "compiler": "MSVC 19.51.36241.0 (Visual Studio 18 Insiders, selected by CMake's default generator)",
@@ -65,41 +58,63 @@
           "openvr-system-026",
           "mailbox-forward",
           "displayed-bounds-copy",
-          "eye-tracked-foveation"
+          "eye-tracked-foveation",
+          "vulkan-array-submit"
         ],
         "evidence": "docs/validation/swan-alyx-vulkan-20261015.md",
         "windowsSdk": "10.0.26100.0",
-        "vulkanImportLibrary": "Vulkan SDK Lib/vulkan-1.lib and headers on the Windows host (same build directory as 8a8b65ea); runtime uses Wine Vulkan"
-      },
-      "previousValidatedBuild": {
-        "sha256": "f5a979e0194eb567410587e3d05400f298ac6a54bc2223f8d26dcb0a995eb31d",
-        "status": "internal-device-candidate; Clang MSVC ABI cross-build of the same source/patches; Swan Alyx VR check passed 2026-10-12",
-        "build": {
-          "host": "Apple Container Ubuntu 24.04 x86_64 on macOS ARM64",
-          "compiler": "bylaws LLVM 21.1.0 (llvm-mingw 20250920), clang --driver-mode=cl --target=x86_64-pc-windows-msvc",
-          "windowsSdk": "10.0.26100",
-          "crt": "Microsoft.VC.14.44.17.14 via xwin 0.10.0, including ATL",
-          "configuration": "Release x64 /MD",
-          "target": "OCOVR",
-          "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
-          "vulkanImportLibrary": "llvm-dlltool from pinned Vulkan-Loader definition; runtime uses Wine Vulkan",
-          "evidence": "docs/validation/swan-oc-clang-vr-20261012.md",
-          "buildEvidence": "docs/validation/mhr-odin3-container-20261011.md"
-        },
+        "vulkanImportLibrary": "Vulkan SDK Lib/vulkan-1.lib and headers on the Windows host (same build directory as 8a8b65ea); runtime uses Wine Vulkan",
         "previousValidatedBuild": {
-          "sha256": "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d",
-          "status": "internal-device-candidate (D3D11 copies only the displayed bounds; Swan Alyx in-scene A/B recorded)",
+          "sha256": "54e702ca083f8a88f6fbd794406ba0e8dade343392967bfb882edd90d6c3be06",
+          "status": "internal validation candidate; MSVC build of the pinned recipe plus eye-tracked-foveation.patch (XR_FB_eye_tracking_social foveation centres); see docs/validation/swan-alyx-vulkan-20261015.md",
           "build": {
-            "host": "Windows x64",
+            "host": "Windows 11 x64",
             "compiler": "MSVC 19.51.36241.0 (Visual Studio 18 Insiders, selected by CMake's default generator)",
-            "windowsSdk": "10.0.26100.0",
             "configuration": "Release x64 /MD",
             "target": "OCOVR",
             "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
-            "vulkanImportLibrary": "Vulkan SDK 1.4.304.1 Lib/vulkan-1.lib and headers on the Windows host; runtime uses Wine Vulkan",
-            "evidence": "docs/validation/swan-oc-bounded-copy-20261010.md",
-            "imports": "Same DLL set as the 2c3f368b build",
-            "previousSha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66"
+            "patches": [
+              "background-support",
+              "openvr-system-026",
+              "mailbox-forward",
+              "displayed-bounds-copy",
+              "eye-tracked-foveation"
+            ],
+            "evidence": "docs/validation/swan-alyx-vulkan-20261015.md",
+            "windowsSdk": "10.0.26100.0",
+            "vulkanImportLibrary": "Vulkan SDK Lib/vulkan-1.lib and headers on the Windows host (same build directory as 8a8b65ea); runtime uses Wine Vulkan"
+          },
+          "previousValidatedBuild": {
+            "sha256": "f5a979e0194eb567410587e3d05400f298ac6a54bc2223f8d26dcb0a995eb31d",
+            "status": "internal-device-candidate; Clang MSVC ABI cross-build of the same source/patches; Swan Alyx VR check passed 2026-10-12",
+            "build": {
+              "host": "Apple Container Ubuntu 24.04 x86_64 on macOS ARM64",
+              "compiler": "bylaws LLVM 21.1.0 (llvm-mingw 20250920), clang --driver-mode=cl --target=x86_64-pc-windows-msvc",
+              "windowsSdk": "10.0.26100",
+              "crt": "Microsoft.VC.14.44.17.14 via xwin 0.10.0, including ATL",
+              "configuration": "Release x64 /MD",
+              "target": "OCOVR",
+              "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
+              "vulkanImportLibrary": "llvm-dlltool from pinned Vulkan-Loader definition; runtime uses Wine Vulkan",
+              "evidence": "docs/validation/swan-oc-clang-vr-20261012.md",
+              "buildEvidence": "docs/validation/mhr-odin3-container-20261011.md"
+            },
+            "previousValidatedBuild": {
+              "sha256": "8a8b65ead757bb0b4d1b2365cb344e70e97e917d9efc911de973443a7e1e636d",
+              "status": "internal-device-candidate (D3D11 copies only the displayed bounds; Swan Alyx in-scene A/B recorded)",
+              "build": {
+                "host": "Windows x64",
+                "compiler": "MSVC 19.51.36241.0 (Visual Studio 18 Insiders, selected by CMake's default generator)",
+                "windowsSdk": "10.0.26100.0",
+                "configuration": "Release x64 /MD",
+                "target": "OCOVR",
+                "ocVersion": "a27e7e6-gamenative-xrgame-openvr2156-mailbox-bounds",
+                "vulkanImportLibrary": "Vulkan SDK 1.4.304.1 Lib/vulkan-1.lib and headers on the Windows host; runtime uses Wine Vulkan",
+                "evidence": "docs/validation/swan-oc-bounded-copy-20261010.md",
+                "imports": "Same DLL set as the 2c3f368b build",
+                "previousSha256": "2c3f368ba554ab1282dea0000ba2af4de9bbd9c3b0f6f530bf584e02d846ad66"
+              }
+            }
           }
         }
       }

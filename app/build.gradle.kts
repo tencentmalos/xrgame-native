@@ -261,6 +261,7 @@ android {
             // 'extractNativeLibs' was not enough to keep the jniLibs and
             // the libs went missing after adding on-demand feature delivery
             useLegacyPackaging = true
+            keepDebugSymbols += "**/libproot-loader.so"
         }
     }
     testOptions {
@@ -817,6 +818,43 @@ abstract class PicoAssetsTask : DefaultTask() {
             bundle.resolve("manifest.json").copyTo(out.resolve("xrgame/manifest.json"), overwrite = true)
         }
     }
+}
+
+// Source-built Linux client userspace, staged separately from the Bionic game runtime.
+// Valve's client is downloaded on device; no Valve client binaries enter the APK.
+abstract class LinuxSteamAssetsTask : DefaultTask() {
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val staging: DirectoryProperty
+    @get:OutputDirectory abstract val assets: DirectoryProperty
+    @get:OutputDirectory abstract val libraries: DirectoryProperty
+    @TaskAction fun stage() {
+        val root = staging.get().asFile
+        val manifest = groovy.json.JsonSlurper().parse(root.resolve("assets/linux-steam/manifest.json")) as Map<*, *>
+        check(manifest["valveBinariesBundled"] == false)
+        for ((relative, expected) in manifest["files"] as Map<*, *>) {
+            val file = root.resolve(relative as String).canonicalFile
+            check(file.toPath().startsWith(root.canonicalFile.toPath()))
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(262144)
+                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+            }
+            check(digest.digest().joinToString("") { "%02x".format(it) } == expected) { "Linux Steam staging checksum: $relative" }
+        }
+        assets.get().asFile.deleteRecursively(); libraries.get().asFile.deleteRecursively()
+        root.resolve("assets").copyRecursively(assets.get().asFile, overwrite = true)
+        root.resolve("jniLibs").copyRecursively(libraries.get().asFile, overwrite = true)
+    }
+}
+
+androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->
+    val task = tasks.register<LinuxSteamAssetsTask>("stageLinuxSteam${variant.name.replaceFirstChar { it.uppercase() }}") {
+        staging.set(rootProject.layout.projectDirectory.dir("build/xrgame-linux-steam"))
+        assets.set(layout.buildDirectory.dir("generated/linuxSteam/${variant.name}/assets"))
+        libraries.set(layout.buildDirectory.dir("generated/linuxSteam/${variant.name}/jniLibs"))
+    }
+    variant.sources.assets?.addGeneratedSourceDirectory(task, LinuxSteamAssetsTask::assets)
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(task, LinuxSteamAssetsTask::libraries)
 }
 
 androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->

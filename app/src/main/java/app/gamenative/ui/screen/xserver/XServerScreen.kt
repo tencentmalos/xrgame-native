@@ -4080,7 +4080,14 @@ private fun setupXEnvironment(
         // Set steam type for selecting appropriate box64rc
         guestProgramLauncherComponent.setSteamType(container.getSteamType())
 
+        val officialSteamEnvironment = if (app.gamenative.xrgame.XrGameOfficialSteam.active &&
+            gameSource == GameSource.STEAM && !bootToContainer && !testGraphics) {
+            listOf("HOME", "XRGAME_STEAMCLIENT_LIBRARY", "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+                "SteamAppId", "SteamGameId", "PROTON_DISABLE_LSTEAMCLIENT").associateWith { envVars.get(it) }
+        } else emptyMap()
         envVars.putAll(container.envVars)
+        // Old per-game offline flags must not redirect a verified official session back to GBE.
+        officialSteamEnvironment.forEach { (key, value) -> envVars.put(key, value) }
         immersiveHooks?.windowsVr?.afterContainerEnvironmentMerged(envVars, container)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameRuntime.configurePresentation(envVars)
         if (BuildConfig.XRGAME) app.gamenative.xrgame.XrGameMsaa.configure(envVars, immersiveHooks?.windowsVr != null)
@@ -4287,7 +4294,7 @@ private fun setupXEnvironment(
     // Request encrypted app ticket for Steam games at launch time
     val isCustomGame = gameSource == GameSource.CUSTOM_GAME
     val gameIdForTicket = ContainerUtils.extractGameIdFromContainerId(appId)
-    if (!bootToContainer && !isCustomGame && gameIdForTicket != null && !container.isLaunchRealSteam && !container.isLaunchBionicSteam) {
+    if (!app.gamenative.xrgame.XrGameOfficialSteam.active && !bootToContainer && !isCustomGame && gameIdForTicket != null && !container.isLaunchRealSteam && !container.isLaunchBionicSteam) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val ticket = SteamService.instance?.getEncryptedAppTicket(gameIdForTicket)
@@ -4328,7 +4335,7 @@ private fun setupXEnvironment(
         throw e
     }
 
-    if (gameSource == GameSource.STEAM) {
+    if (gameSource == GameSource.STEAM && !app.gamenative.xrgame.XrGameOfficialSteam.active) {
         Timber.tag("achievements").d("Setting up achievements for Steam appID=$appId...")
         val gameIdInt = ContainerUtils.extractGameIdFromContainerId(appId)
         val configDirectory = gameIdInt?.let { SteamService.findSteamSettingsDir(context, it) }
@@ -4431,8 +4438,7 @@ private fun getWineStartCommand(
     } else if (bootToContainer) {
         if (BuildConfig.XRGAME) "\"winefile.exe\"" else "\"wfm.exe\""
     } else if (BuildConfig.XRGAME && isSteamGame) {
-        // Every x64 Steam executable gets the bundled client. Profiles only adjust
-        // game-specific paths/arguments and optional compatibility hooks.
+        // Preserve install/launch profiles while using the official desktop session in picoXr.
         val gameDirectory = File(SteamService.getAppDirPath(gameId)).canonicalFile
         val drive = Container.drivesIterator(container.drives).asSequence()
             .firstOrNull { File(it[1]).canonicalFile == gameDirectory }?.get(0)?.firstOrNull()
@@ -4447,7 +4453,9 @@ private fun getWineStartCommand(
         )
         check(target.executable.isFile) { "Steam executable is missing: ${target.executable.name}" }
         check(target.workingDirectory.isDirectory) { "Steam working directory is missing" }
-        val launch = if (app.gamenative.xrgame.XrGameSteamLaunch.usesBundledClient(target.executable)) {
+        val launch = if (app.gamenative.xrgame.XrGameOfficialSteam.active) {
+            app.gamenative.xrgame.XrGameOfficialSteam.prepare(context, container, gameDirectory, drive, gameId, target, profile, envVars)
+        } else if (app.gamenative.xrgame.XrGameSteamLaunch.usesBundledClient(target.executable)) {
             // Guest patches ride on the client loader's injection, before the game's main thread runs.
             val guestPatches = app.gamenative.xrgame.XrGameGuestPatches.prepare(context, container, gameId,
                 profile?.followSelfRestart == true)
@@ -4460,9 +4468,9 @@ private fun getWineStartCommand(
         guestProgramLauncherComponent.workingDir = launch.workingDirectory
         envVars.put("SteamAppId", gameId.toString())
         envVars.put("SteamGameId", gameId.toString())
-        // This path uses the bundled Windows client. A refreshed Proton prefix
-        // may restore lsteamclient, whose Linux-client redirection must stay off.
-        envVars.put("PROTON_DISABLE_LSTEAMCLIENT", "1")
+        // The bundled offline client disables Linux redirection; the official
+        // session deliberately keeps Proton's lsteamclient bridge enabled.
+        if (!app.gamenative.xrgame.XrGameOfficialSteam.active) envVars.put("PROTON_DISABLE_LSTEAMCLIENT", "1")
         launch.command
     } else if (isGOGGame) {
         // For GOG games, use GOGService to get the launch command

@@ -44,6 +44,55 @@ class IMEInputReceiverTest {
     }
 
     @Test
+    fun `unicode transport receives one commit and no composing fragments`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val commits = mutableListOf<String>()
+        receiver = IMEInputReceiver(activity, server, textHandler = { commits.add(it) })
+        activity.setContentView(receiver)
+        connect()
+        val attributes = EditorInfo()
+        val connection = receiver.onCreateInputConnection(attributes)!!
+        assertEquals(EditorInfo.TYPE_TEXT_VARIATION_NORMAL, attributes.inputType and EditorInfo.TYPE_MASK_VARIATION)
+        assertNotEquals(0, attributes.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING)
+        connection.setComposingText("zhong", 1)
+        assertTrue(commits.isEmpty())
+        connection.commitText("中文😀", 1)
+        connection.finishComposingText()
+        assertEquals(listOf("中文😀"), commits)
+        verifyNoInteractions(server)
+        receiver.hideKeyboard()
+        assertFalse(connection.commitText("stale", 1))
+        assertEquals(1, commits.size)
+    }
+
+    @Test
+    fun `client keyboard dismiss key is consumed before the IME`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        receiver = IMEInputReceiver(activity, server, dismissKeys = setOf(KeyEvent.KEYCODE_BUTTON_SELECT))
+        activity.setContentView(receiver)
+        val connection = connect()
+        assertTrue(receiver.onKeyPreIme(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_SELECT)))
+        assertTrue(receiver.isKeyboardRequested)
+        assertTrue(receiver.onKeyPreIme(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_SELECT)))
+        assertFalse(receiver.isKeyboardRequested)
+        assertFalse(connection.commitText("stale", 1))
+        verifyNoInteractions(server)
+    }
+
+    @Test
+    fun `release of the key that opened the keyboard does not dismiss it`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        receiver = IMEInputReceiver(activity, server, dismissKeys = setOf(KeyEvent.KEYCODE_BUTTON_SELECT))
+        activity.setContentView(receiver)
+        assertFalse(receiver.onKeyPreIme(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_SELECT)))
+        // Activity.dispatchKeyEvent handles this DOWN by opening the editor.
+        connect()
+        receiver.onKeyPreIme(KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_SELECT))
+        assertTrue(receiver.isKeyboardRequested)
+        verifyNoInteractions(server)
+    }
+
+    @Test
     fun `inactive receiver is not an editor and has no connection`() {
         assertFalse(receiver.onCheckIsTextEditor())
         assertNull(receiver.onCreateInputConnection(EditorInfo()))

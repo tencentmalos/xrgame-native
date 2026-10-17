@@ -1,0 +1,21 @@
+diff --git a/lsteamclient/unixlib.cpp b/lsteamclient/unixlib.cpp
+--- a/lsteamclient/unixlib.cpp
++++ b/lsteamclient/unixlib.cpp
+@@ -782,7 +782,16 @@ static NTSTATUS steamclient_init( Params *params, bool wow64 )
+ #endif
+ 
+ #if defined(__ANDROID__)
+-    snprintf( path, PATH_MAX, "/data/data/app.gamenative/files/imagefs/usr/lib/libsteamclient.so" );
++    /* The Android ARM64 library is downloaded from Valve's Linux client CDN.
++     * Keep the game on Bionic; only the separate desktop client needs glibc.
++     * The launcher supplies an app-private, verified absolute library path. */
++    const char *android_client = getenv( "XRGAME_STEAMCLIENT_LIBRARY" );
++    if (!android_client || android_client[0] != '/' || strlen( android_client ) >= sizeof(path))
++    {
++        ERR( "Official Steam client library is not configured.\n" );
++        return -1;
++    }
++    strcpy( path, android_client );
+ #else
+     snprintf( path, PATH_MAX, "%s/.steam/sdk" STEAM_ARCH "/steamclient.so", getenv( "HOME" ) );
+ #endif

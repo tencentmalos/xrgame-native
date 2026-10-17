@@ -2,6 +2,8 @@
 
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
+- 2026-10-17 用户要求游戏下载目录统一：新装使用 `/sdcard/SteamPSP`；旧版已有 `/sdcard/XRGameNative` 游戏库原地复用。Official/Custom Steam 共用同一份 `steamapps` 和现有每游戏容器的存档，不做两套目录的双向复制。
+
 - 2026-10-08 用户指定后续本机编译默认使用 Apple Container：`tools/xrgame/apple-container.sh build`，首次运行 `setup`。源码在 Mac 编辑，Linux ext4 卷保留独立工具链/缓存，产物为 `picoXrDebug` + 原生 `RelWithDebInfo`。见 [操作指南](docs/building/apple-container.md)；完整运行时重建与设备验收不能由 APK 构建推定。
 - 2026-10-15 Alyx 的 Vulkan 渲染（`-vulkan`）在 Swan 进场景出画面，游戏自带的 FDM 注视点渲染接上 Pico 眼动。按用户要求“原生路径优先，没办法再做 guest patch”，全部改在原生层：
   - OpenComposite 在 `-vulkan` 时写 `initUsingVulkan=true`；
@@ -89,3 +91,5 @@
 - 调试流程：`tools/xrgame/README.md` 的 Device debugging。native app 与 Wine x64 guest 的基础暂停/读取/恢复/清理已验证，见 `docs/validation/wp3-debuggers-20260926.md`；Hades II 已通过 Turnip AHardwareBuffer/X11 路径进入实际场景并响应移动（GPU 拷贝，无 CPU 读回，保留 present-wait）；完整游戏与 WP3 仍未验收。
 
 - 当前 AYN 的下载/续传/修复/目录识别和独立公共 depot 对照见 `docs/validation/personal-p2-downloads-20260927.md`；guest 软件断点可命中但恢复仍失败，默认关闭，不能把基础 attach/inspect 通过扩大为完整 D2。
+
+- **Steam client modes (2026-10-17):** Official Steam owns its login/download/game session/Cloud through the Linux client and Proton bridge; disconnect and suppress JavaSteam while it runs, including Android game-host Activity entry and reconnect callbacks. Custom Steam remains the original JavaSteam + bundled GBE route. Switch managers only after the previous client/game stops; share physical game/save paths, not two copies. Cached metadata access must not require a second login. See [the sharing record](docs/validation/steam-shared-library-20261017.md).

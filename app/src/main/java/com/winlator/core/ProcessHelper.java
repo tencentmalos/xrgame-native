@@ -583,15 +583,14 @@ public abstract class ProcessHelper {
 
     public static ArrayList<String> listRunningWineProcesses(){
         File proc = new File("/proc");
-        String[] filters = {"wine", "exe"};
         String[] allPids;
         ArrayList<String> filteredPids = new ArrayList<String>();
-        List<String> filterList = Arrays.asList(filters);
         allPids = proc.list(new FilenameFilter(){
             public boolean accept(File proc, String filename){
                 return new File(proc, filename).isDirectory() && filename.matches("[0-9]+");
             }
         });
+        if (allPids == null) return filteredPids;
 
         String procFile = "/cmdline";
         for (int index = 0; index < allPids.length; index++){
@@ -604,11 +603,21 @@ public abstract class ProcessHelper {
                 if (line != null) data = line;
             }
             catch (IOException e) {}
-            for (String filter : filterList) {
-                if (data.contains(filter))
-                    filteredPids.add(allPids[index]);
-            }
+            if (isWineCommandLine(data)) filteredPids.add(allPids[index]);
         }
         return filteredPids;
+    }
+
+    /** Inspect the executable, not arguments: Steam's shell/Python handoff names a game.exe too. */
+    public static boolean isWineCommandLine(String commandLine) {
+        String[] argv = commandLine.split("\u0000", -1);
+        if (argv.length == 0) return false;
+        String executable = argv[0];
+        if ((executable.equals("/system/bin/linker64") || executable.equals("/system/bin/linker")) && argv.length > 1)
+            executable = argv[1];
+        String name = executable.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).toLowerCase(java.util.Locale.ROOT);
+        return name.equals("wine") || name.equals("wine64") || name.equals("wineserver") ||
+            name.equals("wine-preloader") || name.equals("wine64-preloader") || name.endsWith(".exe");
     }
 }

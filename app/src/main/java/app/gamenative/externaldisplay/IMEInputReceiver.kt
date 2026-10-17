@@ -23,6 +23,10 @@ class IMEInputReceiver(
     context: Context,
     private val xServer: XServer,
     private val displayContext: Context = context,
+    private val textHandler: ((String) -> Unit)? = null,
+    private val keyHandler: ((XKeycode) -> Unit)? = null,
+    private val keyEventHandler: ((KeyEvent) -> Boolean)? = null,
+    private val dismissKeys: Set<Int> = setOf(KeyEvent.KEYCODE_BACK),
 ) : FrameLayout(context) {
 
     companion object {
@@ -113,6 +117,7 @@ class IMEInputReceiver(
         private set
     private var connectionGeneration = 0
     private var imeWasVisible = false
+    private var dismissKeyDown: Int? = null
     private val inputMethodManager
         get() = displayContext.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
 
@@ -134,10 +139,13 @@ class IMEInputReceiver(
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
         if (!isKeyboardRequested || !hasFocus()) return null
         val generation = ++connectionGeneration
-        outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT or
-            EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS or EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        // The game's key-only transport requests a Latin keyboard. A text
+        // transport can accept CJK composition, so must not advertise a password
+        // editor (many IMEs force Latin keys for that variation).
+        outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            if (textHandler == null) EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD else EditorInfo.TYPE_TEXT_VARIATION_NORMAL
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
-            EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NONE
+            EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or EditorInfo.IME_ACTION_NONE
 
         // Keep composition local until committed. BaseInputConnection's dummy-editor
         // mode sends composing text as Activity key events, bypassing this bridge.
@@ -147,7 +155,7 @@ class IMEInputReceiver(
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
                 if (!isCurrent()) return false
                 editable?.clear()
-                text?.forEach(::sendCharacterToGame)
+                if (text != null) sendTextToGame(text.toString())
                 return true
             }
 
@@ -158,7 +166,7 @@ class IMEInputReceiver(
                 if (!isCurrent()) return false
                 val text = editable?.toString().orEmpty()
                 editable?.clear()
-                text.forEach(::sendCharacterToGame)
+                sendTextToGame(text)
                 return super.finishComposingText()
             }
 
@@ -180,7 +188,7 @@ class IMEInputReceiver(
             }
 
             override fun sendKeyEvent(event: KeyEvent): Boolean =
-                isCurrent() && xServer.keyboard.onVirtualKeyEvent(event)
+                isCurrent() && (keyEventHandler?.invoke(event) ?: xServer.keyboard.onVirtualKeyEvent(event))
 
             override fun performEditorAction(actionCode: Int): Boolean {
                 if (!isCurrent()) return false
@@ -206,9 +214,18 @@ class IMEInputReceiver(
     }
 
     override fun onKeyPreIme(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && isKeyboardRequested) {
-            if (event.action == KeyEvent.ACTION_UP) hideKeyboard()
-            return true
+        if (keyCode in dismissKeys && isKeyboardRequested) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                dismissKeyDown = keyCode
+                return true
+            }
+            // The Activity can open the keyboard on DOWN. Its matching UP
+            // must not immediately dismiss the newly focused editor.
+            if (event.action == KeyEvent.ACTION_UP && dismissKeyDown == keyCode) {
+                dismissKeyDown = null
+                if (!event.isCanceled) hideKeyboard()
+                return true
+            }
         }
         return super.onKeyPreIme(keyCode, event)
     }
@@ -218,7 +235,14 @@ class IMEInputReceiver(
         super.onDetachedFromWindow()
     }
 
-    private fun sendKey(keyCode: XKeycode) = pressKey(xServer, keyCode)
+    private fun sendKey(keyCode: XKeycode) {
+        keyHandler?.invoke(keyCode) ?: pressKey(xServer, keyCode)
+    }
+
+    private fun sendTextToGame(text: String) {
+        if (text.isEmpty()) return
+        textHandler?.invoke(text) ?: text.forEach(::sendCharacterToGame)
+    }
 
     private data class KeyDispatch(
         val keyCode: Int,
@@ -247,6 +271,7 @@ class IMEInputReceiver(
 
     fun hideKeyboard() {
         isKeyboardRequested = false
+        dismissKeyDown = null
         connectionGeneration++
         imeWasVisible = false
         removeCallbacks(showIme)

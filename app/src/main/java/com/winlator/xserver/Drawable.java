@@ -25,17 +25,17 @@ public class Drawable extends XResource {
     public final Visual visual;
     public final short width;
 
-    private static native void copyArea(short s, short s2, short s3, short s4, short s5, short s6, short s7, short s8, ByteBuffer byteBuffer, ByteBuffer byteBuffer2);
+    private static native void copyArea(short s, short s2, short s3, short s4, short s5, short s6, short s7, short s8, ByteBuffer byteBuffer, ByteBuffer byteBuffer2, boolean needsSwapRB);
 
-    private static native void copyAreaOp(short s, short s2, short s3, short s4, short s5, short s6, short s7, short s8, ByteBuffer byteBuffer, ByteBuffer byteBuffer2, int i);
+    private static native void copyAreaOp(short s, short s2, short s3, short s4, short s5, short s6, short s7, short s8, ByteBuffer byteBuffer, ByteBuffer byteBuffer2, int i, boolean needsSwapRB);
 
     private static native void drawAlphaMaskedBitmap(byte b, byte b2, byte b3, byte b4, byte b5, byte b6, ByteBuffer byteBuffer, ByteBuffer byteBuffer2, ByteBuffer byteBuffer3);
 
     private static native void drawBitmap(short s, short s2, ByteBuffer byteBuffer, ByteBuffer byteBuffer2);
 
-    private static native void drawLine(short s, short s2, short s3, short s4, int i, short s5, short s6, ByteBuffer byteBuffer);
+    private static native void drawLine(short s, short s2, short s3, short s4, int i, short s5, short s6, ByteBuffer byteBuffer, boolean needsSwapRB);
 
-    private static native void fillRect(short s, short s2, short s3, short s4, int i, short s5, ByteBuffer byteBuffer);
+    private static native void fillRect(short s, short s2, short s3, short s4, int i, short s5, ByteBuffer byteBuffer, boolean needsSwapRB);
 
     private static native void fromBitmap(Bitmap bitmap, ByteBuffer byteBuffer);
 
@@ -115,6 +115,10 @@ public class Drawable extends XResource {
         return texture instanceof NativeTexture ? ((NativeTexture)texture).getStride() : width;
     }
 
+    // CPU ASR targets are RGBA; ordinary X11 buffers and GL uploads are BGRA.
+    // Keep this per drawable: the client and a game may have different renderers.
+    private boolean isRgbaStorage() { return texture instanceof AHBImage; }
+
     public Runnable getOnDrawListener() {
         return onDrawListener;
     }
@@ -146,7 +150,7 @@ public class Drawable extends XResource {
                 if ((dstX + width) > this.width) width = (short)((this.width - dstX));
                 if ((dstY + height) > this.height) height = (short)((this.height - dstY));
 
-                copyArea(srcX, srcY, dstX, dstY, width, height, totalWidth, this.getStride(), data, this.data);
+                copyArea(srcX, srcY, dstX, dstY, width, height, totalWidth, this.getStride(), data, this.data, isRgbaStorage());
             }
         }
         this.data.rewind();
@@ -164,7 +168,7 @@ public class Drawable extends XResource {
         if ((x + width) > this.width) width = (short)(this.width - x);
         if ((y + height) > this.height) height = (short)(this.height - y);
 
-        copyArea(x, y, (short)0, (short)0, width, height, this.getStride(), width, this.data, dstData);
+        copyArea(x, y, (short)0, (short)0, width, height, this.getStride(), width, this.data, dstData, isRgbaStorage());
 
         this.data.rewind();
         dstData.rewind();
@@ -183,9 +187,9 @@ public class Drawable extends XResource {
             if ((dstY + height) > this.height) height = (short)(this.height - dstY);
 
             if (gcFunction == GraphicsContext.Function.COPY) {
-                copyArea(srcX, srcY, dstX, dstY, width, height, drawable.getStride(), this.getStride(), drawable.data, this.data);
+                copyArea(srcX, srcY, dstX, dstY, width, height, drawable.getStride(), this.getStride(), drawable.data, this.data, drawable.isRgbaStorage() != isRgbaStorage());
             }
-            else copyAreaOp(srcX, srcY, dstX, dstY, width, height, drawable.getStride(), this.getStride(), drawable.data, this.data, gcFunction.ordinal());
+            else copyAreaOp(srcX, srcY, dstX, dstY, width, height, drawable.getStride(), this.getStride(), drawable.data, this.data, gcFunction.ordinal(), drawable.isRgbaStorage() != isRgbaStorage());
 
             this.data.rewind();
             drawable.data.rewind();
@@ -206,7 +210,7 @@ public class Drawable extends XResource {
         if ((x + width) > this.width) width = (short)((this.width - x));
         if ((y + height) > this.height) height = (short)((this.height - y));
 
-        fillRect((short)x, (short)y, (short)width, (short)height, color, this.getStride(), this.data);
+        fillRect((short)x, (short)y, (short)width, (short)height, color, this.getStride(), this.data, isRgbaStorage());
         this.data.rewind();
         forceUpdate();
     }
@@ -226,7 +230,7 @@ public class Drawable extends XResource {
         x1 = Mathf.clamp(x1, 0, width-lineWidth);
         y1 = Mathf.clamp(y1, 0, height-lineWidth);
 
-        drawLine((short)x0, (short)y0, (short)x1, (short)y1, color, (short)lineWidth, this.getStride(), this.data);
+        drawLine((short)x0, (short)y0, (short)x1, (short)y1, color, (short)lineWidth, this.getStride(), this.data, isRgbaStorage());
 
         this.data.rewind();
         forceUpdate();

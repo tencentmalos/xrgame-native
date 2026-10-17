@@ -6,6 +6,22 @@ import java.util.ArrayList;
 public final class XrGameCommandLine {
     private XrGameCommandLine() {}
 
+    /** Quote one argv value, including trailing backslashes before the closing quote. */
+    public static String quote(String value) {
+        StringBuilder quoted = new StringBuilder("\"");
+        int slashes = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '\\') { slashes++; continue; }
+            int count = c == '"' ? slashes * 2 + 1 : slashes;
+            for (int n = 0; n < count; n++) quoted.append('\\');
+            quoted.append(c);
+            slashes = 0;
+        }
+        for (int n = 0; n < slashes * 2; n++) quoted.append('\\');
+        return quoted.append('"').toString();
+    }
+
     public static String[] split(String command) {
         ArrayList<String> args = new ArrayList<>();
         StringBuilder arg = new StringBuilder();

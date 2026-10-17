@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="steam_mode_choose">Choose how to open Steam</string>
+    <string name="steam_mode_official_description">Official Steam client · Big Picture mode</string>
+    <string name="steam_mode_custom_description">Current GameNative library and settings</string>
+    <string name="steam_mode_open">Open →</string>
+    <string name="steam_mode_switch">Modes</string>
+    <string name="steam_client_keyboard">Keyboard</string>
+    <string name="steam_client_custom">Custom Steam</string>
+    <string name="steam_client_open">Open Steam</string>
+    <string name="steam_client_check">Check session</string>
+    <string name="steam_client_stop">Stop Steam</string>
+    <string name="steam_client_connected">Official Steam session connected</string>
+    <string name="steam_client_unavailable">Official Steam session unavailable (%1$d)</string>
+    <string name="steam_client_notification_channel">Official Steam session</string>
+    <string name="steam_client_notification">Steam stays connected while a game is running</string>
+    <string name="steam_client_preparing">Preparing Steam…</string>
+    <string name="steam_client_downloading">Downloading the official Steam client…</string>
+    <string name="steam_client_download_component">Downloading %1$s</string>
+    <string name="steam_client_opening">Opening Steam in Big Picture mode…</string>
+    <string name="steam_client_running">Official Steam · Big Picture</string>
+    <string name="steam_client_exited">Official Steam exited (%1$d)</string>
+    <string name="steam_client_input_failed">Text was not submitted. Select the text field and try again.</string>
+    <string name="steam_mode_official_short">Official client · Big Picture</string>
+    <string name="steam_mode_custom_short">Unofficial · library &amp; settings</string>
+</resources>

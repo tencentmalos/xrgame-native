@@ -4,8 +4,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- Spec WP1-3: games install to /sdcard/XRGameNative so they survive uninstall and
+    <!-- Games install to /sdcard/SteamPSP (existing XRGameNative libraries are reused) so they survive uninstall and
          re-signing. Internal distribution only (spec §9-2), so All files access is acceptable.
          Requested at runtime by app.gamenative.xrgame.XrGameStorage. -->
     <uses-permission
@@ -30,6 +31,25 @@
         <intent><action android:name="org.khronos.openxr.OpenXRApiLayerService" /></intent>
     </queries>
     <application>
+        <activity android:name="app.gamenative.xrgame.LaunchActivity" android:exported="false"
+            android:launchMode="singleTop" android:screenOrientation="landscape" />
+        <!-- Keep both icon component identities so installed shortcuts/icon switching survive. -->
+        <activity-alias android:name="app.gamenative.MainActivityAliasDefault"
+            android:targetActivity="app.gamenative.xrgame.LaunchActivity" tools:replace="android:targetActivity" />
+        <activity-alias android:name="app.gamenative.MainActivityAliasAlt"
+            android:targetActivity="app.gamenative.xrgame.LaunchActivity" tools:replace="android:targetActivity" />
+        <activity android:name="app.gamenative.xrgame.steam.LinuxSteamActivity" android:exported="false"
+            android:screenOrientation="landscape" android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <activity android:name="app.gamenative.xrgame.steam.OfficialSteamGameActivity" android:exported="false"
+            android:launchMode="singleTop" android:screenOrientation="landscape"
+            android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.Pluvia"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <service android:name="app.gamenative.xrgame.steam.LinuxSteamService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Official desktop Steam session and authentication for Windows games in the foreground" />
+        </service>
         <activity android:name="app.gamenative.ui.screen.xr.sbs.SbsVrActivity"
             android:exported="false" android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation|uiMode|colorMode"

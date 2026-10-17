@@ -29,6 +29,7 @@ public class XServer {
     public final SparseArray<Extension> extensions = new SparseArray<>();
     public final ScreenInfo screenInfo;
     public final PixmapManager pixmapManager;
+    public final ColormapManager colormapManager;
     public final ResourceIDs resourceIDs = new ResourceIDs(128);
     public final GraphicsContextManager graphicsContextManager = new GraphicsContextManager();
     public final SelectionManager selectionManager;
@@ -51,19 +52,32 @@ public class XServer {
     private final boolean runningFromGlibc;
     private volatile boolean flatPresentationEnabled = true;
 
+    /** Optional bounded protocol diagnostics. Never includes request payloads. */
+    public interface RequestObserver {
+        void onRequest(int client, int sequence, int opcode, int data, int bytes, boolean complete);
+    }
+    public volatile RequestObserver requestObserver;
+
     public XServer(ScreenInfo screenInfo, boolean useGlibcContainer) {
         this(screenInfo, useGlibcContainer, false);
     }
 
     public XServer(ScreenInfo screenInfo, boolean useGlibcContainer, boolean mouseDragCompatibilityEnabled) {
+        this(screenInfo, useGlibcContainer, mouseDragCompatibilityEnabled, 32);
+    }
+
+    /** The nested desktop client needs depth 24; legacy game servers retain depth 32. */
+    public XServer(ScreenInfo screenInfo, boolean useGlibcContainer, boolean mouseDragCompatibilityEnabled, int rootDepth) {
         Log.d("XServer", "Creating xServer " + screenInfo);
         this.screenInfo = screenInfo;
         for (Lockable lockable : Lockable.values()) locks.put(lockable, new ReentrantLock());
 
-        pixmapManager = new PixmapManager();
+        pixmapManager = new PixmapManager(rootDepth);
+        colormapManager = new ColormapManager(pixmapManager.visual);
         drawableManager = new DrawableManager(this);
         cursorManager = new CursorManager(drawableManager);
         windowManager = new WindowManager(screenInfo, drawableManager);
+        windowManager.rootWindow.attributes.setColormapId(colormapManager.defaultColormap.id);
         selectionManager = new SelectionManager(windowManager);
         inputDeviceManager = new InputDeviceManager(this);
         grabManager = new GrabManager(this);

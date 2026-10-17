@@ -249,7 +249,7 @@ private fun needsDeferLaunch(context: Context, appId: String): Boolean {
     val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
     return when (gameSource) {
         GameSource.STEAM -> {
-            if (SteamService.isLoggedIn) return false
+            if (app.gamenative.xrgame.XrGameOfficialSteam.active || SteamService.isLoggedIn) return false
             // isLoggedIn is network-gated (requires LoggedOnCallback). allow offline launch when
             // saved creds + local container exist — Steam can reconnect in background.
             !(SteamUtils.hasStoredCredentials() && ContainerUtils.hasContainer(context, appId))
@@ -457,6 +457,7 @@ fun PluviaMain(
                 val gameSource = ContainerUtils.extractGameSourceFromContainerId(resolvedAppId)
                 val isOffline = when {
                     gameSource != GameSource.STEAM -> false
+                    app.gamenative.xrgame.XrGameOfficialSteam.active -> false
                     SteamService.isLoggedIn -> false
                     !NetworkMonitor.hasInternet.value -> true
                     else -> {
@@ -485,6 +486,7 @@ fun PluviaMain(
 
     // process pending launch request from cold start (event bus has no replay)
     LaunchedEffect(Unit) {
+        if (MainActivity.current?.get() !== context) return@LaunchedEffect
         MainActivity.consumePendingLaunchRequest()?.let { launchRequest ->
             Timber.i("[PluviaMain]: Processing pending launch request for app ${launchRequest.appId}")
             // defer if service isn't ready yet — will be processed on ServiceReady/OnLogonEnded
@@ -537,7 +539,7 @@ fun PluviaMain(
 
     // shared handler for deferred intent launches (Steam login, GOG/Epic/Amazon service startup)
     val processPendingLaunch: (String) -> Unit = { reason ->
-        MainActivity.consumePendingLaunchRequest()?.let { launchRequest ->
+        (if (MainActivity.current?.get() === context) MainActivity.consumePendingLaunchRequest() else null)?.let { launchRequest ->
             Timber.tag("IntentLaunch")
                 .i("Processing pending launch for ${launchRequest.appId} ($reason)")
             when (val resolution = resolveGameAppId(context, launchRequest.appId)) {
@@ -560,7 +562,7 @@ fun PluviaMain(
                         )
                     }
                     val homeRoute = PluviaScreen.Home.route + "?offline={offline}"
-                    if (navController.currentDestination?.route != homeRoute) {
+                    if ((context as? MainActivity)?.hostsOfficialSteam != true && navController.currentDestination?.route != homeRoute) {
                         navController.navigate(PluviaScreen.Home.route + "?offline=false") {
                             popUpTo(navController.graph.startDestinationId) { saveState = false }
                         }
@@ -580,6 +582,9 @@ fun PluviaMain(
                 }
 
                 is MainViewModel.MainUiEvent.ExternalGameLaunch -> {
+                    // A background Custom Activity can still have an event-bus listener.
+                    // Only the Activity receiving the intent may consume its launch.
+                    if (MainActivity.current?.get() !== context) return@collect
                     Timber.i("[PluviaMain]: Received ExternalGameLaunch UI event for app ${event.appId}")
 
                     // defer if service isn't ready yet
@@ -830,7 +835,7 @@ fun PluviaMain(
     LaunchedEffect(Unit) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             // Only attempt reconnection if not already connected/connecting and not in offline mode
-            val shouldAttemptReconnect = !state.isSteamConnected &&
+            val shouldAttemptReconnect = !app.gamenative.xrgame.XrGameOfficialSteam.active && !state.isSteamConnected &&
                 !isConnecting &&
                 !SteamService.keepAlive
 
@@ -1641,7 +1646,7 @@ fun PluviaMain(
             }
 
             // Connection status banner (overlay) - dismissible so users can access navigation
-            if (state.currentScreen != PluviaScreen.LoginUser && !connectionBannerDismissed && initialConnectDone && !state.isSteamConnected &&
+            if (!app.gamenative.xrgame.XrGameOfficialSteam.active && state.currentScreen != PluviaScreen.LoginUser && !connectionBannerDismissed && initialConnectDone && !state.isSteamConnected &&
                 SteamUtils.hasStoredCredentials()) {
                 Box(modifier = Modifier.zIndex(5f)) {
                     ConnectionStatusBanner(
@@ -1664,6 +1669,7 @@ fun PluviaMain(
 
             val startDestination = rememberSaveable {
                 when {
+                    (context as? MainActivity)?.hostsOfficialSteam == true -> "official_game_launch"
                     SteamService.isLoggedIn -> PluviaScreen.Home.route + "?offline=false"
                     // skip login screen if any service has stored credentials
                     SteamUtils.hasStoredCredentials() ||
@@ -1679,6 +1685,20 @@ fun PluviaMain(
                 navController = navController,
                 startDestination = startDestination,
             ) {
+                composable(route = "official_game_launch") {
+                    // Official's host has no Custom library/login UI beneath its launch dialogs.
+                    Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color(0xFF0B1420)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                        }
+                    }
+                    BackHandler(enabled = !state.loadingDialogVisible && PluviaApp.xEnvironment == null) {
+                        app.gamenative.xrgame.XrGameOfficialSteam.gameAppId?.let {
+                            app.gamenative.xrgame.XrGameOfficialSteam.finishGame(it)
+                        }
+                        (context as? Activity)?.finish()
+                    }
+                }
                 /** Login **/
                 composable(route = PluviaScreen.LoginUser.route) {
                     UserLoginScreen(
@@ -1871,6 +1891,13 @@ fun PluviaMain(
                     }
                     if (!hasContainer) {
                         LaunchedEffect(launchedAppId) {
+                            if ((context as? MainActivity)?.hostsOfficialSteam == true) {
+                                app.gamenative.xrgame.XrGameOfficialSteam.gameAppId?.let {
+                                    app.gamenative.xrgame.XrGameOfficialSteam.finishGame(it)
+                                }
+                                (context as Activity).finish()
+                                return@LaunchedEffect
+                            }
                             Timber.w("XServer route entered without a container for '$launchedAppId', returning home")
                             navController.navigate(PluviaScreen.Home.route + "?offline=$xServerIsOffline") {
                                 popUpTo(PluviaScreen.XServer.route) { inclusive = true }
@@ -1990,6 +2017,14 @@ fun preLaunchApp(
     CoroutineScope(Dispatchers.IO).launch {
         val xrLaunchProfile = app.gamenative.xrgame.XrGameProfiler.region("launch.preparation")
         try {
+        if (ContainerUtils.extractGameSourceFromContainerId(appId) == GameSource.STEAM) {
+            try { app.gamenative.xrgame.XrGameOfficialSteam.requireLaunchOwner(gameId) }
+            catch (e: IllegalStateException) {
+                setLoadingDialogVisible(false)
+                SnackbarManager.show(e.message.orEmpty())
+                return@launch
+            }
+        }
         if (LaunchReadiness.pending) {
             setLoadingDialogVisible(false)
             (context as? Activity)?.let { LaunchReadiness.resolve(it) }
@@ -2345,7 +2380,7 @@ fun preLaunchApp(
         // Skip the prompt for apps we don't recognise — non-Steam shortcuts on the remote
         // device report synthetic IDs that aren't kickable.
         val isSteamGame = gameSource == GameSource.STEAM
-        if (isSteamGame) {
+        if (isSteamGame && !app.gamenative.xrgame.XrGameOfficialSteam.active) {
             try {
                 val currentPlaying = SteamService.getSelfCurrentlyPlayingAppId()
                 if (!isOffline && currentPlaying != null && currentPlaying != gameId) {
@@ -2366,6 +2401,14 @@ fun preLaunchApp(
                     }
                 }
             } catch (_: Exception) { /* ignore persona read errors */ }
+        }
+
+        // Official Steam owns launch intent, Workshop, Cloud, achievements and game lifetime.
+        // This Activity is only its Android Wine/FEX/display host.
+        if (isSteamGame && app.gamenative.xrgame.XrGameOfficialSteam.active) {
+            setLoadingDialogVisible(false)
+            onSuccess(context, appId)
+            return@launch
         }
 
         // For Custom Games, bypass Steam Cloud operations entirely and proceed to launch

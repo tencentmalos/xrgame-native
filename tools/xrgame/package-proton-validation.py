@@ -24,6 +24,15 @@ import tempfile
 
 VERSION = 'proton-11.0-2-arm64ec'
 RELEASES = {
+    'linux-steam1': {
+        'base': VERSION + '-xrg3.wcp',
+        'base_sha256': '9f3382ec66f86bfa8ba7ef2b96929b916b1b2d6d4c21bd96df90965e10f66dbc',
+        'member': 'lib/wine/aarch64-unix/lsteamclient.so',
+        'patch': 'wine-linux-steam-client.patch',
+        'source_file': 'lsteamclient/unixlib.cpp',
+        'marker': b'XRGAME_STEAMCLIENT_LIBRARY',
+        'validation': 'Private official Linux Steam candidate; source-built lsteamclient only, not a full Wine rebuild. See docs/validation/linux-steam-20261016.md.',
+    },
     'xrg6': {
         'base': VERSION + '-xrg5.wcp',
         'base_sha256': '1adaf5bf6653e138ee7a40c8e50162db01e84f7aafef8dadccf272fd583dc315',
@@ -82,6 +91,12 @@ def main():
                        cwd=args.source, check=True)
         if args.library.stat().st_mtime < (args.source / release['source_file']).stat().st_mtime:
             raise SystemExit(Path(MEMBER).name + ' is older than ' + release['source_file'])
+    if args.release == 'linux-steam1':
+        built = json.loads((args.library.parent / 'wine-client-build.json').read_text())
+        if (built['wine_bundle_sha256'] != BASE_SHA256 or built['sha256'] != sha(args.library.read_bytes())
+                or built['patch_sha256'] != sha(text_bytes(here / 'patches' / PATCH))
+                or built['wine_pin'] != '5d0d333e7beef02fbb455cc3163b4e8e25615458'):
+            raise SystemExit('Official Steam adapter does not match its recorded inputs')
     with tempfile.TemporaryDirectory() as temporary:
         # Strip like package-components.py does for every ELF in the component.
         library = Path(temporary) / Path(MEMBER).name
@@ -110,6 +125,8 @@ def main():
     inventory['files'][MEMBER] = entry
     for name in ('patches/' + PATCH, 'build-wine.sh', Path(__file__).name):
         inventory['recipes']['tools/xrgame/' + name] = sha(text_bytes(here / name))
+    if args.release == 'linux-steam1':
+        inventory['recipes']['tools/xrgame/linux-steam/build-wine-client.py'] = sha(text_bytes(here / 'linux-steam/build-wine-client.py'))
     inventory['derivedFrom'] = {'file': BASE, 'patch': 'tools/xrgame/patches/' + PATCH, 'rebuilt': [MEMBER],
                                 'sha256': BASE_SHA256}
     inventory['validation'] = release['validation']

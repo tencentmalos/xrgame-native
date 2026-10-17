@@ -701,6 +701,15 @@ class MainViewModel @Inject constructor(
                 ActiveGameRegistry.clearIfMatches(gameId)
                 SteamService.notifyRunningProcesses()
                 handleExitCloudSync(context, appId, gameId)
+                if (app.gamenative.xrgame.XrGameOfficialSteam.active) {
+                    // Return to the manager that launched this game; no Custom feedback,
+                    // cloud UI or background connection should take over the official session.
+                    SteamService.keepAlive = false
+                    context.startActivity(android.content.Intent().setClassName(context,
+                        "app.gamenative.xrgame.steam.LinuxSteamActivity")
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                    return@launch
+                }
 
                 // Prompt user to save temporary container configuration if one was applied
                 if (hadTemporaryOverride) {
@@ -973,7 +982,7 @@ class MainViewModel @Inject constructor(
                             false
                         }
 
-                        if (!shouldLaunchRealSteam) {
+                        if (!shouldLaunchRealSteam || app.gamenative.xrgame.XrGameOfficialSteam.isOfficialGame(gameId)) {
                             ActiveGameRegistry.set(it)
                             SteamService.notifyRunningProcesses(it)
                         } else {
