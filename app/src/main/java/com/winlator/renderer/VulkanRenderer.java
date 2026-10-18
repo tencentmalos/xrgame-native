@@ -387,8 +387,48 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                 }
             }
             initComplete = true;
-            xServerView.queueEvent(this::updateScene);
+            xServerView.queueEvent(() -> {
+                updateScene();
+                replayPresentedFrames();
+            });
         });
+    }
+
+    /** False while a new view's renderer starts; its frames are replayed once it is up. */
+    public boolean hasNativeRenderer() {
+        synchronized (lock) { return nativeHandle != 0; }
+    }
+
+    /** A new native renderer holds no hardware frames yet; an idle client sends none. */
+    private void replayPresentedFrames() {
+        if (xServer.getRenderer() == this && nativeHandle != 0
+                && xServer.extensions.get(com.winlator.xserver.extensions.PresentExtension.MAJOR_OPCODE)
+                    instanceof com.winlator.xserver.extensions.PresentExtension present)
+            present.replayShownFrames(xServer, this);
+    }
+
+    /**
+     * Frees the native renderer for good. The view's owner calls this when the X server
+     * outlives the view (surface detach alone keeps the device and its window images).
+     */
+    public void release() {
+        initComplete = false;
+        if (initExecutor != null) {
+            initExecutor.shutdownNow();
+            try { initExecutor.awaitTermination(3, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            initExecutor = null;
+        }
+        retireAllHardwarePixmaps();
+        synchronized (lock) {
+            if (nativeHandle != 0) {
+                if (nativeMode) nativeDestroyScanout(nativeHandle);
+                nativeDestroy(nativeHandle);
+                nativeHandle = 0;
+                xrTargetAhbPtr = 0;
+            }
+        }
+        if (nativeMode) xServerView.post(this::releaseScanoutSurfaces);
     }
 
     public void onSurfaceChanged(int width, int height) {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Full screen from the first frame (including the starting window), so pages that hide the
+         system bars do not first lay out around a status bar and then grow. -->
+    <style name="Theme.SteamPSP.Fullscreen" parent="@style/Theme.Pluvia">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@color/steampsp_launch_background</item>
+    </style>
+    <color name="steampsp_launch_background">#FF08111D</color>
+</resources>

@@ -13,13 +13,39 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 import java.io.File
 
-/** A private app-ID-only handoff; the official client never spawns a second Wine prefix. */
+/**
+ * A private handoff of Steam's game launch: the app ID and the command Steam issued, inside the
+ * game's install folder. The official client never spawns a second Wine prefix.
+ */
 class SteamGameHandoff(private val context: Context) {
-    data class Request(val appId: Int, val file: File, @Volatile var dispatched: Boolean = false, var started: Boolean = false)
+    data class Request(val appId: Int, val file: File, val command: XrGameOfficialSteam.Command? = null,
+                       @Volatile var dispatched: Boolean = false, var started: Boolean = false)
     companion object {
         private const val TOOL_ID = "steampsp-proton-arm64"
+        /** game-launch.py MAX_REQUEST; larger requests carry no command there. */
+        const val MAX_REQUEST = 16384
+        private const val MAX_ARGUMENTS = 64
         val pending = MutableStateFlow<Request?>(null)
         val error = MutableStateFlow<String?>(null)
+
+        /** The request's app ID and command; an unusable command is dropped, never the launch. */
+        fun parse(text: String): Pair<Int, XrGameOfficialSteam.Command?>? {
+            val body = runCatching { JSONObject(text) }.getOrNull() ?: return null
+            val id = body.optLong("appId", 0).takeIf { it in 1 until 0x80000000 }?.toInt() ?: return null
+            return id to body.optJSONObject("command")?.let(::command)
+        }
+
+        private fun command(value: JSONObject): XrGameOfficialSteam.Command? {
+            fun relative(path: String) = path.length <= 1024 && !path.startsWith('/') && ':' !in path &&
+                '\\' !in path && path.none { it.isISOControl() } && path.split('/').none { it == ".." }
+            val executable = value.optString("executable")
+            val work = value.optString("workingDirectory")
+            val list = value.optJSONArray("arguments") ?: return null
+            if (executable.isBlank() || !relative(executable) || !relative(work) || list.length() > MAX_ARGUMENTS) return null
+            val arguments = (0 until list.length()).map { list.opt(it) as? String ?: return null }
+            if (arguments.any { argument -> argument.any { it.isISOControl() } }) return null
+            return XrGameOfficialSteam.Command(executable, app.gamenative.xrgame.XrGameCommandLine.join(arguments), work)
+        }
     }
     private val runtime = LinuxSteamRuntime(context)
     private val directory = File(runtime.directory, "game-bridge")
@@ -80,11 +106,10 @@ class SteamGameHandoff(private val context: Context) {
             return
         }
         val file = directory.listFiles().orEmpty().filter {
-            it.name.matches(Regex("[0-9a-f]{32}\\.request")) && it.length() in 1..1024 && now - it.lastModified() in 0..10000
+            it.name.matches(Regex("[0-9a-f]{32}\\.request")) && it.length() in 1..MAX_REQUEST.toLong() && now - it.lastModified() in 0..10000
         }.minByOrNull { it.lastModified() } ?: return
-        val id = runCatching { JSONObject(file.readText()).getInt("appId") }.getOrNull()?.takeIf { it > 0 }
-        if (id == null) { file.delete(); return }
-        val request = Request(id, file)
+        val (id, command) = runCatching { parse(file.readText()) }.getOrNull() ?: run { file.delete(); return }
+        val request = Request(id, file, command)
         val account = SteamUtils.getSteamId64()
         if (ActiveGameRegistry.get() != null || PluviaApp.xServerView != null ||
             LinuxSteamLibrary.install(context, id)?.complete != true || account == null ||
@@ -92,7 +117,7 @@ class SteamGameHandoff(private val context: Context) {
             error.value = "Official game launch is not ready. Check the Steam login, installed game and shared save container."
             reply(request, "failed"); file.delete(); return
         }
-        XrGameOfficialSteam.authorizeGame(id)
+        XrGameOfficialSteam.authorizeGame(id, command)
         active = request
         pending.value = request
     }

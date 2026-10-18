@@ -54,10 +54,31 @@ class HandoffTest(unittest.TestCase):
             self.assertEqual(1, module.launch(directory, 42, timeout=0))
             self.assertEqual([], list(Path(directory).iterdir()))
 
-    def test_waits_for_session_exit_and_only_sends_id_and_pid(self):
+    def test_steam_command_stays_inside_the_game(self):
+        with tempfile.TemporaryDirectory() as directory:
+            game = Path(directory) / 'common/Hades II'
+            (game / 'Ship').mkdir(parents=True)
+            env = {'STEAM_COMPAT_INSTALL_PATH': str(game)}
+            exe = str(game / 'Ship/Hades2.exe')
+            self.assertEqual({'executable': 'Ship/Hades2.exe', 'arguments': ['/c', '../', 'a b'], 'workingDirectory': 'Ship'},
+                             module.steam_command(['waitforexitandrun', exe, '/c', '../', 'a b'], env, str(game / 'Ship')))
+            # A working directory outside the game is left to Android.
+            self.assertEqual('', module.steam_command(['run', exe], env, directory)['workingDirectory'])
+            for outside in (str(Path(directory) / 'other.exe'), str(game / '../escape.exe'), str(game)):
+                self.assertIsNone(module.steam_command(['run', outside], env, str(game)))
+            self.assertIsNone(module.steam_command(['run', exe], {}, str(game)))
+            self.assertIsNone(module.steam_command(['run', exe] + ['x'] * 65, env, str(game)))
+            self.assertIsNone(module.steam_command(['run', exe, 'a\x00b'], env, str(game)))
+
+    def test_oversized_command_falls_back_to_the_id(self):
+        body = json.loads(module.request_body(42, {'executable': 'a.exe', 'arguments': ['x' * 20000], 'workingDirectory': ''}))
+        self.assertEqual({'appId', 'pid'}, set(body))
+
+    def test_waits_for_session_exit_and_sends_the_steam_command(self):
+        command = {'executable': 'Ship/Hades2.exe', 'arguments': ['/c', '../'], 'workingDirectory': 'Ship'}
         with tempfile.TemporaryDirectory() as directory:
             result = []
-            worker = threading.Thread(target=lambda: result.append(module.launch(directory, 42, timeout=3)))
+            worker = threading.Thread(target=lambda: result.append(module.launch(directory, 42, timeout=3, command=command)))
             worker.start()
             try:
                 deadline = time.monotonic() + 3
@@ -66,7 +87,9 @@ class HandoffTest(unittest.TestCase):
                     requests = list(Path(directory).glob("*.request")); time.sleep(.01)
                 self.assertEqual(1, len(requests))
                 request = requests[0]
-                self.assertEqual({"appId", "pid"}, set(json.loads(request.read_text())))
+                body = json.loads(request.read_text())
+                self.assertEqual({"appId", "pid", "command"}, set(body))
+                self.assertEqual(command, body["command"])
                 response = request.with_suffix(".result")
                 response.write_text('{"state":"running"}')
                 time.sleep(.6)

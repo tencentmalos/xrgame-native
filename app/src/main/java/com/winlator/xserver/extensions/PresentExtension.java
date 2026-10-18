@@ -48,6 +48,31 @@ public class PresentExtension implements Extension {
     private final java.util.concurrent.atomic.AtomicLong asyncCompleted = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong asyncSkipped = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong asyncFailed = new java.util.concurrent.atomic.AtomicLong();
+    // The frame each window last showed through a hardware copy. A renderer that replaces the
+    // previous one (a recreated activity on a long-lived X server) starts without them, and an
+    // idle client presents nothing new. Guarded by itself; windows drop out once collected.
+    private final java.util.WeakHashMap<Window, Pixmap> shownFrames = new java.util.WeakHashMap<>();
+
+    /** Copies the frame each mapped window last presented into a renderer that has none of them. */
+    public void replayShownFrames(XServer xServer, VulkanRenderer renderer) {
+        if (!app.gamenative.BuildConfig.XRGAME || !xServer.isFlatPresentationEnabled()) return;
+        try (XLock lock = xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.PIXMAP_MANAGER)) {
+            java.util.ArrayList<java.util.Map.Entry<Window, Pixmap>> frames;
+            synchronized (shownFrames) { frames = new java.util.ArrayList<>(shownFrames.entrySet()); }
+            for (java.util.Map.Entry<Window, Pixmap> frame : frames) {
+                Window window = frame.getKey();
+                Pixmap pixmap = frame.getValue();
+                if (xServer.windowManager.getWindow(window.id) != window || !window.attributes.isMapped()
+                        || xServer.pixmapManager.getPixmap(pixmap.id) != pixmap
+                        || !(pixmap.drawable.getTexture() instanceof GPUImage image)) continue;
+                // Present copies under the same lock, so the newest frame wins either way.
+                synchronized (window.getContent().renderLock) {
+                    synchronized (shownFrames) { if (shownFrames.get(window) != pixmap) continue; }
+                    renderer.copyHardwarePixmap(window, image, 0);
+                }
+            }
+        }
+    }
 
     public void setAsyncCopy(boolean enabled) {
         synchronized (copyModeLock) {
@@ -317,6 +342,15 @@ public class PresentExtension implements Extension {
         Bitmask mask;
     }
 
+    /** Event ids are client resources; the id range returns to the pool on disconnect. */
+    public void onClientDisconnected(XClient client) {
+        synchronized (events) {
+            for (int i = events.size() - 1; i >= 0; i--) {
+                if (events.valueAt(i).client == client) events.removeAt(i);
+            }
+        }
+    }
+
     @Override
     public String getName() { return "Present"; }
 
@@ -436,6 +470,15 @@ public class PresentExtension implements Extension {
             if (app.gamenative.BuildConfig.XRGAME && pixmap.drawable.getTexture() instanceof GPUImage && vr != null) {
                 // Release the guest image only after the host GPU has finished reading it.
                 XrGamePresentTrace.Frame trace = presentTrace.begin(windowId, pixmapId, serial, waitFence, idleFence);
+                if (!vr.hasNativeRenderer()) {
+                    // A new view's renderer is still starting: it shows this frame once it is up.
+                    synchronized (shownFrames) { shownFrames.put(window, pixmap); }
+                    long skippedUst = System.nanoTime() / 1000;
+                    sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.SKIP, skippedUst, skippedUst / 16667);
+                    if (trace != null) trace.event("complete", " mode=pending_renderer");
+                    sendIdleNotify(window, pixmap, serial, idleFence, trace);
+                    return;
+                }
                 final boolean queuedCopy;
                 final boolean pipelineCopy;
                 synchronized (copyModeLock) {
@@ -486,6 +529,7 @@ public class PresentExtension implements Extension {
                         if (trace != null) trace.event("copy_rejected", " mode=async");
                         throw new com.winlator.xserver.errors.BadAlloc();
                     }
+                    synchronized (shownFrames) { shownFrames.put(window, pixmap); }
                     if (trace != null) trace.event("enqueue_return", " mode=async");
                     return;
                 }
@@ -509,6 +553,7 @@ public class PresentExtension implements Extension {
                     if (trace != null) trace.event("copy_failed", "");
                     throw new com.winlator.xserver.errors.BadAlloc();
                 }
+                synchronized (shownFrames) { shownFrames.put(window, pixmap); }
                 long completedUst = System.nanoTime() / 1000;
                 sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.COPY, completedUst, completedUst / 16667);
                 if (trace != null) trace.event("complete", " mode=copy");
@@ -561,6 +606,11 @@ public class PresentExtension implements Extension {
 
         synchronized (events) {
             Event event = events.get(eventId);
+            // A selection whose window was destroyed is gone; its client may reuse the id.
+            if (event != null && client.xServer.windowManager.getWindow(event.window.id) != event.window) {
+                events.remove(eventId);
+                event = null;
+            }
             if (event != null) {
                 if (event.window != window || event.client != client) throw new BadMatch();
                 if (!mask.isEmpty()) event.mask = mask;

@@ -1,0 +1,52 @@
+diff --git a/src/gallium/frontends/dri/kopper.c b/src/gallium/frontends/dri/kopper.c
+index c565d77..8f74521 100644
+--- a/src/gallium/frontends/dri/kopper.c
++++ b/src/gallium/frontends/dri/kopper.c
+@@ -168,6 +168,20 @@ kopper_get_pixmap_buffer(struct dri_drawable *drawable,
+ }
+ #endif //VK_USE_PLATFORM_XCB_KHR
+ 
++#ifdef VK_USE_PLATFORM_XCB_KHR
++/* An X server without DRI3 (Xephyr, for example) cannot share a pixmap's storage, and
++ * xcb closes the connection when a client sends it a DRI3 request. Such pixmaps get an
++ * ordinary texture that update_tex_buffer refills with GetImage, as drisw does. */
++static bool
++kopper_pixmap_shares_storage(struct dri_drawable *drawable)
++{
++   VkXcbSurfaceCreateInfoKHR *xcb = (VkXcbSurfaceCreateInfoKHR *)&drawable->info.bos;
++   const xcb_query_extension_reply_t *dri3 =
++      xcb_get_extension_data(xcb->connection, &xcb_dri3_id);
++   return dri3 && dri3->present;
++}
++#endif
++
+ static void
+ kopper_allocate_textures(struct dri_context *ctx,
+                          struct dri_drawable *drawable,
+@@ -321,7 +335,8 @@ XXX do this once swapinterval is hooked up
+             drawable->window_valid = !!drawable->textures[statts[i]];
+          }
+ #ifdef VK_USE_PLATFORM_XCB_KHR
+-         else if (is_pixmap && statts[i] == ST_ATTACHMENT_FRONT_LEFT && !screen->is_sw) {
++         else if (is_pixmap && statts[i] == ST_ATTACHMENT_FRONT_LEFT && !screen->is_sw &&
++                  kopper_pixmap_shares_storage(drawable)) {
+             drawable->textures[statts[i]] = kopper_get_pixmap_buffer(drawable, format);
+             if (drawable->textures[statts[i]])
+                dri_image_fence_sync(ctx, drawable->image);
+@@ -451,8 +466,15 @@ kopper_update_tex_buffer(struct dri_drawable *drawable,
+                          struct pipe_resource *res)
+ {
+    struct dri_screen *screen = drawable->screen;
+-   if (screen->has_dmabuf || drawable->is_window || drawable->info.bos.sType != VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR)
++   if (drawable->is_window || drawable->info.bos.sType != VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR)
+       return;
++#ifdef VK_USE_PLATFORM_XCB_KHR
++   if (screen->has_dmabuf && kopper_pixmap_shares_storage(drawable))
++      return;
++#else
++   if (screen->has_dmabuf)
++      return;
++#endif
+    drisw_update_tex_buffer(drawable, ctx, res);
+ }
+ 

@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 
 def stage(catalog, packages, output):
     manifest = json.loads(catalog.read_text())
+    # ManifestData declares both fields without defaults: a catalog lacking them fails every launch.
+    assert isinstance(manifest.get('version'), int) and isinstance(manifest.get('updatedAt'), str), \
+        'Catalog needs version and updatedAt'
     inspect_archive = runpy.run_path(str(Path(__file__).with_name('verify-runtime-packages.py')))['inspect']
     root = Path(__file__).resolve().parents[2]
     versions = dict(re.findall(r'String (\w+) = "([^"]+)"',

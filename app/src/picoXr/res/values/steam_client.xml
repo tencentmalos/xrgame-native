@@ -19,8 +19,13 @@
     <string name="steam_client_download_component">Downloading %1$s</string>
     <string name="steam_client_opening">Opening Steam in Big Picture mode…</string>
     <string name="steam_client_running">Official Steam · Big Picture</string>
+    <string name="steam_client_starting">Loading Big Picture…</string>
+    <string name="steam_client_launch_hint">A first start or a client update takes a little longer</string>
     <string name="steam_client_exited">Official Steam exited (%1$d)</string>
     <string name="steam_client_input_failed">Text was not submitted. Select the text field and try again.</string>
     <string name="steam_mode_official_short">Official client · Big Picture</string>
     <string name="steam_mode_custom_short">Unofficial · library &amp; settings</string>
+    <string name="steam_mode_steam_title" translatable="false">Steam</string>
+    <string name="steam_mode_other_title">Other</string>
+    <string name="steam_mode_other_short">GOG, Epic, Amazon, local apps · Steam compatibility library</string>
 </resources>

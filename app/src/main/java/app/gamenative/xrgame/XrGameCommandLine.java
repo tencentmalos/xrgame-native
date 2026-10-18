@@ -22,6 +22,24 @@ public final class XrGameCommandLine {
         return quoted.append('"').toString();
     }
 
+    /**
+     * Join argv into one Windows command line. Like Python's list2cmdline, only values that
+     * need it are quoted, since some games parse their own command line.
+     */
+    public static String join(java.util.List<String> arguments) {
+        StringBuilder line = new StringBuilder();
+        for (String value : arguments) {
+            if (line.length() > 0) line.append(' ');
+            boolean plain = !value.isEmpty();
+            for (int i = 0; plain && i < value.length(); i++) {
+                char c = value.charAt(i);
+                plain = c != ' ' && c != '\t' && c != '"';
+            }
+            line.append(plain ? value : quote(value));
+        }
+        return line.toString();
+    }
+
     public static String[] split(String command) {
         ArrayList<String> args = new ArrayList<>();
         StringBuilder arg = new StringBuilder();

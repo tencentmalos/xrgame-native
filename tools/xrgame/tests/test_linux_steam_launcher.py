@@ -66,5 +66,40 @@ class ClientDisplayLifecycleTest(unittest.TestCase):
         display.wait.assert_called_once()
 
 
+class GpuDrawingTest(unittest.TestCase):
+    def start(self, available):
+        display = Mock()
+        display.poll.return_value = None
+        client = Mock(returncode=0)
+        client.poll.return_value = 0
+        with patch.object(launcher.sys, 'argv', ['launch-client.py', '/steam']), \
+             patch.object(launcher.signal, 'signal'), \
+             patch.object(launcher, 'gpu_available', return_value=available), \
+             patch.object(launcher.subprocess, 'Popen', side_effect=[display, client]) as start, \
+             patch.object(launcher.subprocess, 'run', return_value=Mock(returncode=0)), \
+             patch.dict(launcher.os.environ, {'LD_LIBRARY_PATH': '/valve', 'XRGAME_STEAM_GPU': '1'}):
+            self.assertEqual(0, launcher.main())
+        return start.call_args_list[0].kwargs['env'], start.call_args_list[1].kwargs['env']
+
+    def test_only_the_client_presents_to_the_android_server(self):
+        xephyr, client = self.start(available=True)
+        self.assertEqual(':1', client['DISPLAY'])
+        self.assertEqual(':0', client['XRGAME_X11_HOST_DISPLAY'])
+        self.assertEqual(launcher.GPU_ICD, client['VK_ICD_FILENAMES'])
+        self.assertEqual('steampsp', client['XRGAME_WEBHELPER_GL_VENDOR'])
+        self.assertEqual('/opt/steampsp-gpu/lib:/valve', client['LD_LIBRARY_PATH'])
+        # VGUI keeps llvmpipe GLX inside Xephyr; Xephyr itself gets no GPU settings.
+        self.assertEqual('llvmpipe', client['GALLIUM_DRIVER'])
+        for name in ('XRGAME_X11_HOST_DISPLAY', 'VK_ICD_FILENAMES', 'XRGAME_STEAM_GPU', 'XRGAME_WEBHELPER_GL_VENDOR'):
+            self.assertNotIn(name, xephyr)
+
+    def test_missing_component_keeps_software_drawing(self):
+        _, client = self.start(available=False)
+        self.assertNotIn('XRGAME_X11_HOST_DISPLAY', client)
+        self.assertNotIn('VK_ICD_FILENAMES', client)
+        self.assertNotIn('XRGAME_WEBHELPER_GL_VENDOR', client)
+        self.assertEqual('/valve', client['LD_LIBRARY_PATH'])
+
+
 if __name__ == '__main__':
     unittest.main()

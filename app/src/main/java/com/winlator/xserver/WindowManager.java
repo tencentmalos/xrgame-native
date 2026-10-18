@@ -186,6 +186,7 @@ public class WindowManager extends XResourceManager {
         windows.put(id, window);
         parent.addChild(window);
         triggerOnCreateResourceListener(window);
+        restackKeyedChildren(parent);
         return window;
     }
 
@@ -243,6 +244,15 @@ public class WindowManager extends XResourceManager {
                 break;
         }
         triggerOnChangeWindowZOrder(window);
+        restackKeyedChildren(parent);
+    }
+
+    /**
+     * XRGAME: windows showing another server's surfaces (the official Steam client's WSI) stay
+     * above this server's own windows, in the order those surfaces have there.
+     */
+    private void restackKeyedChildren(Window parent) {
+        for (Window moved : parent.restackKeyedChildren()) triggerOnChangeWindowZOrder(moved);
     }
 
     public void configureWindow(Window window, Bitmask valueMask, XInputStream inputStream) throws XRequestError {
@@ -309,6 +319,7 @@ public class WindowManager extends XResourceManager {
         triggerOnUpdateWindowGeometry(window, false);
         notifyChildGeometryUpdate(window);
         triggerOnChangeWindowZOrder(window);
+        restackKeyedChildren(newParent);
     }
 
     public Window findPointWindow(short rootX, short rootY) {
@@ -369,5 +380,7 @@ public class WindowManager extends XResourceManager {
         for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
             onWindowModificationListeners.get(i).onModifyWindowProperty(window, property);
         }
+        if (window.getParent() != null && property.name == Atom.getId("_XRGAME_STACK_KEY"))
+            restackKeyedChildren(window.getParent());
     }
 }

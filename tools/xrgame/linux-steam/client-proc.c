@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Use DroidDeck's narrow Steam/PRoot status fix without its game/GPU/input hooks. */
+/* Use DroidDeck's narrow Steam/PRoot status fix without its game/GPU/input hooks.
+ * GPU drawing adds one opt-in environment switch for Steam's web helper (end of file). */
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -53,3 +54,20 @@ static FILE *status_file(const char *path, const char *mode, const char *functio
 }
 FILE *fopen(const char *path, const char *mode) { return status_file(path, mode, "fopen"); }
 FILE *fopen64(const char *path, const char *mode) { return status_file(path, mode, "fopen64"); }
+/*
+ * GPU drawing (XRGAME_WEBHELPER_GL_VENDOR): Steam's web helper draws with that glvnd vendor's
+ * Zink: CEF's GPU process and Steam's compositor alike. Steam sets LIBGL_KOPPER_DISABLE for
+ * its web helper, and Zink needs kopper. Only the browser process, which Steam starts, needs
+ * the change; Chromium starts its children (through /proc/self/exe) with its environment.
+ */
+__attribute__((constructor)) static void webhelper_gl(int argc, char **argv) {
+    const char *vendor = getenv("XRGAME_WEBHELPER_GL_VENDOR");
+    if (!vendor || !*vendor || strcmp(program_invocation_short_name, "steamwebhelper") != 0) return;
+    for (int i = 1; i < argc; i++) if (argv[i] && strncmp(argv[i], "--type=", 7) == 0) return;
+    setenv("__GLX_VENDOR_LIBRARY_NAME", vendor, 1);
+    setenv("GALLIUM_DRIVER", "zink", 1);
+    setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 1);
+    setenv("LIBGL_KOPPER_DRI2", "true", 1);
+    unsetenv("LIBGL_ALWAYS_SOFTWARE");
+    unsetenv("LIBGL_KOPPER_DISABLE");
+}

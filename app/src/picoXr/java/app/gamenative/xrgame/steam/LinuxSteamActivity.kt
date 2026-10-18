@@ -12,7 +12,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.FrameLayout
-import android.widget.TextView
 import android.widget.ImageButton
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -20,20 +19,25 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.gamenative.externaldisplay.IMEInputReceiver
 import app.gamenative.R
+import com.winlator.renderer.VulkanRenderer
+import com.winlator.widget.XServerRendererView
+import com.winlator.widget.XServerView
 import com.winlator.widget.XServerViewGL
 import com.winlator.xserver.Pointer
+import com.winlator.xserver.WindowManager
 import com.winlator.xserver.XServer
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /** Official Big Picture window with the existing Android renderer and IME. */
 class LinuxSteamActivity : ComponentActivity() {
     private var server: XServer? = null
-    private var renderer: XServerViewGL? = null
+    private var renderer: XServerRendererView? = null
     private var ime: IMEInputReceiver? = null
     private var imeSession: SteamImeSession? = null
     private var multiTouch = false
     private lateinit var surface: FrameLayout
-    private lateinit var loading: TextView
+    private lateinit var loading: SteamLaunchView
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -47,19 +51,21 @@ class LinuxSteamActivity : ComponentActivity() {
         page.addView(surface, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         // Only display startup/failure status before the Steam surface exists.
         // A running client has no Android toolbar, title or diagnostic controls.
-        loading = TextView(this).apply {
-            gravity = Gravity.CENTER
-            text = getString(R.string.steam_client_preparing)
-            setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(0xFF0B1420.toInt())
-        }
+        loading = SteamLaunchView(this).apply { setStatus(getString(R.string.steam_client_preparing)) }
         page.addView(loading, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(page)
         immersive()
-        lifecycleScope.launch { LinuxSteamService.status.collect { loading.text = it } }
-        lifecycleScope.launch { LinuxSteamService.displayReady.collect {
-            loading.visibility = if (it) View.GONE else View.VISIBLE
-        } }
+        lifecycleScope.launch {
+            // Until this page's session starts, the service still reports its idle state.
+            var started = false
+            LinuxSteamService.status.combine(LinuxSteamService.phase) { text, phase -> text to phase }.collect { (text, phase) ->
+                if (phase != LinuxSteamPhase.STOPPED) started = true
+                if (!started && text == LinuxSteamService.IDLE_STATUS) return@collect
+                loading.setStatus(if (phase == LinuxSteamPhase.STARTING) getString(R.string.steam_client_starting) else text)
+                loading.setPhase(phase)
+            }
+        }
+        lifecycleScope.launch { LinuxSteamService.displayReady.collect { showLoading(!it) } }
         lifecycleScope.launch { LinuxSteamService.xServerState.collect { attach(it) } }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -91,25 +97,36 @@ class LinuxSteamActivity : ComponentActivity() {
         }
     }
 
+    /** Big Picture replaces the transition page with a short fade instead of a cut. */
+    private fun showLoading(show: Boolean) {
+        loading.animate().cancel()
+        if (show) {
+            loading.alpha = 1f
+            loading.visibility = View.VISIBLE
+        } else if (loading.visibility == View.VISIBLE) {
+            loading.animate().alpha(0f).setDuration(420).withEndAction { loading.visibility = View.GONE }.start()
+        }
+    }
+
     private fun attach(value: XServer?) {
-        loading.visibility = if (value != null && LinuxSteamService.displayReady.value) View.GONE else View.VISIBLE
-        if (server === value && imeSession != null) return
+        showLoading(value == null || !LinuxSteamService.displayReady.value)
+        if (server === value) {
+            // After a pause only the input queue is new; the renderer keeps its window images.
+            if (value != null && imeSession == null) attachInput(value)
+            return
+        }
         detachRenderer()
         surface.removeAllViews()
         server = value; renderer = null; ime = null
         if (value == null) return
-        val view = XServerViewGL(this, value)
-        value.renderer = view.renderer
-        renderer = view
+        // GPU frames arrive as hardware buffers through Present, which the Vulkan renderer takes.
+        val rendererView: XServerRendererView =
+            if (LinuxSteamService.gpuDisplay.value) XServerView(this, value, "vulkan") else XServerViewGL(this, value)
+        val view = rendererView as View
+        value.renderer = rendererView.renderer
+        renderer = rendererView
         surface.addView(view)
-        val session = SteamImeSession(this, value) {
-            android.app.AlertDialog.Builder(this).setMessage(R.string.steam_client_input_failed)
-                .setPositiveButton(android.R.string.ok, null).show()
-        }
-        imeSession = session
-        val input = session.receiver(this)
-        ime = input
-        surface.addView(input, FrameLayout.LayoutParams(1, 1))
+        attachInput(value)
         val keyboard = ImageButton(this).apply {
             setImageResource(R.drawable.icon_keyboard)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -150,7 +167,20 @@ class LinuxSteamActivity : ComponentActivity() {
             }
             true
         }
-        view.onResume()
+        rendererView.onResume()
+    }
+
+    /** A bounded input queue for this resume; [onPause] closes it. */
+    private fun attachInput(value: XServer) {
+        ime?.let { surface.removeView(it) }
+        val session = SteamImeSession(this, value) {
+            android.app.AlertDialog.Builder(this).setMessage(R.string.steam_client_input_failed)
+                .setPositiveButton(android.R.string.ok, null).show()
+        }
+        imeSession = session
+        val input = session.receiver(this)
+        ime = input
+        surface.addView(input, FrameLayout.LayoutParams(1, 1))
     }
 
     private fun toggleKeyboard() {
@@ -192,11 +222,13 @@ class LinuxSteamActivity : ComponentActivity() {
         val current = server
         val view = renderer
         if (current != null && view != null) current.lockAll().use {
-            current.windowManager.removeOnWindowModificationListener(view.renderer)
-            current.pointer.removeOnPointerMotionListener(view.renderer)
+            (view.renderer as? WindowManager.OnWindowModificationListener)?.let { current.windowManager.removeOnWindowModificationListener(it) }
+            (view.renderer as? Pointer.OnPointerMotionListener)?.let { current.pointer.removeOnPointerMotionListener(it) }
             if (current.renderer === view.renderer) current.renderer = null
         }
         view?.onPause()
+        // The X server outlives this page; a later page makes its own renderer.
+        (view?.renderer as? VulkanRenderer)?.release()
     }
     override fun onDestroy() { detachRenderer(); super.onDestroy() }
 }

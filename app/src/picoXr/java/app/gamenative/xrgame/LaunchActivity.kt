@@ -13,11 +13,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -39,7 +42,11 @@ import app.gamenative.ui.icons.Steam
 import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.xrgame.steam.LinuxSteamActivity
 
-/** Two visual entry points; both keep the existing app identity and data. */
+/**
+ * Home: "Steam" opens the official client (the default entry); "Other" opens the existing library
+ * for other stores and custom apps, where the JavaSteam library stays as a compatibility mode.
+ * Both keep the existing app identity and data.
+ */
 class LaunchActivity : ComponentActivity() {
     private var switching by mutableStateOf(false)
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -57,7 +64,8 @@ class LaunchActivity : ComponentActivity() {
         setContent {
             PluviaTheme {
                 Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF08111D), Color(0xFF14243A))))) {
-                    Column(Modifier.safeDrawingPadding().padding(horizontal = 36.dp, vertical = 24.dp),
+                    // Only the cutout is stable: hidden system bars would shift the page when they hide.
+                    Column(Modifier.windowInsetsPadding(WindowInsets.displayCutout).padding(horizontal = 36.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.Center) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Image(painterResource(R.drawable.ic_launcher_xr_foreground), null, Modifier.size(42.dp))
@@ -67,12 +75,12 @@ class LaunchActivity : ComponentActivity() {
                         BoxWithConstraints(Modifier.weight(1f)) {
                             if (maxWidth >= 600.dp) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                                    ModeCard(true, Modifier.weight(1f).fillMaxHeight())
+                                    ModeCard(true, Modifier.weight(1.35f).fillMaxHeight())
                                     ModeCard(false, Modifier.weight(1f).fillMaxHeight())
                                 }
                             } else {
                                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    ModeCard(true, Modifier.weight(1f).fillMaxWidth())
+                                    ModeCard(true, Modifier.weight(1.35f).fillMaxWidth())
                                     ModeCard(false, Modifier.weight(1f).fillMaxWidth())
                                 }
                             }
@@ -86,6 +94,9 @@ class LaunchActivity : ComponentActivity() {
     @Composable
     private fun ModeCard(official: Boolean, modifier: Modifier) {
         var focused by remember { mutableStateOf(false) }
+        // Steam is the default: it takes the first focus for controllers and the D-pad.
+        val focus = remember { FocusRequester() }
+        if (official) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         val accent = if (official) Color(0xFF6AC9FF) else Color(0xFF7EF1D8)
         Card(onClick = {
             if (!switching) lifecycleScope.launch {
@@ -110,7 +121,7 @@ class LaunchActivity : ComponentActivity() {
                         .setPositiveButton(android.R.string.ok, null).show()
                 } finally { switching = false }
             }
-        }, modifier = modifier.onFocusChanged { focused = it.hasFocus }, shape = RoundedCornerShape(24.dp),
+        }, modifier = modifier.focusRequester(focus).onFocusChanged { focused = it.hasFocus }, shape = RoundedCornerShape(24.dp),
             border = BorderStroke(if (focused) 3.dp else 1.dp, if (focused) accent else accent.copy(alpha = .25f))) {
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(if (official)
                 listOf(Color(0xFF23669A), Color(0xFF10263E)) else listOf(Color(0xFF226260), Color(0xFF172B40))))) {
@@ -121,13 +132,14 @@ class LaunchActivity : ComponentActivity() {
                 }
                 if (official) Icon(Icons.Filled.Steam, null, tint = Color.White,
                     modifier = Modifier.align(Alignment.Center).padding(bottom = 40.dp).size(108.dp))
-                else Image(painterResource(R.drawable.ic_launcher_xr_foreground), null,
-                    Modifier.align(Alignment.Center).padding(bottom = 40.dp).size(148.dp))
+                else Icon(Icons.Filled.Apps, null, tint = Color.White,
+                    modifier = Modifier.align(Alignment.Center).padding(bottom = 40.dp).size(96.dp))
                 Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(26.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(if (official) "Official Steam" else "Custom Steam", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                        Text(stringResource(if (official) R.string.steam_mode_steam_title else R.string.steam_mode_other_title),
+                            color = Color.White, style = MaterialTheme.typography.headlineSmall)
                         Spacer(Modifier.height(4.dp))
-                        Text(stringResource(if (official) R.string.steam_mode_official_short else R.string.steam_mode_custom_short),
+                        Text(stringResource(if (official) R.string.steam_mode_official_short else R.string.steam_mode_other_short),
                             color = Color.White.copy(alpha = .75f), style = MaterialTheme.typography.bodyMedium)
                     }
                     Icon(Icons.Filled.ArrowForward, null, tint = accent)

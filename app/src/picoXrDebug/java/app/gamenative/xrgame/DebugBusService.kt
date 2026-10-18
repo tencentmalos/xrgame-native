@@ -45,6 +45,8 @@ class DebugBusService : Service() {
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
         @Volatile private var linuxSteamCheck = -1
+        /** -1 none yet, -2 forwarding, else the forwarder's exit code (see LinuxSteamRuntime.forwardLaunch). */
+        @Volatile private var linuxSteamLaunch = -1
         @Volatile private var guestDebugger: java.lang.Process? = null
         @Volatile private var guestDebuggerTarget = 0
         @Volatile private var guestDebuggerExe = ""
@@ -139,13 +141,26 @@ class DebugBusService : Service() {
     /** Bounded official-client diagnostics. Login remains in Valve's UI; no identifiers returned. */
     private fun linuxSteam(args: Array<String>): JSONObject {
         val action = args.firstOrNull() ?: "status"
-        require(args.size <= 1 && action in listOf("status", "open", "start", "stop", "check", "trace", "library")) {
-            "usage: linux_steam status|open|start|stop|check|trace|library"
+        val gpuChoice = args.getOrNull(1)
+        val launchId = if (action == "launch") args.getOrNull(1)?.toIntOrNull()?.takeIf { it > 0 } else null
+        require(action in listOf("status", "open", "start", "stop", "check", "trace", "library", "gpu", "launch") &&
+            (args.size <= 1 && action != "launch" || action == "gpu" && args.size == 2 && gpuChoice in listOf("on", "off") ||
+                launchId != null && args.size == 2)) {
+            "usage: linux_steam status|open|start|stop|check|trace|library|gpu [on|off]|launch <appid>"
         }
         when (action) {
+            // Experimental CEF GPU drawing; the next client start uses it.
+            "gpu" -> if (gpuChoice != null) app.gamenative.xrgame.steam.LinuxSteamGpu.request(this, gpuChoice == "on")
             "open" -> startActivity(Intent(this, app.gamenative.xrgame.steam.LinuxSteamActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             "start" -> startForegroundService(Intent(this, app.gamenative.xrgame.steam.LinuxSteamService::class.java))
             "stop" -> stopService(Intent(this, app.gamenative.xrgame.steam.LinuxSteamService::class.java))
+            // As a steam:// link would: the official client runs its own launch, then the bridge.
+            "launch" -> if (linuxSteamLaunch != -2 && launchId != null) {
+                linuxSteamLaunch = -2
+                Thread({ linuxSteamLaunch = try {
+                    app.gamenative.xrgame.steam.LinuxSteamRuntime(this).forwardLaunch(launchId)
+                } catch (_: Exception) { 12 } }, "SteamForwardLaunch").start()
+            }
             "check" -> if (linuxSteamCheck != -2) {
                 linuxSteamCheck = -2
                 Thread({ linuxSteamCheck = try {
@@ -156,10 +171,19 @@ class DebugBusService : Service() {
         return JSONObject().put("running", app.gamenative.xrgame.steam.LinuxSteamService.running)
             .put("display", app.gamenative.xrgame.steam.LinuxSteamService.xServerState.value != null)
             .put("sessionCheck", linuxSteamCheck)
+            .put("launchForward", linuxSteamLaunch)
+            // What Steam issued for the running official game; the launch itself uses JavaSteam's metadata.
+            .put("steamCommand", app.gamenative.xrgame.XrGameOfficialSteam.gameAppId
+                ?.let { app.gamenative.xrgame.XrGameOfficialSteam.gameCommand(it) }
+                ?.let { JSONObject().put("executable", it.executable).put("arguments", it.arguments)
+                    .put("workingDirectory", it.workingDirectory) } ?: JSONObject.NULL)
             .put("libraryOwned", app.gamenative.xrgame.XrGameOfficialSteam.ownsLibrary)
             .put("mode", if (app.gamenative.xrgame.XrGameOfficialSteam.active) "official" else "custom")
             .put("javaRunning", SteamService.isRunning).put("javaConnected", SteamService.isConnected)
             .put("javaLoggedIn", SteamService.isLoggedIn)
+            .put("gpuRequested", app.gamenative.xrgame.steam.LinuxSteamGpu.requested(this))
+            .put("gpuBundled", app.gamenative.xrgame.steam.LinuxSteamGpu.bundled(this))
+            .put("gpuDisplay", app.gamenative.xrgame.steam.LinuxSteamService.gpuDisplay.value)
             .apply { if (action == "library") {
                 val records = JSONArray()
                 for (root in app.gamenative.xrgame.steam.LinuxSteamLibrary.roots(this@DebugBusService)) {

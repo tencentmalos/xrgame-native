@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Stage source-built client userspace and adapters; never stage Valve binaries."""
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ def main():
     p.add_argument('--wine', type=Path, required=True)
     p.add_argument('--rootfs', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--gpu', type=Path, help='output of build-gpu.sh; omit to keep CEF software drawing only')
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     assets = args.output / 'assets/linux-steam'
@@ -49,7 +51,7 @@ def main():
         'droiddeck': subprocess.check_output(['git', '-C', str(droiddeck), 'rev-parse', 'HEAD'], text=True).strip(),
         'sources': {str(path.relative_to(repo)): digest(path) for path in shims},
         'adapterSha256': digest(Path(__file__).with_name('client-proc.c')),
-        'scope': 'glibc official Steam client only; no game, GPU or input hooks',
+        'scope': 'glibc official Steam client only; no game or input hooks; web helper GL vendor switch only with XRGAME_WEBHELPER_GL_VENDOR',
     }, indent=2) + '\n')
     # Normalize absolute guest symlinks to relative links before Android extracts them.
     # No devices, credentials, or build-host special files enter this rootfs.
@@ -87,11 +89,37 @@ def main():
     shutil.copy2(args.proot / 'proot-build.json', assets / 'proot-build.json')
     for name in ('install-client.py', 'launch-client.py', 'ime-text.py', 'game-launch.py'):
         shutil.copy2(Path(__file__).with_name(name), assets / name)
+    stage_gpu(args.gpu, assets)
     files = {str(x.relative_to(args.output)): digest(x) for x in sorted(args.output.rglob('*'))
              if x.is_file() and x.name != 'manifest.json'}
     manifest = {'schema': 1, 'purpose': 'internal-client-validation', 'valveBinariesBundled': False, 'files': files}
     (assets / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps(manifest, indent=2))
+
+
+def stage_gpu(gpu, assets):
+    """Pack the glibc Turnip component byte-exact, or remove a previous one."""
+    archive, record_path = assets / 'gpu.tgz', assets / 'gpu-build.json'
+    if gpu is None:
+        archive.unlink(missing_ok=True)
+        record_path.unlink(missing_ok=True)
+        return
+    record = json.loads((gpu / 'gpu-build.json').read_text())
+    if not record['scope'].startswith('official Steam client userspace only'):
+        raise ValueError('Unexpected GPU component scope')
+    for name, expected in record['files'].items():
+        if PurePosixPath(name).is_absolute() or '..' in PurePosixPath(name).parts or digest(gpu / name) != expected:
+            raise ValueError('Changed GPU component file: ' + name)
+    # Fixed mtimes and owners keep the archive reproducible from the same build.
+    with gzip.GzipFile(archive, 'wb', compresslevel=6, mtime=0) as packed, \
+            tarfile.open(fileobj=packed, mode='w', format=tarfile.PAX_FORMAT) as out:
+        for name in sorted(record['files']):
+            info = tarfile.TarInfo(name)
+            info.size = (gpu / name).stat().st_size
+            info.mode = 0o755 if name.startswith('lib/') else 0o644
+            with (gpu / name).open('rb') as stream:
+                out.addfile(info, stream)
+    shutil.copy2(gpu / 'gpu-build.json', record_path)
 
 
 if __name__ == '__main__': main()

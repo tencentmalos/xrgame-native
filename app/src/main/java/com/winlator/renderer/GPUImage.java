@@ -51,6 +51,16 @@ public class GPUImage extends NativeTexture {
         }
     }
 
+    /** Allocates a GPU-only buffer for a client to import and sends it on socketFd. */
+    public GPUImage(int socketFd, short width, short height, int format) {
+        hardwareBufferPtr = hardwareBufferForSocket(socketFd, width, height, format);
+        if (hardwareBufferPtr != 0) {
+            stride = hardwareBufferStride(hardwareBufferPtr);
+        } else {
+            System.err.println("Error: Failed to send hardware buffer");
+        }
+    }
+
     @Override
     public synchronized void allocateTexture(short width, short height, ByteBuffer data) {
         if (isAllocated()) return;
@@ -130,6 +140,8 @@ public class GPUImage extends NativeTexture {
     }
 
     private native long hardwareBufferFromSocket(int fd);
+
+    private native long hardwareBufferForSocket(int fd, short width, short height, int format);
 
     private native short hardwareBufferStride(long hardwareBufferPtr);
 

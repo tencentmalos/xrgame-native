@@ -107,6 +107,36 @@ Java_com_winlator_renderer_GPUImage_hardwareBufferFromSocket(JNIEnv *env, jclass
     return (jlong)ahb;
 }
 
+// JNI method to allocate a hardware buffer that a client imports, and send it on a socketpair.
+// CPU read usage keeps gralloc from compressing it, so a client without gralloc (the glibc
+// Steam client's Turnip) can import the dma-buf as linear with the stride the handle reports.
+JNIEXPORT jlong JNICALL
+Java_com_winlator_renderer_GPUImage_hardwareBufferForSocket(JNIEnv *env, jclass obj, jint fd, jshort width, jshort height, jint format) {
+    if (format != AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM && format != HAL_PIXEL_FORMAT_BGRA_8888) {
+        printf("Unsupported client hardware buffer format %d", format);
+        return 0;
+    }
+    AHardwareBuffer_Desc desc = {};
+    desc.width = width;
+    desc.height = height;
+    desc.layers = 1;
+    desc.format = format;
+    desc.usage = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER |
+                 AHARDWAREBUFFER_USAGE_CPU_READ_RARELY;
+
+    AHardwareBuffer *ahb = NULL;
+    if (AHardwareBuffer_allocate(&desc, &ahb) != 0) {
+        printf("Failed to allocate client hardware buffer");
+        return 0;
+    }
+    if (AHardwareBuffer_sendHandleToUnixSocket(ahb, fd) != 0) {
+        printf("Failed to send hardware buffer to socketpair");
+        AHardwareBuffer_release(ahb);
+        return 0;
+    }
+    return (jlong)ahb;
+}
+
 // JNI method to create a hardware buffer
 JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_GPUImage_createHardwareBuffer(JNIEnv *env, jclass obj, jshort width, jshort height) {

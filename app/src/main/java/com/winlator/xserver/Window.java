@@ -106,6 +106,72 @@ public class Window extends XResource {
         return properties.get(id);
     }
 
+    private static volatile int inputPassthroughAtom = 0;
+
+    /**
+     * XRGAME: a window that only shows another server's GPU frames (the official Steam
+     * client's WSI) leaves pointer input to the window below it.
+     */
+    public boolean isInputPassthrough() {
+        int atom = inputPassthroughAtom;
+        if (atom <= 0) inputPassthroughAtom = atom = Atom.getId("_XRGAME_INPUT_PASSTHROUGH");
+        return atom > 0 && getProperty(atom) != null;
+    }
+
+    private static volatile int stackKeyAtom = 0;
+
+    /**
+     * XRGAME: the painter's order, on the other server, of the surface this window shows:
+     * 1-based sibling indices from that server's root down (_XRGAME_STACK_KEY), or null.
+     */
+    public int[] getStackKey() {
+        int atom = stackKeyAtom;
+        if (atom <= 0) stackKeyAtom = atom = Atom.getId("_XRGAME_STACK_KEY");
+        Property property = atom > 0 ? getProperty(atom) : null;
+        if (property == null || property.format != Property.Format.INT_ARRAY) return null;
+        int[] key = new int[property.data.capacity() / 4];
+        for (int i = 0; i < key.length; i++) key[i] = property.data.getInt(i * 4);
+        return key.length > 0 ? key : null;
+    }
+
+    /** Lexicographic, unsigned; a prefix (an ancestor) orders below its descendants. */
+    public static int compareStackKeys(int[] a, int[] b) {
+        for (int i = 0; i < Math.min(a.length, b.length); i++) {
+            int order = Integer.compareUnsigned(a[i], b[i]);
+            if (order != 0) return order;
+        }
+        return Integer.compare(a.length, b.length);
+    }
+
+    /**
+     * XRGAME: keeps children with a stacking key above the others, in key order; the relative
+     * order of the others is unchanged. Returns the children that moved.
+     */
+    public List<Window> restackKeyedChildren() {
+        List<Window> keyed = new ArrayList<>();
+        List<int[]> keys = new ArrayList<>();
+        int firstKeyed = -1;
+        boolean ordered = true;
+        for (int i = 0; i < children.size(); i++) {
+            Window child = children.get(i);
+            int[] key = child.getStackKey();
+            if (key == null) {
+                if (firstKeyed >= 0) ordered = false;
+                continue;
+            }
+            if (firstKeyed < 0) firstKeyed = i;
+            if (!keys.isEmpty() && compareStackKeys(keys.get(keys.size() - 1), key) > 0) ordered = false;
+            keyed.add(child);
+            keys.add(key);
+        }
+        if (ordered) return Collections.emptyList();
+        List<Window> sorted = new ArrayList<>(keyed);
+        sorted.sort((a, b) -> compareStackKeys(a.getStackKey(), b.getStackKey()));
+        children.removeAll(sorted);
+        children.addAll(sorted);
+        return sorted;
+    }
+
     public void addProperty(Property property) {
         properties.put(property.name, property);
     }
@@ -374,7 +440,7 @@ public class Window extends XResource {
     public Window getChildByCoords(short x, short y) {
         for (int i = children.size()-1; i >= 0; i--) {
             Window child = children.get(i);
-            if (child.attributes.isMapped() && child.containsPoint(x, y)) return child;
+            if (child.attributes.isMapped() && child.containsPoint(x, y) && !child.isInputPassthrough()) return child;
         }
         return null;
     }

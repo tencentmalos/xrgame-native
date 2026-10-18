@@ -21,6 +21,12 @@ object XrGameOfficialSteam {
         private set
     @Volatile private var officialGame: Int? = null
     val gameAppId: Int? get() = officialGame
+    /**
+     * The game command Official Steam issued: executable and working directory relative to the
+     * game's install folder, and the arguments as one Windows command line.
+     */
+    data class Command(val executable: String, val arguments: String, val workingDirectory: String)
+    @Volatile private var officialCommand: Command? = null
     @Synchronized fun selectOfficial() {
         check(available)
         check(customMutations == 0 && !app.gamenative.service.SteamService.hasActiveOperations()) {
@@ -36,15 +42,25 @@ object XrGameOfficialSteam {
         check(!ownsLibrary && app.gamenative.PluviaApp.xEnvironment == null &&
             app.gamenative.service.ActiveGameRegistry.get() == null) { "Wait for Official Steam and its game to stop before switching modes." }
         officialGame = null
+        officialCommand = null
         active = false
         check(preferences().edit().putBoolean("official", false).commit())
     }
-    @Synchronized fun authorizeGame(appId: Int) {
+    @Synchronized fun authorizeGame(appId: Int, command: Command? = null) {
         check(active && ownsLibrary && officialGame == null)
         officialGame = appId
+        officialCommand = command
     }
-    @Synchronized fun finishGame(appId: Int) { if (officialGame == appId) officialGame = null }
+    @Synchronized fun finishGame(appId: Int) {
+        if (officialGame == appId) { officialGame = null; officialCommand = null }
+    }
     fun isOfficialGame(appId: Int): Boolean = active && officialGame == appId
+    /**
+     * Diagnostics only (DebugBus): launches still resolve the installed launch configuration from
+     * JavaSteam's cached metadata, the validated route (user, 2026-10-17). Null when Steam's
+     * command was absent or unusable.
+     */
+    @Synchronized fun gameCommand(appId: Int): Command? = if (isOfficialGame(appId)) officialCommand else null
     fun requireLaunchOwner(appId: Int) {
         check(!active || isOfficialGame(appId)) { "Launch this game from Official Steam, or switch to Custom Steam on the launch page." }
     }

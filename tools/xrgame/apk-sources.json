@@ -31,8 +31,8 @@
     {
       "pattern": "assets/linux-steam/*",
       "kind": "repository-build",
-      "license": "Mixed open-source licences; rootfs usr/share/doc/*/copyright, Wine LGPL-2.1-or-later, PRoot GPL-2.0-or-later; internal validation only",
-      "source": "tools/xrgame/linux-steam/build-rootfs.sh, build-wine-client.py and stage.py; no Valve client binaries",
+      "license": "Mixed open-source licences; rootfs usr/share/doc/*/copyright, Wine LGPL-2.1-or-later, PRoot GPL-2.0-or-later, gpu.tgz Mesa MIT plus share/doc/*/copyright; internal validation only",
+      "source": "tools/xrgame/linux-steam/build-rootfs.sh, build-wine-client.py, build-gpu.sh and stage.py; no Valve client binaries",
       "repositoryPrefix": "build/xrgame-linux-steam/assets/linux-steam/"
     },
     {

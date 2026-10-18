@@ -32,7 +32,8 @@
     </queries>
     <application>
         <activity android:name="app.gamenative.xrgame.LaunchActivity" android:exported="false"
-            android:launchMode="singleTop" android:screenOrientation="landscape" />
+            android:launchMode="singleTop" android:screenOrientation="landscape"
+            android:theme="@style/Theme.SteamPSP.Fullscreen" />
         <!-- Keep both icon component identities so installed shortcuts/icon switching survive. -->
         <activity-alias android:name="app.gamenative.MainActivityAliasDefault"
             android:targetActivity="app.gamenative.xrgame.LaunchActivity" tools:replace="android:targetActivity" />
@@ -40,6 +41,7 @@
             android:targetActivity="app.gamenative.xrgame.LaunchActivity" tools:replace="android:targetActivity" />
         <activity android:name="app.gamenative.xrgame.steam.LinuxSteamActivity" android:exported="false"
             android:screenOrientation="landscape" android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.SteamPSP.Fullscreen"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
         <activity android:name="app.gamenative.xrgame.steam.OfficialSteamGameActivity" android:exported="false"
             android:launchMode="singleTop" android:screenOrientation="landscape"

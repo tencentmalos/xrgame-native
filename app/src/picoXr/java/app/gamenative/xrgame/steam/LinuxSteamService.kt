@@ -35,9 +35,15 @@ import app.gamenative.xrgame.XrGameOfficialSteam
 class LinuxSteamService : Service() {
     @Inject lateinit var db: PluviaDatabase
     companion object {
-        val status = MutableStateFlow("Official Steam is stopped")
+        /** The idle status before any session; the transition page does not show it. */
+        const val IDLE_STATUS = "Official Steam is stopped"
+        val status = MutableStateFlow(IDLE_STATUS)
+        /** Where startup is, for the transition page; [status] keeps the text. */
+        val phase = MutableStateFlow(LinuxSteamPhase.STOPPED)
         val displayReady = MutableStateFlow(false)
         val xServerState = MutableStateFlow<XServer?>(null)
+        /** Whether this session's X server takes CEF's GPU frames (see [LinuxSteamGpu]). */
+        val gpuDisplay = MutableStateFlow(false)
         @Volatile var running = false
             private set
         private const val CHANNEL = "linux-steam-session"
@@ -70,6 +76,7 @@ class LinuxSteamService : Service() {
             try { XrGameOfficialSteam.selectOfficial() }
             catch (e: IllegalStateException) {
                 status.value = e.message ?: "Official Steam could not start"
+                phase.value = LinuxSteamPhase.STOPPED
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -86,10 +93,13 @@ class LinuxSteamService : Service() {
             libraryClaimed = true
             app.gamenative.service.SteamService.suspendForOfficial()
             status.value = getString(R.string.steam_client_preparing)
+            phase.value = LinuxSteamPhase.PREPARING
             displayReady.value = false
-            runtime.prepare()
+            val gpu = LinuxSteamGpu.enabled(this)
+            runtime.prepare(gpu)
             if (!File(runtime.client, "steampsp-bootstrap.json").isFile) {
                 status.value = getString(R.string.steam_client_downloading)
+                phase.value = LinuxSteamPhase.DOWNLOADING
                 val installer = runtime.process(listOf("/usr/bin/python3", "-u", "/usr/local/lib/steampsp/install-client.py", runtime.client.path), "install.log").start()
                 child = installer
                 while (currentCoroutineContext().isActive && installer.isAlive) {
@@ -129,7 +139,9 @@ class LinuxSteamService : Service() {
                 // keyboard focus explicitly without a Wine WinHandler.
                 server.windowManager.addOnWindowModificationListener(object : WindowManager.OnWindowModificationListener {
                     override fun onMapWindow(window: Window) {
-                        if (window.parent == server.windowManager.rootWindow && window.isInputOutput) {
+                        // CEF's GPU frames arrive in override-redirect windows; Xephyr keeps focus.
+                        if (window.parent == server.windowManager.rootWindow && window.isInputOutput &&
+                            !window.attributes.isOverrideRedirect && !window.isInputPassthrough) {
                             server.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.INPUT_DEVICE).use {
                                 server.windowManager.setFocus(window, WindowManager.FocusRevertTo.POINTER_ROOT)
                             }
@@ -144,24 +156,30 @@ class LinuxSteamService : Service() {
                 // This changes only its dedicated X server, never the game's AHB display.
                 // XServer's SparseArray uses the signed Java byte as its key.
                 server.extensions.remove(MITSHMExtension.MAJOR_OPCODE.toInt())
-                // This server displays a software-rendered desktop client. Our
-                // game's SYNC implements Present fences, not the desktop counter
+                // Our game's SYNC implements Present fences, not the desktop counter
                 // protocol; advertising it makes XSyncInitialize abort Steam.
                 server.extensions.remove(SyncExtension.MAJOR_OPCODE.toInt())
-                server.extensions.remove(DRI3Extension.MAJOR_OPCODE.toInt())
-                server.extensions.remove(PresentExtension.MAJOR_OPCODE.toInt())
+                // Only the GPU WSI uses DRI3/Present here, as games do; Xephyr does not.
+                if (!gpu) {
+                    server.extensions.remove(DRI3Extension.MAJOR_OPCODE.toInt())
+                    server.extensions.remove(PresentExtension.MAJOR_OPCODE.toInt())
+                }
                 connector = XServerComponent(server, UnixSocketConfig.createSocket(runtime.root.path, UnixSocketConfig.XSERVER_PATH)).also { it.start() }
+                gpuDisplay.value = gpu
                 xServerState.value = server
             }
             var restarts = 0
             do {
                 status.value = getString(R.string.steam_client_opening)
+                phase.value = LinuxSteamPhase.OPENING
                 val locales = Resources.getSystem().configuration.locales
                 val language = SteamClientLanguage.select((0 until locales.size()).map { locales[it] })
                 val builder = runtime.process(listOf("/usr/bin/dbus-run-session", "--",
                     "/usr/bin/python3", "/usr/local/lib/steampsp/launch-client.py", "${runtime.client.path}/steamrtarm64/steam",
-                    "-gamepadui", "-language", language, "-clientbeta", "steamdeck_publicbeta", "-no-cef-sandbox", "-cef-ozone-platform=x11", "-cef-disable-gpu"), "client-$restarts.log")
-                builder.environment()["LD_LIBRARY_PATH"] = "${runtime.client.path}/steamrtarm64:${runtime.client.path}/steamrtarm64/steam-runtime/usr/lib/aarch64-linux-gnu"
+                    "-gamepadui", "-language", language, "-clientbeta", "steamdeck_publicbeta", "-no-cef-sandbox", "-cef-ozone-platform=x11") +
+                    LinuxSteamGpu.cefArguments(gpu), "client-$restarts.log", gpu)
+                builder.environment()["LD_LIBRARY_PATH"] = runtime.clientLibraryPath()
+                if (gpu) builder.environment()["XRGAME_STEAM_GPU"] = "1"
                 val readyFile = File(runtime.directory, "display-ready")
                 readyFile.delete()
                 builder.environment()["XRGAME_STEAM_READY_FILE"] = readyFile.path
@@ -170,6 +188,7 @@ class LinuxSteamService : Service() {
                 child = process
                 running = true
                 status.value = getString(R.string.steam_client_running)
+                phase.value = LinuxSteamPhase.STARTING
                 var nextLibraryScan = 0L
                 while (currentCoroutineContext().isActive && process.isAlive) {
                     if (!displayReady.value && readyFile.isFile) displayReady.value = true
@@ -184,12 +203,19 @@ class LinuxSteamService : Service() {
                 running = false
                 child = null
                 val exit = process.exitValue()
-                if (exit != 42) { status.value = getString(R.string.steam_client_exited, exit); break }
+                if (exit != 42) {
+                    status.value = getString(R.string.steam_client_exited, exit)
+                    phase.value = LinuxSteamPhase.STOPPED
+                    break
+                }
                 // Valve's client uses 42 after updating, as steam.sh does. Bound update loops.
                 check(++restarts <= 3) { "Steam update restarted repeatedly; inspect client logs" }
             } while (currentCoroutineContext().isActive)
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { status.value = e.message ?: "Official Steam could not start" }
+        catch (e: Exception) {
+            status.value = e.message ?: "Official Steam could not start"
+            phase.value = LinuxSteamPhase.STOPPED
+        }
         finally {
             // Cancellation must not interrupt cleanup when returning from the Main dispatcher.
             // Keep the lease until Steam/PRoot has finished flushing its manifests.
@@ -197,6 +223,8 @@ class LinuxSteamService : Service() {
                 gameHandoff?.close(); gameHandoff = null
                 running = false
                 displayReady.value = false
+                gpuDisplay.value = false
+                phase.value = LinuxSteamPhase.STOPPED
                 var childStopped = child == null
                 try {
                     child?.let { process ->
@@ -230,3 +258,6 @@ class LinuxSteamService : Service() {
         super.onDestroy()
     }
 }
+
+/** Startup steps of the official client, in order. */
+enum class LinuxSteamPhase { PREPARING, DOWNLOADING, OPENING, STARTING, STOPPED }

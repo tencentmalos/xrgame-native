@@ -50,7 +50,7 @@ com.tencentmalos.xrgamenative/app.gamenative.xrgame.DebugBusService <command>`�
 | --- | --- |
 | `bridge` | Foundation 固定提交、宿主 PID、transport、scope |
 | `status` | 宿主 PID/UID、系统与目标 API、设备 build/boot id、服务起始时刻、活跃 Steam App ID、X server 是否存在 |
-| `linux_steam status/open/start/stop/check/trace` | 官方 Linux Steam 独立客户端：打开页面、启动/停止前台会话，或异步检查官方 Bionic 客户端能否连接。`check` 的 0=会话已登录、5=无 IPC pipe、6=客户端未运行或不能连接全局 user、7=尚未登录/离线、8=账号不匹配、9=超时；打开页面不能证明在线或游戏联机通过。`trace` 另返回最近 64 条 X11 请求记录，每项为 `[connection, sequence, opcode, data, payloadBytes, complete]`；不含正文、输入文本、账号或票据，游戏服务器默认不记录 |
+| `linux_steam status/open/start/stop/check/trace/library/gpu/launch` | 官方 Linux Steam 独立客户端：打开页面、启动/停止前台会话，或异步检查官方 Bionic 客户端能否连接。`check` 的 0=会话已登录、5=无 IPC pipe、6=客户端未运行或不能连接全局 user、7=尚未登录/离线、8=账号不匹配、9=超时；打开页面不能证明在线或游戏联机通过。`trace` 另返回最近 64 条 X11 请求记录，每项为 `[connection, sequence, opcode, data, payloadBytes, complete]`；不含正文、输入文本、账号或票据，游戏服务器默认不记录 |
 | `runtime` | APK catalog SHA、默认组件版本、安装回执是否对应 catalog；**不重新哈希大文件，不证明已装文件完整或该进程实际加载了全部默认项** |
 | `processes` | 当前 UID 可见进程的 PID/PPID、comm、state、start-time ticks；进程退出竞争会计入 skipped，超量/超时标 truncated |
 | `modules [exact-basename]` | 当前 Android host 已加载 ELF 的名称、基址、GNU Build ID；超过 256 个时显式标记 truncated，可按完整文件名查询；不是 Wine PE/FEX guest 模块表 |
@@ -236,6 +236,12 @@ Foundation 管理命令分发。Android Service 承担 dumpsys transport，因�
 实机证据见 [首次接入验收](../validation/debugbus-20260927.md)。
 
 ### 共用 Steam 目录诊断（2026-10-17 候选）
+
+`linux_steam gpu on|off` 切换实验性的客户端 GPU 绘制，下一次启动客户端时生效；默认关闭。APK 必须带 `assets/linux-steam/gpu.tgz`。所有 `linux_steam` 返回都含 `gpuRequested`（开关状态）、`gpuBundled`（APK 是否带组件）和 `gpuDisplay`（本次会话的 X server 是否接收 GPU 帧）。`gpuDisplay=true` 只说明 DRI3/Present 已开放，不等于 CEF 实际在用 GPU：需另看客户端日志和 CDP。见[大屏绘制规格](../specs/xrgame-native-big-screen-rendering-v1.md)。
+
+`linux_steam launch <appid>` 让正在运行的官方客户端启动游戏，效果同 `steam://rungameid/<appid>` 链接：在 PRoot 中运行 Valve 自己的 `steam -ifrunning steam://rungameid/<appid>`，由它经 `~/.steam/steam.pipe` 把命令行转交给客户端后退出；`-ifrunning` 不会另起第二个客户端。命令异步执行，之后的返回里 `launchForward` 为 -2（转交中）、0（已转交）、6（客户端未运行）、-1（30 s 未结束）、12（异常）或转交程序自己的退出码。转交成功只说明 Steam 收到了请求：之后仍由 Steam 自己检查更新、云存档和启动配置，再经兼容工具桥接把命令交给 Android；游戏是否启动看 `status`、`game_state` 和画面。
+
+`linux_steam status` 的 `steamCommand` 是官方游戏运行期间 Steam 经兼容工具下发的命令（相对游戏目录的可执行文件、Windows 命令行形式的参数、工作目录），没有官方游戏时为 null。只用于对照：启动仍按 JavaSteam 缓存的启动配置。
 
 `linux_steam library` 返回每个 ACF 的 app ID、完成状态、depot 数以及存档冲突 app ID；不返回账户身份。`status` 的 `mode=official|custom` 是管理归属，`javaRunning/javaConnected/javaLoggedIn` 用于核验官方运行时 JavaSteam 全部关闭；`libraryOwned` 表示 Official 持有同一游戏目录写入权。旧 `cloud <appId>` 已移除：它建立 AppID 管道后会令 Steam 登记 PID 0，干扰真正的启动。新的 `check` 只查询会话，不携带游戏身份。见[目录共用记录](../validation/steam-shared-library-20261017.md)。
 

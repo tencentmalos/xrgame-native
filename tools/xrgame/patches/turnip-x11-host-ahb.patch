@@ -1,0 +1,855 @@
+diff --git a/src/vulkan/wsi/wsi_common.c b/src/vulkan/wsi/wsi_common.c
+index e5062a2..d760f82 100644
+--- a/src/vulkan/wsi/wsi_common.c
++++ b/src/vulkan/wsi/wsi_common.c
+@@ -405,6 +405,10 @@ get_blit_type(const struct wsi_device *wsi,
+ #if defined(__ANDROID__) && defined(VK_USE_PLATFORM_XCB_KHR)
+    case WSI_IMAGE_TYPE_ANDROID:
+       return WSI_SWAPCHAIN_NO_BLIT;
++#endif
++#if !defined(__ANDROID__) && defined(VK_USE_PLATFORM_XCB_KHR)
++   case WSI_IMAGE_TYPE_XRGAME_HOST:
++      return WSI_SWAPCHAIN_NO_BLIT;
+ #endif
+    case WSI_IMAGE_TYPE_CPU: {
+       const struct wsi_cpu_image_params *cpu_params =
+@@ -460,6 +464,10 @@ configure_image(const struct wsi_swapchain *chain,
+ #if defined(__ANDROID__) && defined(VK_USE_PLATFORM_XCB_KHR)
+    case WSI_IMAGE_TYPE_ANDROID:
+       return wsi_x11_configure_android_image(chain, pCreateInfo, info);
++#endif
++#if !defined(__ANDROID__) && defined(VK_USE_PLATFORM_XCB_KHR)
++   case WSI_IMAGE_TYPE_XRGAME_HOST:
++      return wsi_x11_configure_host_image(chain, pCreateInfo, info);
+ #endif
+    case WSI_IMAGE_TYPE_CPU: {
+       const struct wsi_cpu_image_params *cpu_params =
+diff --git a/src/vulkan/wsi/wsi_common_private.h b/src/vulkan/wsi/wsi_common_private.h
+index c596d2b..f00ff27 100644
+--- a/src/vulkan/wsi/wsi_common_private.h
++++ b/src/vulkan/wsi/wsi_common_private.h
+@@ -50,6 +50,7 @@ enum wsi_image_type {
+    WSI_IMAGE_TYPE_DXGI,
+    WSI_IMAGE_TYPE_METAL,
+    WSI_IMAGE_TYPE_ANDROID,
++   WSI_IMAGE_TYPE_XRGAME_HOST,
+ };
+ 
+ struct wsi_base_image_params {
+@@ -443,6 +444,13 @@ wsi_x11_configure_android_image(const struct wsi_swapchain *chain,
+                                 const VkSwapchainCreateInfoKHR *info,
+                                 struct wsi_image_info *image_info);
+ #endif
++#if !defined(__ANDROID__) && defined(VK_USE_PLATFORM_XCB_KHR)
++/* SteamPSP: images allocated by the host display; see wsi_common_x11_host.inc. */
++VkResult
++wsi_x11_configure_host_image(const struct wsi_swapchain *chain,
++                             const VkSwapchainCreateInfoKHR *info,
++                             struct wsi_image_info *image_info);
++#endif
+ 
+ void
+ wsi_destroy_image_info(const struct wsi_swapchain *chain,
+diff --git a/src/vulkan/wsi/wsi_common_x11.c b/src/vulkan/wsi/wsi_common_x11.c
+index acf3186..6fd2ba9 100644
+--- a/src/vulkan/wsi/wsi_common_x11.c
++++ b/src/vulkan/wsi/wsi_common_x11.c
+@@ -69,6 +69,12 @@
+ #include "wsi_common_entrypoints.h"
+ #include "wsi_common_private.h"
+ #include "wsi_common_queue.h"
++
++#ifndef __ANDROID__
++/* SteamPSP's glibc client driver is Turnip for KGSL only, so HAVE_X11_DRM is
++ * off; its host presentation uses the Present paths that Android also uses. */
++#define XRGAME_X11_HOST 1
++#endif
+ #include "loader/loader_dri_helper_screen.h"
+ 
+ #ifdef HAVE_SYS_SHM_H
+@@ -622,6 +628,17 @@ visual_supported(xcb_visualtype_t *visual)
+           visual->_class == XCB_VISUAL_CLASS_DIRECT_COLOR;
+ }
+ 
++#ifdef XRGAME_X11_HOST
++/* SteamPSP: the display that presents for every surface, or NULL. A surface
++ * server without DRI3 is supported then; see wsi_common_x11_host.inc. */
++static const char *
++x11_host_display(void)
++{
++   const char *name = getenv("XRGAME_X11_HOST_DISPLAY");
++   return name && name[0] ? name : NULL;
++}
++#endif
++
+ VKAPI_ATTR VkBool32 VKAPI_CALL
+ wsi_GetPhysicalDeviceXcbPresentationSupportKHR(VkPhysicalDevice physicalDevice,
+                                                uint32_t queueFamilyIndex,
+@@ -648,7 +665,11 @@ wsi_GetPhysicalDeviceXcbPresentationSupportKHR(VkPhysicalDevice physicalDevice,
+    if (!wsi_conn)
+       return false;
+ 
+-   if (!wsi_device->sw) {
++   bool host_presented = false;
++#ifdef XRGAME_X11_HOST
++   host_presented = x11_host_display() != NULL;
++#endif
++   if (!wsi_device->sw && !host_presented) {
+       if (!wsi_x11_check_for_dri3(wsi_conn))
+          return false;
+    }
+@@ -723,7 +744,11 @@ x11_surface_get_support(VkIcdSurfaceBase *icd_surface,
+    if (!wsi_conn)
+       return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
+-   if (!wsi_device->sw) {
++   bool host_presented = false;
++#ifdef XRGAME_X11_HOST
++   host_presented = x11_host_display() != NULL;
++#endif
++   if (!wsi_device->sw && !host_presented) {
+       if (!wsi_x11_check_for_dri3(wsi_conn)) {
+          *pSupported = false;
+          return VK_SUCCESS;
+@@ -1229,6 +1254,8 @@ struct x11_image {
+    struct wsi_image                          base;
+ #ifdef __ANDROID__
+    struct AHardwareBuffer *ahb;
++#else
++   int                                       host_fd; /* dma-buf until imported */
+ #endif
+    xcb_pixmap_t                              pixmap;
+    xcb_xfixes_region_t                       update_region; /* long lived XID */
+@@ -1266,6 +1293,16 @@ struct x11_present_timing_entry {
+ };
+ #define X11_SWAPCHAIN_REFRESH_RATE_WINDOW_SIZE 16
+ 
++#ifdef XRGAME_X11_HOST
++/* Sibling indices from the surface server's root down to a surface window. */
++#define XRGAME_STACK_DEPTH 8
++struct x11_host_geometry {
++   int16_t x, y;
++   uint16_t width, height;
++   bool viewable;
++};
++#endif
++
+ struct x11_swapchain {
+    struct wsi_swapchain                        base;
+ 
+@@ -1332,11 +1369,28 @@ struct x11_swapchain {
+    bool                                         has_reliable_msc;
+    bool                                         last_complete_is_flip;
+ 
++#ifdef XRGAME_X11_HOST
++   /* XRGAME_X11_HOST_DISPLAY: conn/window are the host's; the surface's own
++    * server supplies geometry and visibility. */
++   xcb_connection_t *                           surface_conn;
++   xcb_connection_t *                           track_conn;
++   xcb_window_t                                 surface_window;
++   struct x11_host_geometry                     host_geometry;
++   bool                                         host_mapped;
++   uint32_t                                     host_key[XRGAME_STACK_DEPTH];
++   uint32_t                                     host_key_len;
++   uint32_t                                     host_presents;
++#endif
++
+    struct x11_image                             images[0];
+ };
+ VK_DEFINE_NONDISP_HANDLE_CASTS(x11_swapchain, base.base, VkSwapchainKHR,
+                                VK_OBJECT_TYPE_SWAPCHAIN_KHR)
+ 
++#ifdef XRGAME_X11_HOST
++#include "wsi_common_x11_host.inc"
++#endif
++
+ static bool x11_refresh_rate_estimate_is_stable(struct x11_swapchain *swapchain, uint64_t base_rate)
+ {
+    /* Only accept a refresh rate estimate if it's *very* stable.
+@@ -1767,7 +1821,7 @@ x11_handle_dri3_present_event(struct x11_swapchain *chain,
+ 
+    return VK_SUCCESS;
+ }
+-#if defined(HAVE_X11_DRM) || defined(__ANDROID__)
++#if defined(HAVE_X11_DRM) || defined(__ANDROID__) || defined(XRGAME_X11_HOST)
+ /**
+  * Send image to X server via Present extension.
+  */
+@@ -2018,6 +2072,10 @@ x11_needs_wait_for_fences(const struct wsi_device *wsi_device,
+ #ifdef __ANDROID__
+    if (getenv("XRGAME_X11_AHB"))
+       return true;
++#else
++   /* Host-allocated images carry no implicit fence. */
++   if (x11_host_display())
++      return true;
+ #endif
+    if (wsi_conn->is_xwayland) {
+       return false;
+@@ -2112,7 +2170,7 @@ x11_present_to_x11(struct x11_swapchain *chain, uint32_t image_index,
+    if (chain->base.wsi->sw && !chain->has_mit_shm)
+       result = x11_present_to_x11_sw(chain, image_index);
+    else
+-#if defined(HAVE_X11_DRM) || defined(__ANDROID__)
++#if defined(HAVE_X11_DRM) || defined(__ANDROID__) || defined(XRGAME_X11_HOST)
+       result = x11_present_to_x11_dri3(chain, image_index, target_msc, present_mode);
+ #else
+       UNREACHABLE("X11 missing DRI3 support!");
+@@ -2574,8 +2632,19 @@ x11_manage_present_queue(void *state)
+          }
+       }
+ 
++      bool host_resized = false;
++#ifdef XRGAME_X11_HOST
++      if (chain->surface_conn)
++         x11_host_track(chain, &host_resized);
++#endif
++
+       mtx_lock(&chain->thread_state_lock);
+ 
++      /* The surface server sends no Present ConfigureNotify; report the
++       * resize it reported to us instead. */
++      if (host_resized)
++         x11_swapchain_result(chain, VK_SUBOPTIMAL_KHR);
++
+       /* In IMMEDIATE and MAILBOX modes, there is a risk that we have exhausted the presentation queue,
+        * since IDLE could return multiple times before observing a COMPLETE. */
+       while (chain->status >= 0 &&
+@@ -2660,6 +2729,11 @@ x11_image_init(VkDevice device_h, struct x11_swapchain *chain,
+ {
+    VkResult result;
+ 
++#ifdef XRGAME_X11_HOST
++   if (chain->base.image_info.image_type == WSI_IMAGE_TYPE_XRGAME_HOST)
++      return x11_host_image_init(chain, image);
++#endif
++
+    result = wsi_create_image(&chain->base, &chain->base.image_info,
+                              &image->base);
+    if (result != VK_SUCCESS) {
+@@ -2830,6 +2904,15 @@ x11_image_finish(struct x11_swapchain *chain,
+                  struct x11_image *image)
+ {
+    xcb_void_cookie_t cookie;
++#ifdef XRGAME_X11_HOST
++   /* The host has neither the SYNC fence nor the XFIXES region; only the pixmap. */
++   if (chain->base.image_info.image_type == WSI_IMAGE_TYPE_XRGAME_HOST) {
++      cookie = xcb_free_pixmap(chain->conn, image->pixmap);
++      xcb_discard_reply(chain->conn, cookie.sequence);
++      wsi_destroy_image(&chain->base, &image->base);
++      return;
++   }
++#endif
+    if (!chain->base.wsi->sw || chain->has_mit_shm) {
+ #ifdef HAVE_X11_DRM
+       cookie = xcb_sync_destroy_fence(chain->conn, image->sync_fence);
+@@ -3038,13 +3121,19 @@ x11_swapchain_destroy(struct wsi_swapchain *wsi_chain,
+ 
+    for (uint32_t i = 0; i < chain->base.image_count; i++)
+       x11_image_finish(chain, pAllocator, &chain->images[i]);
+-#if defined(HAVE_X11_DRM) || defined(__ANDROID__)
++#if defined(HAVE_X11_DRM) || defined(__ANDROID__) || defined(XRGAME_X11_HOST)
+    xcb_void_cookie_t cookie;
+    xcb_unregister_for_special_event(chain->conn, chain->special_event);
+    cookie = xcb_present_select_input_checked(chain->conn, chain->event_id,
+                                              chain->window,
+                                              XCB_PRESENT_EVENT_MASK_NO_EVENT);
+    xcb_discard_reply(chain->conn, cookie.sequence);
++#endif
++#ifdef XRGAME_X11_HOST
++   if (chain->surface_conn) {
++      xcb_destroy_window(chain->conn, chain->window);
++      xcb_flush(chain->conn);
++   }
+ #endif
+    mtx_destroy(&chain->present_progress_mutex);
+    u_cnd_monotonic_destroy(&chain->present_progress_cond);
+@@ -3238,15 +3327,48 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+       return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+ 
++#ifdef XRGAME_X11_HOST
++   xcb_connection_t *host_conn = NULL;
++   xcb_window_t host_window = XCB_NONE;
++   uint32_t host_depth = 0;
++   struct x11_host_geometry host_geometry = {0};
++   if (x11_host_display()) {
++      result = x11_host_window_create(conn, window, &host_conn, &host_window,
++                                      &host_depth, &host_geometry);
++      /* The present thread looks the host connection up; create it here. */
++      if (result == VK_SUCCESS && !wsi_x11_get_connection(wsi_device, host_conn))
++         result = VK_ERROR_OUT_OF_HOST_MEMORY;
++      if (result != VK_SUCCESS) {
++         if (host_window) {
++            xcb_destroy_window(host_conn, host_window);
++            xcb_flush(host_conn);
++         }
++         mtx_destroy(&chain->present_progress_mutex);
++         mtx_destroy(&chain->thread_state_lock);
++         u_cnd_monotonic_destroy(&chain->thread_state_cond);
++         u_cnd_monotonic_destroy(&chain->present_progress_cond);
++         vk_free(pAllocator, chain);
++         return result;
++      }
++   }
++#endif
++
+    uint32_t present_caps = 0;
+ #ifdef HAVE_X11_DRM
+-   xcb_present_query_capabilities_cookie_t present_query_cookie;
+-   xcb_present_query_capabilities_reply_t *present_query_reply;
+-   present_query_cookie = xcb_present_query_capabilities(conn, window);
+-   present_query_reply = xcb_present_query_capabilities_reply(conn, present_query_cookie, NULL);
+-   if (present_query_reply) {
+-      present_caps = present_query_reply->capabilities;
+-      free(present_query_reply);
++   /* A surface server without Present would close the connection. */
++   bool query_present = true;
++#ifdef XRGAME_X11_HOST
++   query_present = host_conn == NULL;
++#endif
++   if (query_present) {
++      xcb_present_query_capabilities_cookie_t present_query_cookie;
++      xcb_present_query_capabilities_reply_t *present_query_reply;
++      present_query_cookie = xcb_present_query_capabilities(conn, window);
++      present_query_reply = xcb_present_query_capabilities_reply(conn, present_query_cookie, NULL);
++      if (present_query_reply) {
++         present_caps = present_query_reply->capabilities;
++         free(present_query_reply);
++      }
+    }
+ #endif
+ 
+@@ -3258,6 +3380,8 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+    struct wsi_cpu_image_params cpu_image_params;
+ #ifdef __ANDROID__
+    struct wsi_base_image_params android_image_params = { WSI_IMAGE_TYPE_ANDROID };
++#else
++   struct wsi_base_image_params host_image_params = { WSI_IMAGE_TYPE_XRGAME_HOST };
+ #endif
+    uint64_t *modifiers[2] = {NULL, NULL};
+    if (wsi_device->sw) {
+@@ -3269,6 +3393,9 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+ #ifdef __ANDROID__
+    } else if (getenv("XRGAME_X11_AHB")) {
+       image_params = &android_image_params;
++#else
++   } else if (host_conn) {
++      image_params = &host_image_params;
+ #endif
+    } else {
+ #ifdef HAVE_X11_DRM
+@@ -3328,6 +3455,18 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+    chain->conn = conn;
+    chain->window = window;
+    chain->depth = bit_depth;
++#ifdef XRGAME_X11_HOST
++   if (host_conn) {
++      chain->surface_conn = conn;
++      chain->surface_window = window;
++      chain->track_conn = x11_host_tracking_connection(window, &host_geometry);
++      chain->conn = host_conn;
++      chain->window = host_window;
++      chain->depth = host_depth;
++      chain->host_geometry = host_geometry;
++      chain->host_mapped = host_geometry.viewable;
++   }
++#endif
+    chain->extent = pCreateInfo->imageExtent;
+    chain->send_sbc = 0;
+    chain->sent_image_count = 0;
+@@ -3365,7 +3504,7 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+     * 'PresentOptionSuboptimal' complete mode.
+     */
+    chain->copy_is_suboptimal = false;
+-#if defined(HAVE_X11_DRM) || defined(__ANDROID__)
++#if defined(HAVE_X11_DRM) || defined(__ANDROID__) || defined(XRGAME_X11_HOST)
+    /* For our swapchain we need to listen to following Present extension events:
+     * - Configure: Window dimensions changed. Images in the swapchain might need
+     *              to be reallocated.
+@@ -3445,7 +3584,11 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+       goto fail_init_event_queue;
+    }
+ 
+-   chain->screen_resources = wsi_x11_connection_find_screen_resources(wsi_device, conn, window);
++   /* Refresh estimates translate chain->window, which is on the host. */
++#ifdef XRGAME_X11_HOST
++   if (!host_conn)
++#endif
++      chain->screen_resources = wsi_x11_connection_find_screen_resources(wsi_device, conn, window);
+ 
+    /* It is safe to set it here as only one swapchain can be associated with
+     * the window, and swapchain creation does the association. At this point
+@@ -3472,12 +3615,18 @@ fail_init_images:
+       x11_image_finish(chain, pAllocator, &chain->images[j]);
+ 
+ fail_register:
+-#if defined(HAVE_X11_DRM) || defined(__ANDROID__)
++#if defined(HAVE_X11_DRM) || defined(__ANDROID__) || defined(XRGAME_X11_HOST)
+    xcb_unregister_for_special_event(chain->conn, chain->special_event);
+ #endif
+    wsi_swapchain_finish(&chain->base);
+ 
+ fail_alloc:
++#ifdef XRGAME_X11_HOST
++   if (host_window) {
++      xcb_destroy_window(host_conn, host_window);
++      xcb_flush(host_conn);
++   }
++#endif
+    vk_free(pAllocator, chain);
+ 
+    assert(result != VK_SUCCESS);
+diff --git a/src/vulkan/wsi/wsi_common_x11_host.inc b/src/vulkan/wsi/wsi_common_x11_host.inc
+new file mode 100644
+index 0000000..f87118d
+--- /dev/null
++++ b/src/vulkan/wsi/wsi_common_x11_host.inc
+@@ -0,0 +1,447 @@
++/* SteamPSP: present an X11 surface through a second, host X server.
++ *
++ * XRGAME_X11_HOST_DISPLAY names the host display (for example ":0"). The
++ * surface stays on its own server, which keeps window management, input and
++ * fonts. The swapchain presents to an override-redirect window on the host
++ * that follows the surface window's root position, size and visibility; the
++ * host skips windows carrying _XRGAME_INPUT_PASSTHROUGH when it routes input, and keeps
++ * windows carrying _XRGAME_STACK_KEY above its own windows in the surface server's order.
++ *
++ * The host allocates every image as an AHardwareBuffer. The DRI3
++ * PixmapFromBuffers request carries modifier XRGAME_HOST_AHB_MODIFIER, the
++ * AHardwareBuffer format in offset0 and one socketpair end; the host answers on
++ * the socketpair with AHardwareBuffer_sendHandleToUnixSocket. The flattened
++ * GraphicBuffer holds the dma-buf, which is imported with the host's linear
++ * stride. As with XRGAME_X11_AHB, fences are CPU-waited before each Present and
++ * IdleNotify returns images; no SYNC fence or xshmfence is used.
++ */
++#include <poll.h>
++#include <sys/socket.h>
++
++#define XRGAME_HOST_AHB_MODIFIER 1256
++/* GraphicBuffer::flatten: magic, width, height, stride, format, layers,
++ * usage, id (2), generation, fd count, int count, usage high, ints... */
++#define XRGAME_GB01 0x47423031
++#define XRGAME_GB01_HEADER 13
++#define XRGAME_GB01_MAX_INTS 256
++#define XRGAME_HOST_MAX_FDS 8
++
++static xcb_connection_t *x11_host_conn;
++static once_flag x11_host_once = ONCE_FLAG_INIT;
++
++static void
++x11_host_connect(void)
++{
++   xcb_connection_t *conn = xcb_connect(x11_host_display(), NULL);
++   if (xcb_connection_has_error(conn)) {
++      mesa_loge("SteamPSP: cannot connect to host display %s", x11_host_display());
++      xcb_disconnect(conn);
++      conn = NULL;
++   }
++   x11_host_conn = conn;
++}
++
++/* One connection per process, shared by all swapchains and never closed. */
++static xcb_connection_t *
++x11_host_connection(void)
++{
++   call_once(&x11_host_once, x11_host_connect);
++   return x11_host_conn;
++}
++
++/* The present thread tracks the surface window on a connection of its own,
++ * so it never makes round trips on the application's connection, which may
++ * belong to Xlib and be in use on another thread. */
++static xcb_connection_t *x11_host_track_conn;
++static once_flag x11_host_track_once = ONCE_FLAG_INIT;
++
++static void
++x11_host_track_connect(void)
++{
++   xcb_connection_t *conn = xcb_connect(NULL, NULL);
++   if (xcb_connection_has_error(conn)) {
++      xcb_disconnect(conn);
++      conn = NULL;
++   }
++   x11_host_track_conn = conn;
++}
++
++/* One round trip: the surface server has a single screen. */
++static bool
++x11_host_query(xcb_connection_t *conn, xcb_window_t window,
++               struct x11_host_geometry *out)
++{
++   xcb_window_t root = xcb_setup_roots_iterator(xcb_get_setup(conn)).data->root;
++   xcb_get_geometry_cookie_t geometry_cookie = xcb_get_geometry(conn, window);
++   xcb_get_window_attributes_cookie_t attributes_cookie =
++      xcb_get_window_attributes(conn, window);
++   xcb_translate_coordinates_cookie_t origin_cookie =
++      xcb_translate_coordinates(conn, window, root, 0, 0);
++   xcb_get_geometry_reply_t *geometry =
++      xcb_get_geometry_reply(conn, geometry_cookie, NULL);
++   xcb_get_window_attributes_reply_t *attributes =
++      xcb_get_window_attributes_reply(conn, attributes_cookie, NULL);
++   xcb_translate_coordinates_reply_t *origin =
++      xcb_translate_coordinates_reply(conn, origin_cookie, NULL);
++   bool ok = geometry && attributes && origin;
++   if (ok) {
++      out->x = origin->dst_x;
++      out->y = origin->dst_y;
++      out->width = MAX2(geometry->width, 1);
++      out->height = MAX2(geometry->height, 1);
++      out->viewable = attributes->map_state == XCB_MAP_STATE_VIEWABLE;
++   }
++   free(geometry);
++   free(attributes);
++   free(origin);
++   return ok;
++}
++
++static xcb_atom_t
++x11_host_atom(xcb_connection_t *conn, const char *name)
++{
++   xcb_intern_atom_reply_t *reply =
++      xcb_intern_atom_reply(conn, xcb_intern_atom(conn, 0, strlen(name), name), NULL);
++   xcb_atom_t atom = reply ? reply->atom : XCB_ATOM_NONE;
++   free(reply);
++   return atom;
++}
++
++/* The surface window's painter's order on its own server: its 1-based sibling index (bottom
++ * first) under each ancestor, from the root down. Children paint above their parent, so the
++ * lexicographic order of these keys is the surface server's stacking order. Returns the key
++ * length, 0 on failure. */
++static uint32_t
++x11_host_stack_key(xcb_connection_t *conn, xcb_window_t window, uint32_t *key)
++{
++   uint32_t reversed[XRGAME_STACK_DEPTH];
++   uint32_t depth = 0;
++   bool ok = true;
++   xcb_query_tree_reply_t *tree =
++      xcb_query_tree_reply(conn, xcb_query_tree(conn, window), NULL);
++   if (!tree)
++      return 0;
++   while (tree->parent != XCB_WINDOW_NONE && depth < XRGAME_STACK_DEPTH) {
++      xcb_window_t parent = tree->parent;
++      free(tree);
++      /* The parent's reply lists this window's siblings and names the next ancestor. */
++      tree = xcb_query_tree_reply(conn, xcb_query_tree(conn, parent), NULL);
++      if (!tree) {
++         ok = false;
++         break;
++      }
++      const xcb_window_t *children = xcb_query_tree_children(tree);
++      int count = xcb_query_tree_children_length(tree);
++      uint32_t index = 0;
++      for (int i = 0; i < count; i++) {
++         if (children[i] == window) {
++            index = i + 1;
++            break;
++         }
++      }
++      reversed[depth++] = index;
++      window = parent;
++   }
++   free(tree);
++   if (!ok)
++      return 0;
++   for (uint32_t i = 0; i < depth; i++)
++      key[i] = reversed[depth - 1 - i];
++   return depth;
++}
++
++/* The host keeps windows with this property above its other windows, in key order. */
++static void
++x11_host_publish_key(xcb_connection_t *conn, xcb_window_t window, const uint32_t *key,
++                     uint32_t len)
++{
++   static xcb_atom_t atom;
++   if (!atom)
++      atom = x11_host_atom(conn, "_XRGAME_STACK_KEY");
++   if (atom != XCB_ATOM_NONE && len)
++      xcb_change_property(conn, XCB_PROP_MODE_REPLACE, window, atom, XCB_ATOM_CARDINAL, 32,
++                          len, key);
++}
++
++static VkResult
++x11_host_window_create(xcb_connection_t *surface_conn, xcb_window_t surface_window,
++                       xcb_connection_t **conn_out, xcb_window_t *window_out,
++                       uint32_t *depth_out, struct x11_host_geometry *geometry)
++{
++   xcb_connection_t *conn = x11_host_connection();
++   if (!conn || !x11_host_query(surface_conn, surface_window, geometry))
++      return VK_ERROR_SURFACE_LOST_KHR;
++
++   xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
++   xcb_window_t window = xcb_generate_id(conn);
++   /* Value order follows the mask bit order. */
++   const uint32_t values[] = { XCB_BACK_PIXMAP_NONE, 1 };
++   xcb_void_cookie_t cookie =
++      xcb_create_window_checked(conn, screen->root_depth, window, screen->root,
++                                geometry->x, geometry->y,
++                                geometry->width, geometry->height, 0,
++                                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual,
++                                XCB_CW_BACK_PIXMAP | XCB_CW_OVERRIDE_REDIRECT, values);
++   xcb_generic_error_t *error = xcb_request_check(conn, cookie);
++   if (error) {
++      free(error);
++      return VK_ERROR_SURFACE_LOST_KHR;
++   }
++
++   const uint32_t passthrough = 1;
++   xcb_atom_t atom = x11_host_atom(conn, "_XRGAME_INPUT_PASSTHROUGH");
++   if (atom != XCB_ATOM_NONE)
++      xcb_change_property(conn, XCB_PROP_MODE_REPLACE, window, atom,
++                          XCB_ATOM_CARDINAL, 32, 1, &passthrough);
++   static const char name[] = "steampsp-gpu-surface";
++   xcb_change_property(conn, XCB_PROP_MODE_REPLACE, window, XCB_ATOM_WM_NAME,
++                       XCB_ATOM_STRING, 8, strlen(name), name);
++   uint32_t key[XRGAME_STACK_DEPTH];
++   x11_host_publish_key(conn, window, key, x11_host_stack_key(surface_conn, surface_window, key));
++   if (geometry->viewable)
++      xcb_map_window(conn, window);
++   xcb_flush(conn);
++
++   *conn_out = conn;
++   *window_out = window;
++   *depth_out = screen->root_depth;
++   return VK_SUCCESS;
++}
++
++/* $DISPLAY's connection when it reaches the surface server: the window must
++ * report the geometry the application's connection just did. Otherwise the
++ * host window stays where it was created. */
++static xcb_connection_t *
++x11_host_tracking_connection(xcb_window_t surface_window,
++                             const struct x11_host_geometry *expected)
++{
++   call_once(&x11_host_track_once, x11_host_track_connect);
++   struct x11_host_geometry geometry;
++   if (!x11_host_track_conn ||
++       !x11_host_query(x11_host_track_conn, surface_window, &geometry) ||
++       geometry.x != expected->x || geometry.y != expected->y ||
++       geometry.width != expected->width || geometry.height != expected->height)
++      return NULL;
++   return x11_host_track_conn;
++}
++
++/* Called on the present thread before each Present. Keeps the host window at the surface
++ * window's place, and its stacking key current: the surface server can restack windows
++ * without moving them (a popup raised over the page), so the key is refreshed on every
++ * change and every 30th present. */
++static void
++x11_host_track(struct x11_swapchain *chain, bool *resized)
++{
++   struct x11_host_geometry geometry;
++   *resized = false;
++   if (!chain->track_conn ||
++       !x11_host_query(chain->track_conn, chain->surface_window, &geometry))
++      return;
++
++   *resized = geometry.width != chain->extent.width ||
++              geometry.height != chain->extent.height;
++   bool moved = geometry.x != chain->host_geometry.x ||
++                geometry.y != chain->host_geometry.y ||
++                geometry.width != chain->host_geometry.width ||
++                geometry.height != chain->host_geometry.height;
++   if (geometry.viewable && (!chain->host_mapped || moved)) {
++      const uint32_t values[] = { (uint32_t)(int32_t)geometry.x,
++                                  (uint32_t)(int32_t)geometry.y,
++                                  geometry.width, geometry.height };
++      xcb_configure_window(chain->conn, chain->window,
++                           XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
++                           XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
++   }
++   if (moved || geometry.viewable != chain->host_mapped || chain->host_presents++ % 30 == 0) {
++      uint32_t key[XRGAME_STACK_DEPTH];
++      uint32_t len = x11_host_stack_key(chain->track_conn, chain->surface_window, key);
++      if (len && (len != chain->host_key_len ||
++                  memcmp(key, chain->host_key, len * sizeof(*key)) != 0)) {
++         x11_host_publish_key(chain->conn, chain->window, key, len);
++         memcpy(chain->host_key, key, len * sizeof(*key));
++         chain->host_key_len = len;
++      }
++   }
++   if (geometry.viewable != chain->host_mapped) {
++      if (geometry.viewable)
++         xcb_map_window(chain->conn, chain->window);
++      else
++         xcb_unmap_window(chain->conn, chain->window);
++   }
++   chain->host_geometry = geometry;
++   chain->host_mapped = geometry.viewable;
++}
++
++static VkResult
++x11_host_create_mem(const struct wsi_swapchain *chain,
++                    const struct wsi_image_info *info,
++                    struct wsi_image *base)
++{
++   struct x11_image *image = (struct x11_image *)base;
++   VK_FROM_HANDLE(vk_device, device, chain->device);
++   if (image->host_fd < 0)
++      return VK_ERROR_INITIALIZATION_FAILED;
++
++   VkMemoryRequirements requirements;
++   chain->wsi->GetImageMemoryRequirements(chain->device, base->image, &requirements);
++   VkMemoryFdPropertiesKHR properties = {
++      .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR,
++   };
++   VkResult result = device->dispatch_table.GetMemoryFdPropertiesKHR(
++      chain->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++      image->host_fd, &properties);
++   if (result != VK_SUCCESS)
++      return result;
++   uint32_t types = properties.memoryTypeBits & requirements.memoryTypeBits;
++   off_t size = lseek(image->host_fd, 0, SEEK_END);
++   if (!types || size < 0 || (uint64_t)size < requirements.size)
++      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
++
++   VkImportMemoryFdInfoKHR import = {
++      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
++      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++      .fd = image->host_fd,
++   };
++   VkMemoryDedicatedAllocateInfo dedicated = {
++      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
++      .pNext = &import,
++      .image = base->image,
++   };
++   VkMemoryAllocateInfo allocate = {
++      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
++      .pNext = &dedicated,
++      .allocationSize = size,
++      .memoryTypeIndex = ffs(types) - 1,
++   };
++   result = chain->wsi->AllocateMemory(chain->device, &allocate, &chain->alloc, &base->memory);
++   /* A successful import owns the fd. */
++   if (result == VK_SUCCESS)
++      image->host_fd = -1;
++   return result;
++}
++
++VkResult
++wsi_x11_configure_host_image(const struct wsi_swapchain *chain,
++                             const VkSwapchainCreateInfoKHR *info,
++                             struct wsi_image_info *image_info)
++{
++   VkResult result = wsi_configure_image(chain, info,
++      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, image_info);
++   if (result == VK_SUCCESS) {
++      image_info->image_type = WSI_IMAGE_TYPE_XRGAME_HOST;
++      image_info->color_space = info->imageColorSpace;
++      image_info->create_mem = x11_host_create_mem;
++   }
++   return result;
++}
++
++/* Receive the flattened GraphicBuffer; keep its first fd (the dma-buf). */
++static bool
++x11_host_receive(int socket, uint32_t width, uint32_t height,
++                 int *fd_out, uint32_t *stride_out)
++{
++   int32_t data[XRGAME_GB01_HEADER + XRGAME_GB01_MAX_INTS];
++   char control[CMSG_SPACE(sizeof(int) * XRGAME_HOST_MAX_FDS)];
++   struct iovec iov = { .iov_base = data, .iov_len = sizeof(data) };
++   struct msghdr msg = {
++      .msg_iov = &iov, .msg_iovlen = 1,
++      .msg_control = control, .msg_controllen = sizeof(control),
++   };
++   struct pollfd poll_fd = { .fd = socket, .events = POLLIN };
++   if (poll(&poll_fd, 1, 5000) <= 0)
++      return false;
++   ssize_t length;
++   do {
++      length = recvmsg(socket, &msg, MSG_CMSG_CLOEXEC);
++   } while (length < 0 && errno == EINTR);
++
++   int fds[XRGAME_HOST_MAX_FDS];
++   int fd_count = 0;
++   for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
++      if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS)
++         continue;
++      int count = (cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int);
++      for (int i = 0; i < count && fd_count < XRGAME_HOST_MAX_FDS; i++)
++         memcpy(&fds[fd_count++], CMSG_DATA(cmsg) + i * sizeof(int), sizeof(int));
++   }
++   bool ok = length >= (ssize_t)(XRGAME_GB01_HEADER * sizeof(int32_t)) &&
++             !(msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) &&
++             data[0] == XRGAME_GB01 &&
++             (uint32_t)data[1] == width && (uint32_t)data[2] == height &&
++             data[3] >= (int32_t)width && data[5] == 1 &&
++             data[10] >= 1 && data[10] == fd_count;
++   for (int i = ok ? 1 : 0; i < fd_count; i++)
++      close(fds[i]);
++   if (!ok) {
++      mesa_loge("SteamPSP: invalid host buffer for %ux%u", width, height);
++      return false;
++   }
++   *fd_out = fds[0];
++   *stride_out = data[3];
++   return true;
++}
++
++static VkResult
++x11_host_image_init(struct x11_swapchain *chain, struct x11_image *image)
++{
++   uint32_t format;
++   switch (chain->base.image_info.create.format) {
++   case VK_FORMAT_B8G8R8A8_UNORM:
++   case VK_FORMAT_B8G8R8A8_SRGB:
++      format = 5; /* HAL_PIXEL_FORMAT_BGRA_8888 */
++      break;
++   case VK_FORMAT_R8G8B8A8_UNORM:
++   case VK_FORMAT_R8G8B8A8_SRGB:
++      format = 1; /* AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM */
++      break;
++   default:
++      return VK_ERROR_FORMAT_NOT_SUPPORTED;
++   }
++
++   int sockets[2];
++   if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets))
++      return VK_ERROR_INITIALIZATION_FAILED;
++   image->host_fd = -1;
++   image->pixmap = xcb_generate_id(chain->conn);
++   xcb_void_cookie_t cookie = xcb_dri3_pixmap_from_buffers_checked(
++      chain->conn, image->pixmap, chain->window, 1,
++      chain->extent.width, chain->extent.height,
++      0, format, 0, 0, 0, 0, 0, 0,
++      chain->depth, 32, XRGAME_HOST_AHB_MODIFIER, &sockets[1]);
++   xcb_flush(chain->conn);
++   uint32_t stride = 0;
++   bool received = x11_host_receive(sockets[0], chain->extent.width,
++                                    chain->extent.height, &image->host_fd, &stride);
++   close(sockets[0]);
++   xcb_generic_error_t *error = xcb_request_check(chain->conn, cookie);
++   if (!received || error) {
++      free(error);
++      goto fail;
++   }
++
++   /* A copy of the shared create info gives this image the host's pitch. */
++   struct wsi_image_info info = chain->base.image_info;
++   const VkSubresourceLayout layout = { .rowPitch = (VkDeviceSize)stride * 4 };
++   VkImageDrmFormatModifierExplicitCreateInfoEXT explicit_layout = {
++      .sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT,
++      .pNext = info.create.pNext,
++      .drmFormatModifier = DRM_FORMAT_MOD_LINEAR,
++      .drmFormatModifierPlaneCount = 1,
++      .pPlaneLayouts = &layout,
++   };
++   info.create.pNext = &explicit_layout;
++   info.create.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
++   VkResult result = wsi_create_image(&chain->base, &info, &image->base);
++   if (result != VK_SUCCESS)
++      goto fail;
++   image->update_region = None;
++   return VK_SUCCESS;
++
++fail:
++   if (image->host_fd >= 0)
++      close(image->host_fd);
++   image->host_fd = -1;
++   xcb_free_pixmap(chain->conn, image->pixmap);
++   image->pixmap = 0;
++   return VK_ERROR_INITIALIZATION_FAILED;
++}

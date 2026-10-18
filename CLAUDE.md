@@ -2,6 +2,8 @@
 
 `AGENTS.md` holds the shared facts and constraints; this file is only the Claude entry point.
 
+- 2026-10-17 官方 Steam 大屏 GPU 绘制（实验性，默认关，分支 `feature/big_screen_rendering`，未提交）：webhelper 的 CEF GPU 进程和 Steam 合成器改走组件自带的 Zink → glibc Turnip（glvnd 厂商 `steampsp`），每个 Chromium 窗口经宿主 AHB 链在客户端 Android X server 上有自己的覆盖窗口，按 `_XRGAME_STACK_KEY` 保持 Xephyr 中的层级；Mesa 另加 kopper 读回补丁（Xephyr 没有 DRI3）。Odin 3（A8xx）同一 MHW 详情页滚动：26.4 → 41.4 Hz，总 CPU 1.71 → 0.58 核。软件模式的热点是 CEF 自己的软件合成，不是 Steam 合成器。鼠标指针在 GPU 模式下不可见；启动游戏、长时间运行和 Thor 上的 v5 尚未测。同时修复了 X server 的 DRI3/Present 资源泄漏。见[规格 §12](docs/specs/xrgame-native-big-screen-rendering-v1.md)及[记录](docs/validation/big-screen-gpu-20261017.md)。
+
 - 2026-10-17 用户要求游戏下载目录统一：新装使用 `/sdcard/SteamPSP`；旧版已有 `/sdcard/XRGameNative` 游戏库原地复用。Official/Custom Steam 共用同一份 `steamapps` 和现有每游戏容器的存档，不做两套目录的双向复制。
 
 - 2026-10-08 用户指定后续本机编译默认使用 Apple Container：`tools/xrgame/apple-container.sh build`，首次运行 `setup`。源码在 Mac 编辑，Linux ext4 卷保留独立工具链/缓存，产物为 `picoXrDebug` + 原生 `RelWithDebInfo`。见 [操作指南](docs/building/apple-container.md)；完整运行时重建与设备验收不能由 APK 构建推定。
@@ -92,4 +94,4 @@
 
 - 当前 AYN 的下载/续传/修复/目录识别和独立公共 depot 对照见 `docs/validation/personal-p2-downloads-20260927.md`；guest 软件断点可命中但恢复仍失败，默认关闭，不能把基础 attach/inspect 通过扩大为完整 D2。
 
-- **Steam client modes (2026-10-17):** Official Steam owns its login/download/game session/Cloud through the Linux client and Proton bridge; disconnect and suppress JavaSteam while it runs, including Android game-host Activity entry and reconnect callbacks. Custom Steam remains the original JavaSteam + bundled GBE route. Switch managers only after the previous client/game stops; share physical game/save paths, not two copies. Cached metadata access must not require a second login. See [the sharing record](docs/validation/steam-shared-library-20261017.md).
+- **Steam client modes (2026-10-17):** Official Steam owns its login/download/game session/Cloud through the Linux client and Proton bridge; disconnect and suppress JavaSteam while it runs, including Android game-host Activity entry and reconnect callbacks. Custom Steam remains the original JavaSteam + bundled GBE route. Switch managers only after the previous client/game stops; share physical game/save paths, not two copies. Cached metadata access must not require a second login. See [the sharing record](docs/validation/steam-shared-library-20261017.md). 2026-10-17 Odin 3 v12/v13：官方模式启动 MHW 时超出 Android 的幻影进程上限（默认 32），系统杀掉 PRoot 里整套 Steam，游戏随之退出，与启动信息来源无关；用户自己关闭子进程监控（`settings_enable_monitor_phantom_procs=false`）后，MHW 进到选择存档并开始加载，Steam 进程完好。Custom 模式不受影响。用户决定暂时用 JavaSteam（Custom）模式；大屏（官方模式）启动游戏也暂时沿用之前耦合 JavaSteam 的启动信息（已验证能进游戏、领奖励），桥接传回的 Steam 命令只在 DebugBus `steamCommand` 显示。见[大屏记录](docs/validation/big-screen-gpu-20261017.md)。

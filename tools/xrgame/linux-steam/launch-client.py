@@ -22,6 +22,31 @@ def screen_size(value):
     return f'{width}x{height}'
 
 
+GPU_ROOT = '/opt/steampsp-gpu'
+GPU_ICD = f'{GPU_ROOT}/share/vulkan/icd.d/freedreno_icd.aarch64.json'
+GPU_GL_VENDOR = 'steampsp'  # libGLX_steampsp.so.0 from build-gpu.sh
+
+
+def gpu_available():
+    return Path(GPU_ICD).is_file()
+
+
+def gpu_environment(library_path):
+    """Steam's web helper (CEF and Steam's compositor) draws with the bundled Zink and Turnip.
+
+    Their frames go to the Android X server, stacked as their windows are in
+    Xephyr, which keeps the client's windows, input and fonts. The client shim
+    applies the GL vendor to the web helper; VGUI's GLX stays on llvmpipe.
+    """
+    return {
+        'XRGAME_WEBHELPER_GL_VENDOR': GPU_GL_VENDOR,
+        'VK_DRIVER_FILES': GPU_ICD,
+        'VK_ICD_FILENAMES': GPU_ICD,
+        'XRGAME_X11_HOST_DISPLAY': ':0',
+        'LD_LIBRARY_PATH': ':'.join(filter(None, [f'{GPU_ROOT}/lib', library_path])),
+    }
+
+
 def client_window_ready(tree):
     # Match CEF's main window, including the sign-in screen, never VGUI's updater.
     # Do not persist window titles (which can contain user information).
@@ -43,10 +68,17 @@ def main():
         print(f'SteamPSP: shared library inaccessible errno={error.errno}', flush=True)
     software = dict(os.environ, LIBGL_ALWAYS_SOFTWARE="1", GALLIUM_DRIVER="llvmpipe", LP_NUM_THREADS="2")
     nested_env = dict(software, DISPLAY=":1")
+    if os.environ.get('XRGAME_STEAM_GPU') == '1':
+        if gpu_available():
+            nested_env.update(gpu_environment(nested_env.get('LD_LIBRARY_PATH', '')))
+            print('SteamPSP: GPU compositor drawing requested', flush=True)
+        else:
+            print('SteamPSP: GPU component missing; the client keeps software drawing', flush=True)
     if (Path(os.environ['HOME']).parent / 'library-trace').is_file():
         nested_env['XRGAME_STEAM_LIBRARY_TRACE'] = '1'
     server_env = dict(software)
     server_env.pop("LD_LIBRARY_PATH", None)  # Xorg uses the pinned userspace libraries, not Valve's copies.
+    server_env.pop("XRGAME_STEAM_GPU", None)
     probe_env = dict(server_env, DISPLAY=":1")
     screen = screen_size(os.environ.get('XRGAME_STEAM_SCREEN', '1280x800'))
     children = []

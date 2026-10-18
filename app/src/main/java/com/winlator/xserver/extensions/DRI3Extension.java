@@ -145,6 +145,10 @@ public class DRI3Extension implements Extension {
         if (modifiers == 1255) {
             pixmapFromHardwareBuffer(client, pixmapId, width, height, depth, fd);
         }
+        else if (modifiers == 1256) {
+            // The offset carries the hardware buffer format.
+            pixmapForHardwareBuffer(client, pixmapId, width, height, depth, offset, fd);
+        }
         else if (modifiers == 1274) {
             pixmapFromFd(client, pixmapId, width, height, stride, offset, depth, fd, size);
         }
@@ -159,7 +163,25 @@ public class DRI3Extension implements Extension {
                 app.gamenative.BuildConfig.XRGAME ? width : image.getStride(), height, depth);
             drawable.setTexture(image);
 
-            client.xServer.pixmapManager.createPixmap(drawable);
+            client.registerAsOwnerOfResource(client.xServer.pixmapManager.createPixmap(drawable));
+        }
+        finally {
+            XConnectorEpoll.closeFd(fd);
+        }
+    }
+
+    /**
+     * XRGAME: this server allocates the buffer and sends it on the client's socketpair; the
+     * client imports its dma-buf. Used by the glibc Steam client's Turnip, which has no gralloc.
+     */
+    private void pixmapForHardwareBuffer(XClient client, int pixmapId, short width, short height, byte depth, int format, int fd) throws IOException, XRequestError {
+        try {
+            if (!app.gamenative.BuildConfig.XRGAME || Drawable.IS_ASR()) throw new BadImplementation();
+            GPUImage image = new GPUImage(fd, width, height, format);
+            if (image.getHardwareBufferPtr() == 0) throw new BadAlloc();
+            Drawable drawable = client.xServer.drawableManager.createDrawable(pixmapId, width, height, depth);
+            drawable.setTexture(image);
+            client.registerAsOwnerOfResource(client.xServer.pixmapManager.createPixmap(drawable));
         }
         finally {
             XConnectorEpoll.closeFd(fd);
@@ -176,7 +198,7 @@ public class DRI3Extension implements Extension {
             drawable.setData(buffer);
             drawable.setTexture(null);
             drawable.setOnDestroyListener(onDestroyDrawableListener);
-            client.xServer.pixmapManager.createPixmap(drawable);
+            client.registerAsOwnerOfResource(client.xServer.pixmapManager.createPixmap(drawable));
         }
         finally {
             XConnectorEpoll.closeFd(fd);

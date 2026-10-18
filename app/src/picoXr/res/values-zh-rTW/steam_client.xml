@@ -19,8 +19,12 @@
     <string name="steam_client_download_component">正在下載 %1$s</string>
     <string name="steam_client_opening">正在開啟 Steam 大螢幕模式…</string>
     <string name="steam_client_running">Official Steam · 大螢幕模式</string>
+    <string name="steam_client_starting">正在載入大螢幕模式…</string>
+    <string name="steam_client_launch_hint">首次啟動或用戶端更新時會久一些</string>
     <string name="steam_client_exited">官方 Steam 已結束（%1$d）</string>
     <string name="steam_client_input_failed">文字未提交，请重新选择输入框后重试。</string>
     <string name="steam_mode_official_short">Steam 大屏</string>
     <string name="steam_mode_custom_short">游戏库与设置</string>
+    <string name="steam_mode_other_title">其他</string>
+    <string name="steam_mode_other_short">GOG、Epic、Amazon、本機應用 · 相容模式 Steam 庫</string>
 </resources>

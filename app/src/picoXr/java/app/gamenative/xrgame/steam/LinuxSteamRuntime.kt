@@ -18,7 +18,7 @@ class LinuxSteamRuntime(private val context: Context) {
     val root = File(directory, "root")
     val logs = File(directory, "logs")
 
-    fun prepare() {
+    fun prepare(gpu: Boolean = false) {
         directory.mkdirs(); home.mkdirs(); logs.mkdirs()
         val identity = File(directory, "machine-id")
         if (!identity.isFile) {
@@ -36,15 +36,8 @@ class LinuxSteamRuntime(private val context: Context) {
             val stage = File(directory, "root.installing")
             stage.deleteRecursively(); check(stage.mkdirs())
             try {
-                val sha = MessageDigest.getInstance("SHA-256")
                 val archive = File(directory, "rootfs.installing.tar.gz")
-                context.assets.open("linux-steam/rootfs.tgz").use { input ->
-                    archive.outputStream().use { output ->
-                        val bytes = ByteArray(262144)
-                        while (true) { val n = input.read(bytes); if (n < 0) break; sha.update(bytes, 0, n); output.write(bytes, 0, n) }
-                    }
-                }
-                check(sha.digest().joinToString("") { "%02x".format(it) } == expected) { "Linux userspace checksum mismatch" }
+                check(copyAsset("linux-steam/rootfs.tgz", archive) == expected) { "Linux userspace checksum mismatch" }
                 extractRoot(archive, stage)
                 archive.delete()
                 File(stage, ".steampsp-rootfs").writeText(expected)
@@ -59,6 +52,7 @@ class LinuxSteamRuntime(private val context: Context) {
                 previous.deleteRecursively()
             } catch (e: Exception) { stage.deleteRecursively(); throw e }
         }
+        if (gpu) installGpu(manifest)
         for (name in listOf("tmp/.X11-unix", "tmp/shm", "proc", "sys", "dev", "run/user/${android.os.Process.myUid()}")) File(root, name).mkdirs()
         // Real Android identity is shared with the Bionic client; no fake root/UID namespace.
         File(root, "etc/passwd").writeText("root:x:0:0:root:/root:/bin/bash\nsteam:x:${android.os.Process.myUid()}:${android.os.Process.myUid()}:Steam:${home.path}:/bin/bash\n")
@@ -78,6 +72,37 @@ class LinuxSteamRuntime(private val context: Context) {
         context.assets.open("linux-steam/libsteampsp-client-compat.so").use { input -> shim.outputStream().use { input.copyTo(it) } }
         File(root, "etc/ld.so.preload").writeText("/usr/local/lib/libsteampsp-client-compat.so\n")
         File(root, "etc/machine-id").writeText(identity.readText())
+    }
+
+    /** Copies an asset and returns its SHA-256. */
+    private fun copyAsset(name: String, target: File): String {
+        val sha = MessageDigest.getInstance("SHA-256")
+        context.assets.open(name).use { input ->
+            target.outputStream().use { output ->
+                val bytes = ByteArray(262144)
+                while (true) { val n = input.read(bytes); if (n < 0) break; sha.update(bytes, 0, n); output.write(bytes, 0, n) }
+            }
+        }
+        return sha.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /** The GPU component sits in the replaceable userspace, so a userspace update reinstalls it. */
+    private fun installGpu(manifest: JSONObject) {
+        val expected = manifest.getJSONObject("files").getString("assets/${LinuxSteamGpu.ASSET}")
+        val target = File(root, LinuxSteamGpu.GUEST_ROOT.removePrefix("/"))
+        val marker = File(target, ".steampsp-gpu")
+        if (marker.isFile && marker.readText().trim() == expected) return
+        val stage = File(target.parentFile, "${target.name}.installing")
+        stage.deleteRecursively(); check(stage.mkdirs())
+        try {
+            val archive = File(directory, "gpu.installing.tar.gz")
+            check(copyAsset(LinuxSteamGpu.ASSET, archive) == expected) { "Steam GPU component checksum mismatch" }
+            extractRoot(archive, stage)
+            archive.delete()
+            File(stage, ".steampsp-gpu").writeText(expected)
+            check(!target.exists() || target.deleteRecursively())
+            check(stage.renameTo(target)) { "Could not activate the Steam GPU component" }
+        } catch (e: Exception) { stage.deleteRecursively(); throw e }
     }
 
     private fun extractRoot(archive: File, stage: File) {
@@ -114,7 +139,7 @@ class LinuxSteamRuntime(private val context: Context) {
         for ((target, source) in hardlinks) { check(source.isFile); source.copyTo(target); target.setExecutable(source.canExecute(), true) }
     }
 
-    fun process(arguments: List<String>, logName: String): ProcessBuilder {
+    fun process(arguments: List<String>, logName: String, gpu: Boolean = false): ProcessBuilder {
         val native = context.applicationInfo.nativeLibraryDir
         val locales = android.content.res.Resources.getSystem().configuration.locales
         // A same-path bind lets the glibc and Bionic clients agree on HOME and Steam IPC paths.
@@ -136,6 +161,13 @@ class LinuxSteamRuntime(private val context: Context) {
                 compat.mkdirs()
                 args.addAll(listOf("-b", "${SteamSaveSharing.compatData(context).path}:${compat.path}"))
             }
+        }
+        // Chromium's GPU process exits when libpci can list /proc/bus/pci but not read its
+        // devices file, and CEF then draws on SwiftShader. Nothing the app sees is on PCI.
+        val pci = File("/proc/bus/pci/devices")
+        if (gpu && File("/proc/bus/pci").isDirectory && !pci.canRead()) {
+            val empty = File(root, "etc/steampsp/pci-devices").apply { parentFile?.mkdirs(); writeText("") }
+            args.addAll(listOf("-b", "${empty.path}:${pci.path}"))
         }
         args.addAll(arguments)
         return ProcessBuilder(args).apply {
@@ -162,6 +194,25 @@ class LinuxSteamRuntime(private val context: Context) {
         }
         val alias = File(client, "steamrtarm32")
         if (!java.nio.file.Files.exists(alias.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) Os.symlink("steamrtarm64", alias.path)
+    }
+
+    /** Valve's client libraries, for its own binaries in PRoot. */
+    fun clientLibraryPath() = "${client.path}/steamrtarm64:${client.path}/steamrtarm64/steam-runtime/usr/lib/aarch64-linux-gnu"
+
+    /**
+     * Ask the running client to start a game, as a steam:// link does. Steam's own binary
+     * forwards its command line through ~/.steam/steam.pipe and exits; -ifrunning never starts
+     * a second client. Returns the forwarder's exit code, or -1 if it did not finish.
+     */
+    fun forwardLaunch(appId: Int): Int {
+        require(appId > 0) { "invalid app ID" }
+        if (!LinuxSteamService.running) return 6
+        val builder = process(listOf("${client.path}/steamrtarm64/steam", "-ifrunning", "steam://rungameid/$appId"),
+            "forward-launch.log")
+        builder.environment().putAll(mapOf("LD_LIBRARY_PATH" to clientLibraryPath(), "DISPLAY" to ":1"))
+        val forwarder = builder.start()
+        if (!forwarder.waitFor(30, TimeUnit.SECONDS)) { forwarder.destroyForcibly(); return -1 }
+        return forwarder.exitValue()
     }
 
     /** Return only a bounded result code; never expose account data or Valve's own diagnostics. */
