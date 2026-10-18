@@ -197,3 +197,11 @@ v12 上（同一 boot id，23:11–23:20）：
 - v13（回退启动信息来源）：APK `61883d1ecbf0fc7c77fe1574b89910c49fbe85da6fb3e2cef5d1ea082321f1d6`，审计 149/0，JVM 58 项、Python 33 项通过；catalog `23d2f72e…`（同 v12），Linux Steam manifest `f59a270b…`（`game-launch.py` 注释更新）。之后安装到 Odin 3 复测（23:34–23:39）：官方会话 23:35:11 登录，`linux_steam launch 582010` 后 Steam 约 110 s 才经桥接交接，`steamCommand` 显示 `MonsterHunterWorld.exe`；`XServerScreen` 用 JavaSteam 的 `appLaunchInfo` 启动，MHW 进程出现。23:38:05 系统再次 `Killing PhantomProcessRecord {…libproot.so…}: Trimming phantom processes`，这次杀的是 PRoot 根进程，Xephyr、steam、8 个 steamwebhelper 随之退出，MHW 报 `fatal stalled cross-thread pipe` 退出。**所以官方模式启动游戏失败与启动信息来源无关**，原来耦合 JavaSteam 的方式同样会遇到。设备设置（只读）：Android 15，`max_phantom_processes` 未设置（默认 32），`settings_enable_monitor_phantom_procs` 未设置（默认开启），当时已有 20 个幻影进程；此前通过的官方模式游戏验证是在 AYN Thor 上做的。
 - 用户自己关闭子进程监控后复测（`settings_enable_monitor_phantom_procs=false`，23:47–23:51，仍是 v13）：会话 23:47:56 登录，`linux_steam launch 582010` 后 5 s 交接。MHW 依次显示中间件 logo、选择存档（3 个原有角色都在）并开始加载存档，约 2.5 min 内 MHW 和官方 Steam 的 9 个进程都在，23:48 之后没有幻影查杀。用户确认可以玩；23:50:33 用户在多任务界面划掉了应用，MHW 随之结束（`LAUNCHER_TASK_DISMISS_SWIPE_UP`），不是崩溃。没测更长时间的游玩。
 
+### 2026-10-18：GPU 绘制默认打开，官方启动改用 Steam 的命令（v14）
+
+用户要求：大屏 GPU 绘制改为默认打开；再出一版不用 JavaSteam 启动信息的包复测。
+
+- `LinuxSteamGpu`：开关文件写 `on`/`off`，没有文件时视为打开，只有明确 `off` 才关（`linux_steam gpu off` 写入 `off`）。
+- 官方启动重新先用桥接传回的 Steam 命令解析目标（即 v8–v12 的做法），缺失或不可用时回退到 JavaSteam 缓存；兼容配置照旧提供启动器选项。游戏元数据和入库记录仍来自 JavaSteam 缓存。
+- v14 APK `72ba6e5e20e8b6fce15024cd4c70bce1551640ec85e35510f9826db6c1bcd471`，审计 149/0，JVM 59 项、Python 33 项通过；catalog `23d2f72e…`（同 v12），Linux Steam manifest `33f73d10…`。已保留数据覆盖安装到 Odin 3（同一 boot id，子进程监控已由用户关闭，GPU 开关文件仍是 `on`），**等待用户复测**。
+

@@ -5,10 +5,9 @@
 The request carries the app ID, this process ID and the game command Steam issued: its
 executable and working directory relative to the game's install folder, plus its arguments.
 Nothing outside that folder, no shell command and no credentials cross the channel. The Android
-side independently checks the installed game and account. For now it keeps the command for
-diagnostics only and launches from the installed game's own launch configuration. The bridge
-remains alive until the existing game session exits, so Steam does not mark Play as finished
-immediately.
+side independently checks the installed game and account, and resolves the command inside the
+game's own drive. The bridge remains alive until the existing game session exits, so Steam does
+not mark Play as finished immediately.
 """
 import json
 import os

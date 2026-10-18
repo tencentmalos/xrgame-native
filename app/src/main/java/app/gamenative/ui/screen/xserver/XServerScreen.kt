@@ -977,7 +977,8 @@ fun XServerScreen(
         if (exitWatchJob?.isActive == true) return
         val rockstarExecutable = realSteamRockstarDirectory?.let(RockstarHelperDeployment::gameExecutable)
         val targetExecutable = extractExecutableBasename(
-            rockstarExecutable ?: if (container.isLaunchRealSteam && realSteamGameExecutable.isNotEmpty()) realSteamGameExecutable else container.executablePath,
+            rockstarExecutable ?: if (container.isLaunchRealSteam && realSteamGameExecutable.isNotEmpty()) realSteamGameExecutable
+                else app.gamenative.xrgame.XrGameOfficialSteam.gameExecutable(gameId, container.executablePath),
         )
         if (!windowMatchesExecutable(window, targetExecutable) && !wasTrackedGameWindow) return
 
@@ -2156,8 +2157,9 @@ fun XServerScreen(
                 if (!bootToContainer) {
                     renderer.setUnviewableWMClasses("explorer.exe")
                     // TODO: make 'force fullscreen' be an option of the app being launched
-                    if (container.executablePath.isNotBlank()) {
-                        renderer.forceFullscreenWMClass = Paths.get(container.executablePath).name
+                    val launchedExecutable = app.gamenative.xrgame.XrGameOfficialSteam.gameExecutable(gameId, container.executablePath)
+                    if (launchedExecutable.isNotBlank()) {
+                        renderer.forceFullscreenWMClass = Paths.get(launchedExecutable).name
                     }
                     // Here, Ludashi calls setDriverInfo to use Adrenotools for the compositor
                     // We are not doing that because it caused a race and crash in some games (eg Balatro)
@@ -2452,7 +2454,7 @@ fun XServerScreen(
                             }
 
                             // Pin game process to performance cores (CPUs 4-7)
-                            container.executablePath
+                            app.gamenative.xrgame.XrGameOfficialSteam.gameExecutable(gameId, container.executablePath)
                                 .substringAfterLast('/')
                                 .substringAfterLast('\\')
                                 .takeIf { it.isNotEmpty() }
@@ -4441,10 +4443,12 @@ private fun getWineStartCommand(
     val isEpicGame = gameSource == GameSource.EPIC
     val isSteamGame = gameSource == GameSource.STEAM
     val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
+    // Official Steam issues the game's own command; cached metadata is only the fallback.
+    val officialCommand = if (isSteamGame) app.gamenative.xrgame.XrGameOfficialSteam.gameCommand(gameId) else null
 
     if (isSteamGame) {
         // Steam-specific setup
-        if (container.executablePath.isEmpty()){
+        if (container.executablePath.isEmpty() && officialCommand == null){
             container.executablePath = SteamService.getInstalledExe(gameId)
             container.saveData()
         }
@@ -4470,8 +4474,13 @@ private fun getWineStartCommand(
         val drive = Container.drivesIterator(container.drives).asSequence()
             .firstOrNull { File(it[1]).canonicalFile == gameDirectory }?.get(0)?.firstOrNull()
             ?: error("Installed Steam game has no mapped drive")
-        val profile = app.gamenative.xrgame.XrGameSteamLaunch.clientProfile(gameId, container.executablePath)
-        val target = if (profile != null) app.gamenative.xrgame.XrGameSteamLaunch.resolve(
+        // A profile keeps its launcher options under Official Steam; Steam's command picks the target.
+        val profile = app.gamenative.xrgame.XrGameSteamLaunch.clientProfile(gameId,
+            officialCommand?.executable ?: container.executablePath)
+        val target = if (officialCommand != null) app.gamenative.xrgame.XrGameSteamLaunch.resolve(
+            gameDirectory, drive, officialCommand.executable, officialCommand.executable,
+            officialCommand.arguments, officialCommand.workingDirectory,
+        ) else if (profile != null) app.gamenative.xrgame.XrGameSteamLaunch.resolve(
             gameDirectory, drive, profile.executable, profile.executable, profile.arguments, profile.workingDirectory,
         ) else app.gamenative.xrgame.XrGameSteamLaunch.resolve(
             gameDirectory, drive, container.executablePath,

@@ -56,11 +56,13 @@ object XrGameOfficialSteam {
     }
     fun isOfficialGame(appId: Int): Boolean = active && officialGame == appId
     /**
-     * Diagnostics only (DebugBus): launches still resolve the installed launch configuration from
-     * JavaSteam's cached metadata, the validated route (user, 2026-10-17). Null when Steam's
-     * command was absent or unusable.
+     * What official launches resolve first (user, 2026-10-18: a build without JavaSteam's launch
+     * metadata). Null when Steam's command was absent or unusable; JavaSteam's cached launch
+     * configuration then applies.
      */
     @Synchronized fun gameCommand(appId: Int): Command? = if (isOfficialGame(appId)) officialCommand else null
+    /** The executable Steam started for this game, for process and window matching; else [fallback]. */
+    fun gameExecutable(appId: Int, fallback: String): String = gameCommand(appId)?.executable ?: fallback
     fun requireLaunchOwner(appId: Int) {
         check(!active || isOfficialGame(appId)) { "Launch this game from Official Steam, or switch to Custom Steam on the launch page." }
     }

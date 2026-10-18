@@ -237,11 +237,11 @@ Foundation 管理命令分发。Android Service 承担 dumpsys transport，因�
 
 ### 共用 Steam 目录诊断（2026-10-17 候选）
 
-`linux_steam gpu on|off` 切换实验性的客户端 GPU 绘制，下一次启动客户端时生效；默认关闭。APK 必须带 `assets/linux-steam/gpu.tgz`。所有 `linux_steam` 返回都含 `gpuRequested`（开关状态）、`gpuBundled`（APK 是否带组件）和 `gpuDisplay`（本次会话的 X server 是否接收 GPU 帧）。`gpuDisplay=true` 只说明 DRI3/Present 已开放，不等于 CEF 实际在用 GPU：需另看客户端日志和 CDP。见[大屏绘制规格](../specs/xrgame-native-big-screen-rendering-v1.md)。
+`linux_steam gpu on|off` 切换实验性的客户端 GPU 绘制，下一次启动客户端时生效；2026-10-18 起默认打开（没有开关文件时为开，只有明确 `off` 才关）。APK 必须带 `assets/linux-steam/gpu.tgz`。所有 `linux_steam` 返回都含 `gpuRequested`（开关状态）、`gpuBundled`（APK 是否带组件）和 `gpuDisplay`（本次会话的 X server 是否接收 GPU 帧）。`gpuDisplay=true` 只说明 DRI3/Present 已开放，不等于 CEF 实际在用 GPU：需另看客户端日志和 CDP。见[大屏绘制规格](../specs/xrgame-native-big-screen-rendering-v1.md)。
 
 `linux_steam launch <appid>` 让正在运行的官方客户端启动游戏，效果同 `steam://rungameid/<appid>` 链接：在 PRoot 中运行 Valve 自己的 `steam -ifrunning steam://rungameid/<appid>`，由它经 `~/.steam/steam.pipe` 把命令行转交给客户端后退出；`-ifrunning` 不会另起第二个客户端。命令异步执行，之后的返回里 `launchForward` 为 -2（转交中）、0（已转交）、6（客户端未运行）、-1（30 s 未结束）、12（异常）或转交程序自己的退出码。转交成功只说明 Steam 收到了请求：之后仍由 Steam 自己检查更新、云存档和启动配置，再经兼容工具桥接把命令交给 Android；游戏是否启动看 `status`、`game_state` 和画面。
 
-`linux_steam status` 的 `steamCommand` 是官方游戏运行期间 Steam 经兼容工具下发的命令（相对游戏目录的可执行文件、Windows 命令行形式的参数、工作目录），没有官方游戏时为 null。只用于对照：启动仍按 JavaSteam 缓存的启动配置。
+`linux_steam status` 的 `steamCommand` 是官方游戏运行期间 Steam 经兼容工具下发的命令（相对游戏目录的可执行文件、Windows 命令行形式的参数、工作目录），没有官方游戏时为 null。2026-10-18 起官方启动先用它解析目标，它缺失或不可用时才用 JavaSteam 缓存的启动配置。
 
 `linux_steam library` 返回每个 ACF 的 app ID、完成状态、depot 数以及存档冲突 app ID；不返回账户身份。`status` 的 `mode=official|custom` 是管理归属，`javaRunning/javaConnected/javaLoggedIn` 用于核验官方运行时 JavaSteam 全部关闭；`libraryOwned` 表示 Official 持有同一游戏目录写入权。旧 `cloud <appId>` 已移除：它建立 AppID 管道后会令 Steam 登记 PID 0，干扰真正的启动。新的 `check` 只查询会话，不携带游戏身份。见[目录共用记录](../validation/steam-shared-library-20261017.md)。
 

@@ -13,6 +13,12 @@ class LinuxSteamGpuTest {
         assertEquals(listOf("-cef-force-gpu"), LinuxSteamGpu.cefArguments(true))
     }
 
+    @Test fun `GPU drawing is on unless switched off`() {
+        assertEquals(true, LinuxSteamGpu.requestedFrom(null))
+        assertEquals(true, LinuxSteamGpu.requestedFrom("on\n"))
+        assertEquals(false, LinuxSteamGpu.requestedFrom("off\n"))
+    }
+
     @Test fun `the component path matches the ICD written by build-gpu`() {
         assertEquals("/opt/steampsp-gpu", LinuxSteamGpu.GUEST_ROOT)
         assertEquals("linux-steam/gpu.tgz", LinuxSteamGpu.ASSET)

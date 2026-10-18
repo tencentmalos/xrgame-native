@@ -172,7 +172,7 @@ class DebugBusService : Service() {
             .put("display", app.gamenative.xrgame.steam.LinuxSteamService.xServerState.value != null)
             .put("sessionCheck", linuxSteamCheck)
             .put("launchForward", linuxSteamLaunch)
-            // What Steam issued for the running official game; the launch itself uses JavaSteam's metadata.
+            // What Steam issued for the running official game; the launch resolves it first.
             .put("steamCommand", app.gamenative.xrgame.XrGameOfficialSteam.gameAppId
                 ?.let { app.gamenative.xrgame.XrGameOfficialSteam.gameCommand(it) }
                 ?.let { JSONObject().put("executable", it.executable).put("arguments", it.arguments)
