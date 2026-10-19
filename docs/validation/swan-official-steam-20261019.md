@@ -185,6 +185,17 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
 - 包 `steampsp-kb2`：SHA `f529b2c4acb827265910aa19f54cf7dc58ad9cb233300553396e05065c7d5d28`，审计 0 errors，picoXr 单测 56 项全过（含 `WindowsVrUpscaleTest`）。
 - Swan 验证（GPU 绘制，SDK 截图）：19:20:07 从官方 Steam 启动，`Demonic Mahjong.exe` 正常运行。观察 1 分多钟，没有启动错误，画面停在游戏自己的 DLC 公告页。新容器出现了 `steamuser → xuser` 链接，Wine 也填好了 `xuser`。
 
+### 键鼠游戏默认打开 XR 指针模式
+
+用户要求：《我在地府打麻将》这类默认用键鼠操作的游戏，进 2D 大屏时直接用手柄射线当鼠标。
+
+- `ImmersiveXrActivity` 加载会话设置时，如果容器是 Steam 游戏（`STEAM_`）、JavaSteam 缓存的 `controller_support` 为 none，而且不是 Windows VR 游戏，就默认打开指针模式；原来的切换手势仍然可以切回去。
+- 设备缓存里，3444020 是 none；Hades II、MHR 是 full，保持原样；Alyx 是 none，但它是 Windows VR 游戏，不受影响。
+- 包 `steampsp-kb3`：SHA `0a84c042947717847985ab1fdb208711f3cfb613be1fe13c163c071bf24b1fba`，审计 0 errors，单测 50 项全过。
+  - 换用 `bundle-turnip17`（catalog `97a05f69…`），因为 `bc17c7733` 把默认 Turnip 改成了 xrg17。
+  - `gpu.tgz` 按新的 mesa pin `55186f1f` 用配方重出：`libvulkan_freedreno.so` Build ID `c88acd9c…`，`libgallium`、`libGLX` 同上。
+- Swan：19:41:10 从官方 Steam 启动《我在地府打麻将》，`Demonic Mahjong.exe` 运行，DebugBus `quickmenu status` 报告 `pointerMode: true`。日志在 19:41:24 记下 `XR pointer mode enabled for a keyboard-and-mouse game`。真人用射线操作没测。
+
 同时发现、未修（需要用户决定）：
 
 - Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。

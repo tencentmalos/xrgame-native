@@ -527,6 +527,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             windowsVrEnabled = container.getExtra(EXTRA_WINDOWS_VR_ENABLED, "false").toBoolean()
             openCompositeEnabled = container.getExtra(EXTRA_WINDOWS_VR_OPEN_COMPOSITE, "false").toBoolean()
             windowsVrStatus = if (windowsVrEnabled) "Waiting for runtime" else "Disabled"
+            // Keyboard-and-mouse games start with the controller rays as the mouse on the big
+            // screen; the usual toggle still switches back. VR games keep their controllers.
+            if (!windowsVrEnabled && keyboardMouseGame(appId)) runOnUiThread {
+                if (!xrPointerModeActive) {
+                    xrPointerModeActive = true
+                    Timber.i("Immersive: XR pointer mode enabled for a keyboard-and-mouse game")
+                }
+            }
             immersiveSettingsLoaded = true
             applyQuadTransform()
             if (xrSessionHandle != 0L) {
@@ -534,6 +542,13 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 XrNative.nativeSetCurvedScreen(xrSessionHandle, curvedScreen)
             }
         }
+    }
+
+    /** A Steam game whose store data lists no controller support. Off the main thread. */
+    private fun keyboardMouseGame(appId: String): Boolean {
+        if (!appId.startsWith("STEAM_")) return false
+        val id = runCatching { ContainerUtils.extractGameIdFromContainerId(appId) }.getOrNull() ?: return false
+        return SteamService.getAppInfoOf(id)?.controllerSupport == app.gamenative.enums.ControllerSupport.none
     }
 
     private fun persistImmersiveSettings(appId: String) {
