@@ -4,10 +4,14 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.HardwareRenderer
+import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.graphics.RenderNode
 import android.hardware.HardwareBuffer
 import android.media.ImageReader
@@ -19,11 +23,14 @@ import android.os.Looper
 import android.view.Choreographer
 import android.view.Surface
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inspector.WindowInspector
 import app.gamenative.BuildConfig
 import app.gamenative.ui.screen.xr.ImmersiveXrActivity
 import app.gamenative.ui.screen.xr.XrNative
+import com.winlator.renderer.CaptureTap
+import com.winlator.widget.XServerRendererView
 import timber.log.Timber
 import java.io.File
 
@@ -42,6 +49,10 @@ import java.io.File
  * the main thread. Only SteamPSP's windows are in the picture, not the Pico environment or system
  * overlays. An immersive session takes the producer over; this one attaches again when a SteamPSP
  * window resumes.
+ *
+ * View drawing leaves an X server SurfaceView (the official Steam page, a game's 2D view) as a
+ * hole, so while a capture runs each X server renderer copies its frames ([CaptureTap]) and the
+ * newest one is drawn under the window at the view's place, below anything drawn over it.
  */
 // API 29 calls (WindowInspector, ImageReader usage): install() registers nothing below API 29.
 @SuppressLint("NewApi")
@@ -53,6 +64,8 @@ object XrPanelCapture : Application.ActivityLifecycleCallbacks {
     private const val SURFACE_CHANGED = 8
     private const val IDLE_POLL_MS = 100L
     private const val HELD_POLL_MS = 500L
+    // How long a still waits for the X server surfaces' first copied frame.
+    private const val SURFACE_FRAME_WAIT_MS = 1000L
 
     private val main = Handler(Looper.getMainLooper())
     private val stills by lazy { Handler(HandlerThread("XRGame:PanelStill").apply { start() }.looper) }
@@ -62,6 +75,18 @@ object XrPanelCapture : Application.ActivityLifecycleCallbacks {
     private val content = RenderNode("XRGamePanelCapture")
     private var scheduled = false
     private var stillToken: String? = null
+    private var taps: List<Pair<View, CaptureTap>> = emptyList()
+    private var stillWaitSince = 0L
+    // A surface's frame, fully opaque (the X server leaves alpha undefined); the second paint
+    // draws it only where the window left a hole. Lazy: BlendMode is API 29, install() checks.
+    private val surfacePaint by lazy {
+        Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(
+                floatArrayOf(1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 255f),
+            )
+        }
+    }
+    private val surfaceUnderPaint by lazy { Paint(surfacePaint).apply { blendMode = BlendMode.DST_OVER } }
 
     /** From the Application; does nothing outside debug XRGame builds that link the capture SDK. */
     fun install(application: Application) {
@@ -103,8 +128,23 @@ object XrPanelCapture : Application.ActivityLifecycleCallbacks {
         main.removeCallbacks(poll)
         Choreographer.getInstance().removeFrameCallback(frame)
         scheduled = false
+        updateTaps(null, false)
         releaseSurface()
         XrNative.nativePanelDetach()
+    }
+
+    /** The X server renderers in [root]'s window, tapped while [on]; others are turned off. */
+    private fun updateTaps(root: View?, on: Boolean) {
+        val found = ArrayList<Pair<View, CaptureTap>>()
+        fun visit(view: View) {
+            val tap = (view as? XServerRendererView)?.renderer as? CaptureTap
+            if (tap != null && view.isShown) found += view to tap
+            if (view is ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
+        }
+        if (root != null && on) visit(root)
+        for ((_, tap) in taps) if (found.none { it.second === tap }) tap.setCaptureTap(false)
+        for ((_, tap) in found) tap.setCaptureTap(true)
+        taps = found
     }
 
     // Before the native side frees the reader behind the Surface.
@@ -129,9 +169,10 @@ object XrPanelCapture : Application.ActivityLifecycleCallbacks {
             releaseSurface()
             surface = XrNative.nativePanelSurface()
         }
+        updateTaps(root, flags and (DRAW or STILL or ACTIVE) != 0)
         if (root != null && root.width > 0 && root.height > 0) {
             if (flags and DRAW != 0) drawFrame(root)
-            if (flags and STILL != 0) takeStill(root)
+            if (flags and STILL != 0 && surfaceFramesReady()) takeStill(root)
         }
         if (flags and ACTIVE != 0) {
             scheduled = true
@@ -167,12 +208,43 @@ object XrPanelCapture : Application.ActivityLifecycleCallbacks {
         XrNative.nativePanelPresented()
     }
 
+    /** Whether a still may be taken: every tapped surface has a frame, or the wait is over. */
+    private fun surfaceFramesReady(): Boolean {
+        if (taps.all { it.second.captureFrame() != null }) {
+            stillWaitSince = 0L
+            return true
+        }
+        val now = System.currentTimeMillis()
+        if (stillWaitSince == 0L) stillWaitSince = now
+        if (now - stillWaitSince < SURFACE_FRAME_WAIT_MS) return false
+        stillWaitSince = 0L
+        return true
+    }
+
+    /** Each tapped surface's newest frame with its view's bounds in [root]'s coordinates. */
+    private fun surfaceFrames(root: View): List<Pair<RectF, Bitmap>> {
+        val origin = IntArray(2).also { root.getLocationOnScreen(it) }
+        val location = IntArray(2)
+        return taps.mapNotNull { (view, tap) ->
+            val frame = tap.captureFrame() ?: return@mapNotNull null
+            view.getLocationOnScreen(location)
+            val left = (location[0] - origin[0]).toFloat()
+            val top = (location[1] - origin[1]).toFloat()
+            RectF(left, top, left + view.width, top + view.height) to frame
+        }
+    }
+
     /** The activity's window, then the dialogs over it (dimmed as on screen), scaled to [width] x [height]. */
     private fun drawWindows(canvas: Canvas, root: View, width: Int, height: Int) {
         canvas.drawColor(Color.BLACK)
         canvas.save()
         canvas.scale(width / root.width.toFloat(), height / root.height.toFloat())
+        // Surfaces both before the window (a view that leaves its area alone) and after it, under
+        // what is there (a view that punches a hole).
+        val frames = surfaceFrames(root)
+        for ((bounds, frame) in frames) canvas.drawBitmap(frame, null, bounds, surfacePaint)
         root.draw(canvas)
+        for ((bounds, frame) in frames) canvas.drawBitmap(frame, null, bounds, surfaceUnderPaint)
         val origin = IntArray(2).also { root.getLocationOnScreen(it) }
         val location = IntArray(2)
         for (view in WindowInspector.getGlobalWindowViews()) {

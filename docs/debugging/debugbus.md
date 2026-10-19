@@ -199,6 +199,10 @@ Litep 的 `host.present.copy` 此时是提交阶段，`host.present.retire_wait`
 据此自动跟随。
 - 我们自己的 `HardwareRenderer` 把窗口画进一个 `AImageReader`，Foundation `WindowFeed` 的线程只取最新一张，经 GLES blit 送进编码器的输入 Surface，旧帧直接丢弃。HWUI 绝不直接画进编码器 Surface：RenderThread 是全进程共用的，编码器一旦不收帧，`dequeueBuffer` 会卡住整个 app 的界面和 DebugBus（run116 的实际故障）。
 - 编码器失败、提前结束或 3 s 不收帧时结束这次录制，`status` 为 `failed` 并给出原因；app 不受影响。
+- X server 的 SurfaceView（官方 Steam 页面、游戏的 2D 视图）在 View 绘制里是个洞（2026-10-19 补上）。截取进行时，`XrPanelCapture` 打开每个 X server 渲染器的截取口 `CaptureTap`，把渲染器最新一帧按 view 的位置画在窗口下面：先画一次，窗口画完后再用 `DST_OVER` 补进被挖空的区域，盖在上面的按钮和对话框仍在上层，alpha 一律当不透明。
+  - Vulkan 渲染器（GPU 绘制）：第一次打开时以 `TRANSFER_SRC` 重建 swapchain。之后每帧把呈现的图像拷进 3 块线性 AHB 组成的环，等这一帧的 fence 后再交出。渲染线程不写最新的那块，也不写调用方正持有的那块。
+  - GL 渲染器（软件绘制）：每帧 `glReadPixels`。
+  - 截取开始时会让渲染器补画一帧。截图最多等 1 s，等到每个 surface 的第一帧。没有截取时两边都不拷贝。
 
 构建：`-PxrGameCaptureSdk=<…/capture-sdk/native>` 或环境变量 `XRGAME_CAPTURE_SDK`（只作用于 debug 构建），
 `BUILD_INFO.json` 的 `captureSdk` 记录其源文件哈希和 `XRGAME_CAPTURE_SDK_REVISION`。SDK 源码不进本仓库。

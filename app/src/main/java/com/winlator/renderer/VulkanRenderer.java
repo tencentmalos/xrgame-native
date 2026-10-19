@@ -24,7 +24,7 @@ import java.util.ArrayList;
 
 public class VulkanRenderer implements WindowManager.OnWindowModificationListener,
                                        Pointer.OnPointerMotionListener,
-                                       XServerRenderer {
+                                       XServerRenderer, CaptureTap {
 
     static { System.loadLibrary("vulkan_renderer"); }
     public static final int EFFECT_NONE = 0;
@@ -264,6 +264,32 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private native void nativeSetPresentMode(long handle, int mode);
     private native void nativeSetEffect(long handle, int effectId, float sharpness,
         int effectMask, float brightness, float contrast, float gamma);
+    @Override
+    public void setCaptureTap(boolean enabled) {
+        if (!app.gamenative.BuildConfig.XRGAME) return; // Other flavors use prebuilt JNI.
+        synchronized (lock) {
+            if (nativeHandle != 0) nativeSetCaptureTap(nativeHandle, enabled);
+        }
+    }
+
+    @Override
+    public Bitmap captureFrame() {
+        if (!app.gamenative.BuildConfig.XRGAME || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return null;
+        android.hardware.HardwareBuffer buffer;
+        synchronized (lock) {
+            if (nativeHandle == 0) return null;
+            buffer = nativeAcquireCaptureFrame(nativeHandle);
+        }
+        if (buffer == null) return null;
+        try {
+            return Bitmap.wrapHardwareBuffer(buffer, android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB));
+        } finally {
+            buffer.close();
+        }
+    }
+
+    private native void nativeSetCaptureTap(long handle, boolean enabled);
+    private native android.hardware.HardwareBuffer nativeAcquireCaptureFrame(long handle);
     private native long nativeEnableXrTarget(long handle);
     private native void nativeDisableXrTarget(long handle);
     private native long nativeGetXrTargetExtent(long handle);

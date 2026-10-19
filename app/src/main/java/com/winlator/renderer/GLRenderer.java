@@ -28,12 +28,14 @@ import com.winlator.xserver.WindowManager;
 import com.winlator.xserver.XLock;
 import com.winlator.xserver.XServer;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindowModificationListener, Pointer.OnPointerMotionListener, XServerRenderer {
+public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindowModificationListener, Pointer.OnPointerMotionListener, XServerRenderer, CaptureTap {
     public final XServerViewGL xServerView;
     private final XServer xServer;
     private Runnable onFrameRenderedListener;
@@ -56,6 +58,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean magnifierEnabled = true;
     private int surfaceWidth;
     private int surfaceHeight;
+    // CaptureTap: while on, each frame is read back from the default framebuffer (GL thread).
+    private volatile boolean captureTap = false;
+    private volatile Bitmap captureFrameBitmap = null;
+    private ByteBuffer capturePixels = null;
     private int renderTargetWidthOverride = 0;
     private int renderTargetHeightOverride = 0;
     private boolean sceneInitialized = false;
@@ -150,6 +156,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         else {
             drawScene();
         }
+        if (captureTap && xrFrameBridge == null) captureSurface();
 
         if (frameRating != null && frameRating.getVisibility() == View.VISIBLE) {
             frameRating.update();
@@ -157,6 +164,41 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (onFrameRenderedListener != null) {
             onFrameRenderedListener.run();
         }
+    }
+
+    @Override
+    public void setCaptureTap(boolean enabled) {
+        if (captureTap == enabled) return;
+        captureTap = enabled;
+        if (enabled) xServerView.requestRender();
+        else captureFrameBitmap = null;
+    }
+
+    @Override
+    public Bitmap captureFrame() {
+        return captureFrameBitmap;
+    }
+
+    /** The frame just drawn to the default framebuffer, top row first. */
+    private void captureSurface() {
+        int width = surfaceWidth, height = surfaceHeight;
+        if (width <= 0 || height <= 0) return;
+        int stride = width * 4;
+        if (capturePixels == null || capturePixels.capacity() != stride * height) {
+            capturePixels = ByteBuffer.allocateDirect(stride * height).order(ByteOrder.nativeOrder());
+        }
+        capturePixels.clear();
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        GLES20.glReadPixels(0, 0, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, capturePixels);
+        // GL rows run bottom-up.
+        byte[] flipped = new byte[stride * height];
+        for (int y = 0; y < height; y++) {
+            capturePixels.position((height - 1 - y) * stride);
+            capturePixels.get(flipped, y * stride, stride);
+        }
+        Bitmap frame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        frame.copyPixelsFromBuffer(ByteBuffer.wrap(flipped));
+        captureFrameBitmap = frame;
     }
 
     void drawScene() {

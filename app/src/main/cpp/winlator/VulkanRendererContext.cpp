@@ -62,8 +62,9 @@ VulkanRendererContext::~VulkanRendererContext() {
         compositePass = VK_NULL_HANDLE;
     }
     destroyXrTargetResources();
+    destroyCaptureSlots();
     cleanupSwapchain(); cleanupCursorTex();
-    
+
     vk_.DestroySampler(device, sampler, nullptr);
     vk_.DestroyDescriptorPool(device, winTexPool, nullptr);
     vk_.DestroyPipeline(device, pipeline, nullptr);
@@ -393,6 +394,9 @@ void VulkanRendererContext::createSwapchain() {
     ci.imageArrayLayers=1;
     VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if (swapchainTransferDst) usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // Only once a capture tap has asked for it, so normal use keeps its swapchain usage.
+    swapchainTransferSrc = captureTapSwapchain && (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    if (swapchainTransferSrc) usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     ci.imageUsage = usage;
     ci.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE; ci.preTransform=pre;
     ci.compositeAlpha=compositeAlpha; ci.presentMode=presentMode; ci.clipped=VK_TRUE;
@@ -1184,6 +1188,130 @@ void VulkanRendererContext::disableXrTarget() {
     needsRender.store(true); dirtyCV.notify_one();
 }
 
+void VulkanRendererContext::setCaptureTap(bool enabled) {
+    if (captureTap.exchange(enabled) == enabled) return;
+    needsRender.store(true);
+    dirtyCV.notify_one();
+}
+
+AHardwareBuffer* VulkanRendererContext::acquireCaptureFrame() {
+    std::lock_guard<std::mutex> lk(captureMutex);
+    if (captureLatest < 0 || captureSlots[captureLatest].ahb == nullptr) return nullptr;
+    captureHeld = captureLatest;
+    AHardwareBuffer_acquire(captureSlots[captureHeld].ahb);
+    return captureSlots[captureHeld].ahb;
+}
+
+bool VulkanRendererContext::createCaptureSlots(VkExtent2D ext) {
+    for (CaptureSlot& slot : captureSlots) {
+        AHardwareBuffer_Desc d{};
+        d.width=ext.width; d.height=ext.height; d.layers=1;
+        d.format=AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
+        // CPU read access keeps gralloc's layout linear, which every reader understands.
+        d.usage=AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE|AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT|
+                AHARDWAREBUFFER_USAGE_CPU_READ_RARELY;
+        AHardwareBuffer* ahb=nullptr;
+        if (AHardwareBuffer_allocate(&d,&ahb)!=0||!ahb) { RLOG_E("captureTap: AHB alloc %ux%u failed",ext.width,ext.height); return false; }
+        { std::lock_guard<std::mutex> lk(captureMutex); slot.ahb=ahb; }
+
+        VkAndroidHardwareBufferPropertiesANDROID props{};
+        props.sType=VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
+        if (!vk_.GetAndroidHardwareBufferPropertiesANDROID ||
+            vk_.GetAndroidHardwareBufferPropertiesANDROID(device,ahb,&props)!=VK_SUCCESS) { RLOG_E("captureTap: AHB props failed"); return false; }
+        VkExternalMemoryImageCreateInfo emi{};
+        emi.sType=VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        emi.handleTypes=VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+        VkImageCreateInfo ii{};
+        ii.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; ii.pNext=&emi;
+        ii.imageType=VK_IMAGE_TYPE_2D; ii.format=VK_FORMAT_R8G8B8A8_UNORM;
+        ii.extent={ext.width,ext.height,1}; ii.mipLevels=1; ii.arrayLayers=1; ii.samples=VK_SAMPLE_COUNT_1_BIT;
+        ii.tiling=VK_IMAGE_TILING_OPTIMAL; ii.usage=VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        ii.sharingMode=VK_SHARING_MODE_EXCLUSIVE; ii.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+        if (vk_.CreateImage(device,&ii,nullptr,&slot.img)!=VK_SUCCESS) { RLOG_E("captureTap: image"); return false; }
+        VkImportAndroidHardwareBufferInfoANDROID imp{};
+        imp.sType=VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID; imp.buffer=ahb;
+        VkMemoryDedicatedAllocateInfo ded{};
+        ded.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO; ded.pNext=&imp; ded.image=slot.img;
+        uint32_t idx=0; while (idx<32 && !(props.memoryTypeBits&(1u<<idx))) idx++;
+        if (idx>=32) { RLOG_E("captureTap: no memory type (bits=0x%x)", props.memoryTypeBits); return false; }
+        VkMemoryAllocateInfo mai{};
+        mai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; mai.pNext=&ded;
+        mai.allocationSize=props.allocationSize; mai.memoryTypeIndex=idx;
+        if (vk_.AllocateMemory(device,&mai,nullptr,&slot.mem)!=VK_SUCCESS ||
+            vk_.BindImageMemory(device,slot.img,slot.mem,0)!=VK_SUCCESS) { RLOG_E("captureTap: memory"); return false; }
+    }
+    captureExt=ext;
+    RLOG("captureTap: %d slots %ux%u", kCaptureSlots, ext.width, ext.height);
+    return true;
+}
+
+void VulkanRendererContext::destroyCaptureSlots() {
+    std::lock_guard<std::mutex> lk(captureMutex);
+    for (CaptureSlot& slot : captureSlots) {
+        if (slot.img!=VK_NULL_HANDLE) vk_.DestroyImage(device,slot.img,nullptr);
+        if (slot.mem!=VK_NULL_HANDLE) vk_.FreeMemory(device,slot.mem,nullptr);
+        // A caller that acquired the buffer keeps it alive until it lets go.
+        if (slot.ahb) AHardwareBuffer_release(slot.ahb);
+        slot = {};
+    }
+    captureExt={0,0};
+    captureLatest=-1;
+    captureHeld=-1;
+}
+
+int VulkanRendererContext::recordCaptureCopy(VkCommandBuffer cb, uint32_t imgIdx) {
+    if (!swapchainTransferSrc || imgIdx >= swapchainImages.size()) return -1;
+    // Every copy is waited for before it is published, so no submitted work uses the slots here.
+    if (captureExt.width!=swapchainExt.width || captureExt.height!=swapchainExt.height) {
+        if (captureFailedExt.width==swapchainExt.width && captureFailedExt.height==swapchainExt.height) return -1;
+        destroyCaptureSlots();
+        if (!createCaptureSlots(swapchainExt)) { destroyCaptureSlots(); captureFailedExt=swapchainExt; return -1; }
+        captureFailedExt={0,0};
+    }
+    int slot=-1;
+    {
+        std::lock_guard<std::mutex> lk(captureMutex);
+        for (int step=1; step<=kCaptureSlots; step++) {
+            const int s=(captureLatest+step+kCaptureSlots)%kCaptureSlots;
+            if (s!=captureLatest && s!=captureHeld) { slot=s; break; }
+        }
+    }
+    if (slot<0) return -1;
+    VkImage src=swapchainImages[imgIdx], dst=captureSlots[slot].img;
+    VkImageMemoryBarrier b[2]{};
+    for (auto& x : b) {
+        x.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        x.srcQueueFamilyIndex=x.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        x.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+    }
+    b[0].image=src; b[0].oldLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; b[0].newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    b[0].srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT; b[0].dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    b[1].image=dst; b[1].oldLayout=VK_IMAGE_LAYOUT_UNDEFINED; b[1].newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b[1].srcAccessMask=0; b[1].dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+    vk_.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, b);
+    VkImageCopy region{};
+    region.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
+    region.dstSubresource=region.srcSubresource;
+    region.extent={swapchainExt.width,swapchainExt.height,1};
+    vk_.CmdCopyImage(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    b[0].oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; b[0].newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    b[0].srcAccessMask=VK_ACCESS_TRANSFER_READ_BIT; b[0].dstAccessMask=0;
+    b[1].oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; b[1].newLayout=VK_IMAGE_LAYOUT_GENERAL;
+    b[1].srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; b[1].dstAccessMask=0;
+    vk_.CmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        0, 0, nullptr, 0, nullptr, 2, b);
+    return slot;
+}
+
+void VulkanRendererContext::publishCaptureFrame(int slot) {
+    if (slot<0) return;
+    // Only a complete copy is handed out; this wait happens only while a capture runs.
+    if (xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&inFlightFences[currentFrame],VK_TRUE,UINT64_MAX); })!=VK_SUCCESS) return;
+    std::lock_guard<std::mutex> lk(captureMutex);
+    captureLatest=slot;
+}
+
 void VulkanRendererContext::renderLoop() {
 
     while (isRunning) {
@@ -1247,6 +1375,16 @@ void VulkanRendererContext::renderFrame() {
     }
     if (surfaceWidth==0||surfaceHeight==0) return;
 
+    const bool tap = captureTap.load();
+    // The first tap recreates the swapchain with TRANSFER_SRC; a tap turned off frees its slots.
+    if (tap && !captureTapSwapchain) { captureTapSwapchain = true; fbResized.store(true); }
+    if (!tap && captureSlots[0].ahb != nullptr) {
+        for (auto& f:inFlightFences) {
+            if (f != VK_NULL_HANDLE) xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&f,VK_TRUE,UINT64_MAX); });
+        }
+        destroyCaptureSlots();
+    }
+
     if (fbResized.load()) {
         for (auto& f:inFlightFences) {
             if (f != VK_NULL_HANDLE) xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&f,VK_TRUE,UINT64_MAX); });
@@ -1256,6 +1394,8 @@ void VulkanRendererContext::renderFrame() {
         try{createSwapchain();createFramebuffers();createCmdBufs();imgInFlight.assign(swapchainImages.size(),VK_NULL_HANDLE);
 ok=true;}catch(...){}
         if (ok) fbResized.store(false);
+        // A tap needs a frame on the new swapchain even when nothing on screen changes.
+        if (ok && tap) needsRender.store(true);
         return;
     }
 
@@ -1542,6 +1682,8 @@ ok=true;}catch(...){}
         return true;
     };
 
+    const int captureSlot = (tap && !toXr) ? recordCaptureCopy(cmdBufs[currentFrame], imgIdx) : -1;
+
     VkResult endStatus = vk_.EndCommandBuffer(cmdBufs[currentFrame]);
     if (endStatus != VK_SUCCESS) {
         if (!framegenArmed) {
@@ -1577,6 +1719,7 @@ ok=true;}catch(...){}
             pi.waitSemaphoreCount=1; pi.pWaitSemaphores=sSem; pi.swapchainCount=1; pi.pSwapchains=scs; pi.pImageIndices=&imgIdx;
             res=xrProfileCall("host.render.queue_present", [&] { return vk_.QueuePresentKHR(graphicsQueue,&pi); });
             if (res==VK_ERROR_OUT_OF_DATE_KHR||res==VK_ERROR_SURFACE_LOST_KHR) fbResized.store(true);
+            publishCaptureFrame(captureSlot);
         } else {
             // The slot is complete once this fence signals; only then does the session see it.
             if (xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device,1,&inFlightFences[currentFrame],VK_TRUE,UINT64_MAX); })==VK_SUCCESS)
@@ -1664,6 +1807,7 @@ ok=true;}catch(...){}
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_ERROR_SURFACE_LOST_KHR || genPresentOutOfDate) {
             fbResized.store(true);
         }
+        publishCaptureFrame(captureSlot);
     } else {
         if (xrProfileCall("host.vulkan.fence_wait", [&] { return vk_.WaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX); }) == VK_SUCCESS)
             publishXrFrame();

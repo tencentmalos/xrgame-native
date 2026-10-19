@@ -148,6 +148,13 @@ public:
     int64_t enableXrTarget();
     void disableXrTarget();
     int64_t xrTargetExtentPacked();
+    // Capture tap for the debug capture SDK's 2D window producer (XrPanelCapture.kt): while on,
+    // each presented frame is also copied into a small ring of linear AHBs, so the producer can
+    // draw what this SurfaceView shows. Off in normal use; turning it on renders one frame.
+    void setCaptureTap(bool enabled);
+    // The newest complete frame with a reference for the caller, or null. The returned slot is
+    // not written again until the next call.
+    AHardwareBuffer* acquireCaptureFrame();
     VulkanRendererContext(ANativeWindow* window, int cWidth, int cHeight, void* adrenotoolsHandle = nullptr, bool framegenArmed = false);
     ~VulkanRendererContext();
 
@@ -389,6 +396,31 @@ private:
     void publishXrFrame();
     bool xrSlotStarved = false;   // retry shortly instead of overwriting a slot the session reads
     uint64_t xrSlotStarves = 0;
+
+    // Capture tap (setCaptureTap): the render thread copies the presented swapchain image into a
+    // slot that is neither the newest nor the one the caller holds, waits for the frame's fence
+    // and then publishes it. The swapchain gains TRANSFER_SRC the first time the tap turns on.
+    struct CaptureSlot {
+        AHardwareBuffer* ahb = nullptr;
+        VkImage          img = VK_NULL_HANDLE;
+        VkDeviceMemory   mem = VK_NULL_HANDLE;
+    };
+    static constexpr int kCaptureSlots = 3;
+    CaptureSlot       captureSlots[kCaptureSlots]{};
+    VkExtent2D        captureExt{0,0};
+    std::atomic<bool> captureTap{false};
+    bool              swapchainTransferSrc = false;   // render thread: swapchain has TRANSFER_SRC
+    bool              captureTapSwapchain = false;    // a tap asked for it (render thread)
+    VkExtent2D        captureFailedExt{0,0};          // slots failed at this size; retried on resize
+    std::mutex        captureMutex;                   // captureLatest/captureHeld
+    int               captureLatest = -1;
+    int               captureHeld = -1;
+    bool createCaptureSlots(VkExtent2D ext);
+    void destroyCaptureSlots();
+    // Records the copy of swapchainImages[imgIdx]; the slot, or -1 without a copy.
+    int recordCaptureCopy(VkCommandBuffer cb, uint32_t imgIdx);
+    // After a successful submit of a frame with a copy: wait for it, then publish the slot.
+    void publishCaptureFrame(int slot);
 
     VkRenderPass          renderPass  = VK_NULL_HANDLE;
     VkDescriptorSetLayout dsLayout    = VK_NULL_HANDLE;

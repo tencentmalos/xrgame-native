@@ -111,7 +111,7 @@ add_library(vulkan_renderer SHARED
     ${LSFG_SOURCES} "${CMAKE_CURRENT_BINARY_DIR}/window_vert.h" "${CMAKE_CURRENT_BINARY_DIR}/window_frag.h")
 target_include_directories(vulkan_renderer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${GN}/winlator" "${GN}/lsfg")
 target_compile_options(vulkan_renderer PRIVATE -fvisibility=hidden)
-target_link_libraries(vulkan_renderer PRIVATE log android vulkan adrenotools dxbc dl atomic)
+target_link_libraries(vulkan_renderer PRIVATE log android nativewindow vulkan adrenotools dxbc dl atomic)
 
 # Foundation's Vulkan reconstruction (FSR1/SGSR1), foveation and eye gaze for the XR composite.
 # Internal APKs only: linked from the pinned submodule, never copied into this repository.

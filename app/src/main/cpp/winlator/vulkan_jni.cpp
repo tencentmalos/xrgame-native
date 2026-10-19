@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <android/native_window_jni.h>
+#include <android/hardware_buffer_jni.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -183,6 +184,21 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeGetXrTargetExtent(JNIEnv*, jobject, jlong handle) {
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle);
     return r ? (jlong)r->xrTargetExtentPacked() : 0;
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeSetCaptureTap(JNIEnv*, jobject, jlong handle, jboolean enabled) {
+    auto* r=reinterpret_cast<VulkanRendererContext*>(handle);
+    if (r) r->setCaptureTap(enabled);
+}
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeAcquireCaptureFrame(JNIEnv* env, jobject, jlong handle) {
+    auto* r=reinterpret_cast<VulkanRendererContext*>(handle);
+    AHardwareBuffer* buffer = r ? r->acquireCaptureFrame() : nullptr;
+    if (!buffer) return nullptr;
+    // The Java object takes its own reference.
+    jobject wrapped = AHardwareBuffer_toHardwareBuffer(env, buffer);
+    AHardwareBuffer_release(buffer);
+    return wrapped;
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeSetTransform(
