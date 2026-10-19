@@ -161,7 +161,7 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
 
 用户反馈了两点：键盘按钮挡住了 Steam 游戏页的设置按钮；Pico 手柄射线（默认的触摸模拟模式）拖不动画布。原因是触摸被当成「按住鼠标左键拖动」，而 Chromium 按住鼠标拖动不会滚动列表。
 
-- 键盘按钮：默认放在右侧 30% 高度（原来在中间）。可以拖动，轻点仍是开关键盘，拖动后的位置按页面比例记住（`steam_page` 偏好）。
+- 键盘按钮：放在右侧 30% 高度（原来在中间）。kb1 曾支持拖动并记住位置，kb2 按用户要求改回固定位置，只响应轻点。
 - 触摸手势（`LinuxSteamActivity.TouchPointer`）：
   - 轻点：单击。
   - 拖动：超过两倍 touch slop 后转成滚轮，每 40 个 X 屏幕像素一格。按起手时的主方向锁定轴：竖向用 4/5 键，横向用 6/7 键。内容跟手走，指针停在按下的位置。
@@ -173,6 +173,17 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
   - 拖动按钮能移到 (1700, 160)，拖回后保存为 (0.958, 0.299)。
   - 轻点按钮能开关输入法（`mInputShown` true/false）；轻点「好友」标签能切换。
 - 没测：按住后拖动（滑块），以及真人用手柄射线的手感（测试用的是 adb 注入的触摸）。
+
+### 新装游戏首次官方启动「闪退」；超分默认关闭
+
+用户报告《我在地府打麻将》（App 3444020，18:41 经官方 Steam 新装）闪退。
+
+- 游戏其实没有启动。19:08:15 在启动面板点了启动，19:08:21 我们的准备步骤抛出异常：`Failed to setup wine: Existing save container is not ready`（`SteamSaveSharing.prepareContainer` → `linkDirectory`）。XR 会话随即关闭，Steam 在 19:08:24 记为游戏结束。
+- 原因：官方启动要在 Wine 启动之前，把 Proton 的 `drive_c/users/steamuser` 链到这个 Wine 的 `drive_c/users/xuser`。新容器从模板来，还没跑过，没有 `drive_c/users`，链接目标不存在，检查失败。Hades II 的容器早在 Custom 模式下跑过，所以没碰到这个问题。
+- 修复：`linkWindowsUser` 在链接前先建空的 `xuser` 目录，Wine 首次启动时会把它填满。新增单测 1 项：从没跑过的容器能建出目录并链上，第二次启动保留游戏写入的文件。
+- 启动面板的超分默认改为关闭（`WindowsVrUpscale.Settings.filter = OFF`，用户要求）。已存的选择照旧生效；这个游戏的容器里本来就是 `off`。
+- 包 `steampsp-kb2`：SHA `f529b2c4acb827265910aa19f54cf7dc58ad9cb233300553396e05065c7d5d28`，审计 0 errors，picoXr 单测 56 项全过（含 `WindowsVrUpscaleTest`）。
+- Swan 验证（GPU 绘制，SDK 截图）：19:20:07 从官方 Steam 启动，`Demonic Mahjong.exe` 正常运行。观察 1 分多钟，没有启动错误，画面停在游戏自己的 DLC 公告页。新容器出现了 `steamuser → xuser` 链接，Wine 也填好了 `xuser`。
 
 同时发现、未修（需要用户决定）：
 

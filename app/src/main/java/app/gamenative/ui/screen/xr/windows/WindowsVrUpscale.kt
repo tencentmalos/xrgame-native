@@ -94,7 +94,9 @@ object WindowsVrUpscale {
     }
 
     data class Settings(
-        val filter: Filter = Filter.SGSR,
+        // Off until a game turns it on in the launch panel (user choice, 2026-10-19): the FSR1 and
+        // eye-foveation combination can show a noise block in the big screen.
+        val filter: Filter = Filter.OFF,
         val sharpness: Int = 50,
         val foveation: Foveation = Foveation.EYE,
         val level: Level = Level.BALANCED,

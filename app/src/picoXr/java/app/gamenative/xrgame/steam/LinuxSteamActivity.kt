@@ -34,11 +34,9 @@ class LinuxSteamActivity : ComponentActivity() {
     companion object {
         /** The page DebugBus `steam_ime` drives in debug builds. */
         @Volatile var current: java.lang.ref.WeakReference<LinuxSteamActivity>? = null
-        private const val KEYBOARD_PREFS = "steam_page"
-        private const val KEYBOARD_X = "keyboard_button_x"
-        private const val KEYBOARD_Y = "keyboard_button_y"
-        // Above Big Picture's per-game settings button, which sits at mid-height on the right.
-        private const val KEYBOARD_DEFAULT_Y = 0.3f
+        // The keyboard button's centre, as a fraction of the page height: above Big Picture's
+        // per-game settings button, which sits at mid-height on the right.
+        private const val KEYBOARD_Y = 0.3f
         // Holding a touch still this long presses the mouse button.
         private const val HOLD_MS = 400L
         // X-screen pixels of drag per wheel step.
@@ -159,13 +157,9 @@ class LinuxSteamActivity : ComponentActivity() {
         rendererView.onResume()
     }
 
-    /**
-     * The on-screen keyboard button. A tap toggles the IME; a drag moves the button, and the
-     * place is kept (as fractions of the page) for the next page.
-     */
+    /** The on-screen keyboard button: a tap toggles the IME. */
     private fun addKeyboardButton() {
         val density = resources.displayMetrics.density
-        val prefs = getSharedPreferences(KEYBOARD_PREFS, MODE_PRIVATE)
         val keyboard = ImageButton(this).apply {
             setImageResource(R.drawable.icon_keyboard)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -178,59 +172,18 @@ class LinuxSteamActivity : ComponentActivity() {
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0x99202A35.toInt()); cornerRadius = 24 * density
             }
+            setOnClickListener { toggleKeyboard() }
         }
         val size = (48 * density).toInt()
-        val margin = (8 * density).toInt()
-        surface.addView(keyboard, FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.START))
-        // Centre of the button as a fraction of the page.
-        fun place(fx: Float, fy: Float) {
-            val maxX = (surface.width - size - margin).coerceAtLeast(margin)
-            val maxY = (surface.height - size - margin).coerceAtLeast(margin)
-            keyboard.x = (fx * surface.width - size / 2f).coerceIn(margin.toFloat(), maxX.toFloat())
-            keyboard.y = (fy * surface.height - size / 2f).coerceIn(margin.toFloat(), maxY.toFloat())
-        }
-        fun placeSaved() {
-            if (surface.width == 0) return
-            // Right edge, above the middle: Big Picture keeps per-game settings at mid-height.
-            val fx = prefs.getFloat(KEYBOARD_X, -1f).takeIf { it >= 0 } ?: ((surface.width - margin - size / 2f) / surface.width)
-            place(fx, prefs.getFloat(KEYBOARD_Y, KEYBOARD_DEFAULT_Y))
-        }
+        surface.addView(keyboard, FrameLayout.LayoutParams(size, size, Gravity.END or Gravity.TOP).apply {
+            rightMargin = (8 * density).toInt()
+        })
+        // Right edge, above the middle: Big Picture keeps per-game settings at mid-height.
+        fun place() { keyboard.translationY = surface.height * KEYBOARD_Y - size / 2f }
         keyboardLayout?.let { surface.removeOnLayoutChangeListener(it) }
-        keyboardLayout = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeSaved() }
+        keyboardLayout = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> place() }
             .also { surface.addOnLayoutChangeListener(it) }
-        surface.post { placeSaved() }
-        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop * 2f
-        var downX = 0f; var downY = 0f; var startX = 0f; var startY = 0f; var dragging = false
-        keyboard.setOnTouchListener { button, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = event.rawX; downY = event.rawY; startX = button.x; startY = button.y; dragging = false
-                    button.isPressed = true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (!dragging && Math.hypot((event.rawX - downX).toDouble(), (event.rawY - downY).toDouble()) > slop) {
-                        dragging = true
-                        button.isPressed = false
-                    }
-                    if (dragging) {
-                        place((startX + event.rawX - downX + size / 2f) / surface.width,
-                              (startY + event.rawY - downY + size / 2f) / surface.height)
-                    }
-                }
-                MotionEvent.ACTION_UP -> {
-                    button.isPressed = false
-                    if (dragging) {
-                        prefs.edit().putFloat(KEYBOARD_X, (button.x + size / 2f) / surface.width)
-                            .putFloat(KEYBOARD_Y, (button.y + size / 2f) / surface.height).apply()
-                    } else {
-                        button.performClick()
-                        toggleKeyboard()
-                    }
-                }
-                MotionEvent.ACTION_CANCEL -> button.isPressed = false
-            }
-            true
-        }
+        surface.post { place() }
     }
 
     /**

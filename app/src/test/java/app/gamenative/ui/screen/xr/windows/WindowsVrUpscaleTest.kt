@@ -107,7 +107,7 @@ class WindowsVrUpscaleTest {
 
     @Test fun unchangedSettingsAreNotResent() {
         assertNull(WindowsVrUpscale.apply(emptyList()))
-        assertNull(WindowsVrUpscale.apply(listOf("filter=sgsr")))
+        assertNull(WindowsVrUpscale.apply(listOf("filter=${WindowsVrUpscale.Settings().filter.key}")))
         assertTrue(sent.isEmpty())
         assertNull(WindowsVrUpscale.apply(listOf("debug=1", "out=75")))
         assertTrue(WindowsVrUpscale.settings.debug)
@@ -164,5 +164,11 @@ class WindowsVrUpscaleTest {
         assertEquals(50, parsed.outputPercent)
         assertEquals(WindowsVrUpscale.Foveation.EYE, parsed.foveation)
         assertEquals(WindowsVrUpscale.Settings(), WindowsVrUpscale.fromEnvVars(""))
+    }
+
+    @Test fun upscalingIsOffUntilChosen() {
+        assertEquals(WindowsVrUpscale.Filter.OFF, WindowsVrUpscale.fromEnvVars("").filter)
+        // A stored choice still wins.
+        assertEquals(WindowsVrUpscale.Filter.SGSR, WindowsVrUpscale.fromEnvVars("XRGAME_XR_UPSCALE=sgsr").filter)
     }
 }

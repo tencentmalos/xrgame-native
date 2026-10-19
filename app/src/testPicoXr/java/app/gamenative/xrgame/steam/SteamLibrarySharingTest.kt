@@ -165,6 +165,20 @@ class SteamLibrarySharingTest {
         assertEquals("original", File(alias, "drive_c/users/steamuser/Saved Games/Hades II/Profile1.sjson").readText())
         SteamSaveSharing.linkDirectory(alias, prefix)
     }
+    @Test fun `a container that never ran gets its Windows profile before the link`() {
+        // A game first installed by Official Steam: the template prefix has no drive_c/users yet.
+        val prefix = File(temp.root, "container/.wine").apply { mkdirs() }
+        File(prefix, "system.reg").writeText("WINE REGISTRY Version 2")
+        SteamSaveSharing.linkWindowsUser(prefix)
+        val user = File(prefix, "drive_c/users/xuser")
+        assertTrue(user.isDirectory)
+        assertEquals(user.canonicalFile, File(prefix, "drive_c/users/steamuser").canonicalFile)
+        // A later launch keeps the same link and whatever the game wrote.
+        File(user, "AppData/LocalLow/Game").mkdirs()
+        File(user, "AppData/LocalLow/Game/save.dat").writeText("kept")
+        SteamSaveSharing.linkWindowsUser(prefix)
+        assertEquals("kept", File(prefix, "drive_c/users/steamuser/AppData/LocalLow/Game/save.dat").readText())
+    }
     private fun autoCloudCase(): Triple<File, File, File> {
         val prefix = File(temp.root, "container/.wine").apply { mkdirs() }
         val saves = File(prefix, "drive_c/users/xuser/Saved Games/Hades II").apply { mkdirs() }

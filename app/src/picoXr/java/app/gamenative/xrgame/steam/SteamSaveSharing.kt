@@ -141,11 +141,21 @@ object SteamSaveSharing {
         val prefixAlias = File(compatData(context), "$appId/pfx")
         adoptAutoCloudTree(prefixAlias, prefix)
         linkDirectory(prefixAlias, prefix)
-        // Steam AutoCloud uses Proton's Windows user, while this Wine runtime uses xuser.
-        linkDirectory(File(prefix, "drive_c/users/steamuser"), File(prefix, "drive_c/users/xuser"))
+        linkWindowsUser(prefix)
         val canonical = File(prefix, "drive_c/Program Files (x86)/Steam/userdata/$account/$appId/remote")
         val official = File(LinuxSteamRuntime(context).client, "userdata/$account/$appId/remote")
         linkRemote(official, canonical)
+    }
+
+    /**
+     * Steam AutoCloud uses Proton's Windows user, while this Wine runtime uses xuser. A container
+     * that has never run has no profile yet (Wine creates it on its first start), and an official
+     * launch prepares the container before that: create the empty profile so the link has a target.
+     */
+    internal fun linkWindowsUser(prefix: File) {
+        val user = File(prefix, "drive_c/users/xuser")
+        check(user.isDirectory || user.mkdirs()) { "Existing save container is not ready." }
+        linkDirectory(File(prefix, "drive_c/users/steamuser"), user)
     }
 
     /** Never overwrite divergent saves. Preserve the previous tree beside the link. */
