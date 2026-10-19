@@ -245,4 +245,6 @@ Foundation 管理命令分发。Android Service 承担 dumpsys transport，因�
 
 `linux_steam library` 返回每个 ACF 的 app ID、完成状态、depot 数以及存档冲突 app ID；不返回账户身份。`status` 的 `mode=official|custom` 是管理归属，`javaRunning/javaConnected/javaLoggedIn` 用于核验官方运行时 JavaSteam 全部关闭；`libraryOwned` 表示 Official 持有同一游戏目录写入权。旧 `cloud <appId>` 已移除：它建立 AppID 管道后会令 Steam 登记 PID 0，干扰真正的启动。新的 `check` 只查询会话，不携带游戏身份。见[目录共用记录](../validation/steam-shared-library-20261017.md)。
 
+`steam_ime <op>...`（2026-10-19）像输入法一样驱动官方 Steam 页面的输入法桥接，用来不戴头显检查输入框的行为：`show`/`hide` 开关键盘，`c:<文字>` 为 `setComposingText`，`k:<文字>` 为 `commitText`，`f` 为 `finishComposingText`，`d:<n>` 为 `deleteSurroundingText(n, 0)`，`x` 为一次 Delete 键，`e` 为编辑器动作（回车）。文字用百分号编码（空格 `%20`，中文按 UTF-8 编码），每次最多 4 个操作。`show` 要单独发并等约 1.5 s，等系统输入法先连上；第一个文字操作会另开一个连接，真正的输入法随之失效，要关开一次键盘才恢复。只返回每个操作的结果（`results`），不返回文字；文字只应是测试者自己写的测试串。
+
 需要诊断官方读取安装记录时，可在客户端停止后创建 app-private `files/linux-steam/library-trace` 空 marker 再启动。只在客户端进程记录有界的 ACF/libraryfolders 文件访问元数据，不记录文件内容；结束后删除 marker 并重启客户端。Steam 更新可能以 42 退出后重开，活动日志会从 `client-0.log` 变为 `client-1.log`，应以运行进程的输出文件为准，不能只检查旧日志。

@@ -40,7 +40,8 @@ class DebugBusService : Service() {
     companion object {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
-            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard", "guest_patch", "guest_debugger", "linux_steam")
+            "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard", "guest_patch", "guest_debugger", "linux_steam",
+            "steam_ime")
         private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video", "capture_config")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
@@ -51,6 +52,8 @@ class DebugBusService : Service() {
         @Volatile private var guestDebuggerTarget = 0
         @Volatile private var guestDebuggerExe = ""
         @Volatile private var guestDebuggerStartedMs = 0L
+        /** `steam_ime`'s own connection to the Steam page's IME bridge; main thread only. */
+        private var steamImeConnection: android.view.inputmethod.InputConnection? = null
     }
     private val worker = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(1)) {
         Thread(it, "XRGame:DebugBus").apply { isDaemon = true }
@@ -117,6 +120,7 @@ class DebugBusService : Service() {
             "vr_oc" -> vrOpenComposite(args)
             "guest_patch" -> guestPatch(args)
             "guest_debugger" -> guestDebuggerCommand(args)
+            "steam_ime" -> steamIme(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -329,6 +333,51 @@ class DebugBusService : Service() {
         return JSONObject(XrNative.nativeXrKeyboardStatus())
             .put("open", activity?.xrKeyboardOpen)
             .put("session", activity != null)
+    }
+
+    /**
+     * Drives the official Steam page's IME bridge the way an IME does, with the caller's own test
+     * text (percent-encoded): `show`, `hide`, `c:<text>` setComposingText, `k:<text>` commitText,
+     * `f` finishComposingText, `d:<n>` deleteSurroundingText(n, 0), `x` a Delete key, `e` the
+     * editor action. The first text op opens its own connection, so the real IME's goes stale
+     * until the keyboard reopens. Returns each op's result, never the text.
+     */
+    private fun steamIme(args: Array<String>): JSONObject {
+        val usage = "usage: steam_ime show|hide|c:<text>|k:<text>|f|d:<n>|x|e ..."
+        require(args.isNotEmpty() && args.all { it in listOf("show", "hide", "f", "x", "e") ||
+            it.startsWith("c:") || it.startsWith("k:") || it.matches(Regex("d:[0-9]{1,2}")) }) { usage }
+        val activity = app.gamenative.xrgame.steam.LinuxSteamActivity.current?.get()
+            ?: return JSONObject().put("active", false)
+        val results = JSONArray()
+        val latch = java.util.concurrent.CountDownLatch(1)
+        activity.runOnUiThread {
+            try {
+                val ime = activity.imeReceiver
+                for (op in args) {
+                    val value = op.substringAfter(':', "").let { java.net.URLDecoder.decode(it, "UTF-8") }
+                    if (ime == null) { results.put(false); continue }
+                    if (op == "show" || op == "hide") {
+                        steamImeConnection = null
+                        if (op == "show") ime.showKeyboard() else ime.hideKeyboard()
+                        results.put(true); continue
+                    }
+                    val connection = steamImeConnection ?: ime.onCreateInputConnection(android.view.inputmethod.EditorInfo())
+                    steamImeConnection = connection
+                    results.put(connection != null && when (op.substringBefore(':')) {
+                        "c" -> connection.setComposingText(value, 1)
+                        "k" -> connection.commitText(value, 1)
+                        "f" -> connection.finishComposingText()
+                        "d" -> connection.deleteSurroundingText(value.toInt(), 0)
+                        "x" -> connection.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL)) &&
+                            connection.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                        else -> connection.performEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
+                    })
+                }
+            } finally { latch.countDown() }
+        }
+        latch.await(1500, TimeUnit.MILLISECONDS)
+        return JSONObject().put("active", true).put("results", results)
+            .put("keyboardRequested", activity.imeReceiver?.isKeyboardRequested)
     }
 
     /** The immersive status layer: on/off flips its switch (the launch panel's status layer row). */

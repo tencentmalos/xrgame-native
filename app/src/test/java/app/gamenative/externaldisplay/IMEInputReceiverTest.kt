@@ -66,6 +66,87 @@ class IMEInputReceiverTest {
     }
 
     @Test
+    fun `replacement backspaces over the changed tail in code points`() {
+        assertEquals(0 to "h", IMEInputReceiver.replacement("", "h"))
+        assertEquals(0 to "", IMEInputReceiver.replacement("abc", "abc"))
+        assertEquals(1 to "", IMEInputReceiver.replacement("abc", "ab"))
+        assertEquals(2 to "he ", IMEInputReceiver.replacement("teh", "the "))
+        assertEquals(5 to "你好", IMEInputReceiver.replacement("nihao", "你好"))
+        assertEquals(3 to "'hao", IMEInputReceiver.replacement("nihao", "ni'hao"))
+        assertEquals(2 to "", IMEInputReceiver.replacement("😀😀", ""))
+        // Same high surrogate, different emoji: replace the whole code point.
+        assertEquals(1 to "😁", IMEInputReceiver.replacement("a😀", "a😁"))
+    }
+
+    /** A Steam-style receiver that streams composition; returns the ops it sends, in order. */
+    private fun streaming(): MutableList<String> {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val ops = mutableListOf<String>()
+        receiver = IMEInputReceiver(activity, server, textHandler = { ops.add(it) },
+            keyHandler = { ops.add(it.name) }, streamComposition = true)
+        activity.setContentView(receiver)
+        return ops
+    }
+
+    @Test
+    fun `streamed composition shows each letter and autocorrect replaces only the difference`() {
+        val ops = streaming()
+        val connection = connect()
+        connection.setComposingText("t", 1)
+        connection.setComposingText("te", 1)
+        connection.setComposingText("teh", 1)
+        assertEquals(listOf("t", "e", "h"), ops)
+        connection.commitText("the ", 1)
+        connection.finishComposingText()
+        assertEquals(listOf("t", "e", "h", "KEY_BKSP", "KEY_BKSP", "he "), ops)
+        verifyNoInteractions(server)
+    }
+
+    @Test
+    fun `streamed pinyin is replaced by the committed characters`() {
+        val ops = streaming()
+        val connection = connect()
+        connection.setComposingText("ni", 1)
+        connection.setComposingText("nihao", 1)
+        connection.commitText("你", 1)
+        connection.setComposingText("hao", 1)
+        connection.commitText("好", 1)
+        assertEquals(listOf("ni", "hao") + List(5) { "KEY_BKSP" } + listOf("你", "hao") + List(3) { "KEY_BKSP" } + listOf("好"), ops)
+    }
+
+    @Test
+    fun `streamed backspace removes composed letters and then committed text`() {
+        val ops = streaming()
+        val connection = connect()
+        connection.setComposingText("ab", 1)
+        connection.setComposingText("a", 1)
+        connection.setComposingText("", 1)
+        connection.commitText("", 1)
+        connection.deleteSurroundingText(1, 0)
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+        assertEquals(listOf("ab", "KEY_BKSP", "KEY_BKSP", "KEY_BKSP"), ops)
+        // The Delete key event itself goes to the guest keyboard.
+        verify(server).injectKeyPress(XKeycode.KEY_BKSP, 0)
+    }
+
+    @Test
+    fun `streamed composition is not repeated by finish enter or a later connection`() {
+        val ops = streaming()
+        var connection = connect()
+        connection.setComposingText("ok", 1)
+        connection.performEditorAction(EditorInfo.IME_ACTION_DONE)
+        assertEquals(listOf("ok", "KEY_ENTER"), ops)
+        // Hiding with a pending composition leaves what the guest shows.
+        connection.setComposingText("hi", 1)
+        receiver.hideKeyboard()
+        assertFalse(connection.finishComposingText())
+        assertFalse(connection.commitText("hi", 1))
+        connection = connect()
+        connection.commitText("x", 1)
+        assertEquals(listOf("ok", "KEY_ENTER", "hi", "x"), ops)
+    }
+
+    @Test
     fun `client keyboard dismiss key is consumed before the IME`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         receiver = IMEInputReceiver(activity, server, dismissKeys = setOf(KeyEvent.KEYCODE_BUTTON_SELECT))

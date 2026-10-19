@@ -27,9 +27,28 @@ class IMEInputReceiver(
     private val keyHandler: ((XKeycode) -> Unit)? = null,
     private val keyEventHandler: ((KeyEvent) -> Boolean)? = null,
     private val dismissKeys: Set<Int> = setOf(KeyEvent.KEYCODE_BACK),
+    /**
+     * Mirror composing text into the guest while it changes, not only at commit. IMEs such as
+     * Pico's compose every letter and commit only at the end of a word, so a guest text field
+     * (the official Steam client's) would otherwise stay empty while the user types.
+     */
+    private val streamComposition: Boolean = false,
 ) : FrameLayout(context) {
 
     companion object {
+        /**
+         * Turns guest text [shown] into [text]: how many Backspaces to press over what differs
+         * after their common prefix, and what to type after them. Counts code points, which is
+         * what one Backspace removes for letters, CJK and single emoji.
+         */
+        fun replacement(shown: String, text: String): Pair<Int, String> {
+            var common = 0
+            while (common < shown.length && common < text.length && shown[common] == text[common]) common++
+            // Never split a surrogate pair.
+            if (common > 0 && Character.isHighSurrogate(text[common - 1])) common--
+            return shown.codePointCount(common, shown.length) to text.substring(common)
+        }
+
         private val SHIFTED_SYMBOLS = setOf(
             ')', '!', '@', '#', '$', '%', '^', '&', '*', '(',
             '_', '+', '{', '}', '|', ':', '"', '<', '>', '?', '~',
@@ -149,28 +168,55 @@ class IMEInputReceiver(
 
         // Keep composition local until committed. BaseInputConnection's dummy-editor
         // mode sends composing text as Activity key events, bypassing this bridge.
+        Timber.i("IME connection %d: inputType=0x%x", generation, outAttrs.inputType)
         return object : BaseInputConnection(this, true) {
-            private fun isCurrent() = isKeyboardRequested && generation == connectionGeneration
+            /** With [streamComposition]: the composing text the guest already shows. */
+            private var streamed = ""
+
+            private fun isCurrent() = (isKeyboardRequested && generation == connectionGeneration).also {
+                if (!it) Timber.i("IME connection %d is stale (current %d, requested %s)", generation, connectionGeneration, isKeyboardRequested)
+            }
+
+            private fun stream(text: String) {
+                val (backspaces, typed) = replacement(streamed, text)
+                if (backspaces > 0) Timber.i("IME stream backspaces=%d", backspaces)
+                repeat(backspaces) { sendKey(XKeycode.KEY_BKSP) }
+                sendTextToGame(typed)
+                streamed = text
+            }
 
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                // Lengths only: never log what the user types.
+                Timber.i("IME commitText length=%d", text?.length ?: -1)
                 if (!isCurrent()) return false
                 editable?.clear()
-                if (text != null) sendTextToGame(text.toString())
+                if (streamComposition) {
+                    // The commit replaces the composition the guest shows.
+                    stream(text?.toString().orEmpty())
+                    streamed = ""
+                } else if (text != null) sendTextToGame(text.toString())
                 return true
             }
 
-            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean =
-                isCurrent() && super.setComposingText(text, newCursorPosition)
+            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                Timber.i("IME setComposingText length=%d", text?.length ?: -1)
+                if (!isCurrent() || !super.setComposingText(text, newCursorPosition)) return false
+                if (streamComposition) stream(text?.toString().orEmpty())
+                return true
+            }
 
             override fun finishComposingText(): Boolean {
                 if (!isCurrent()) return false
                 val text = editable?.toString().orEmpty()
+                Timber.i("IME finishComposingText length=%d", text.length)
                 editable?.clear()
-                sendTextToGame(text)
+                // A streamed composition is already in the guest and stays there.
+                if (streamComposition) streamed = "" else sendTextToGame(text)
                 return super.finishComposingText()
             }
 
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+                Timber.i("IME deleteSurroundingText before=%d after=%d", beforeLength, afterLength)
                 if (!isCurrent() || beforeLength < 0 || afterLength < 0) return false
                 if (!editable.isNullOrEmpty()) return super.deleteSurroundingText(beforeLength, afterLength)
                 repeat(beforeLength) { sendKey(XKeycode.KEY_BKSP) }
@@ -187,10 +233,13 @@ class IMEInputReceiver(
                 }
             }
 
-            override fun sendKeyEvent(event: KeyEvent): Boolean =
-                isCurrent() && (keyEventHandler?.invoke(event) ?: xServer.keyboard.onVirtualKeyEvent(event))
+            override fun sendKeyEvent(event: KeyEvent): Boolean {
+                Timber.i("IME sendKeyEvent action=%d keyCode=%d characters=%d", event.action, event.keyCode, event.characters?.length ?: 0)
+                return isCurrent() && (keyEventHandler?.invoke(event) ?: xServer.keyboard.onVirtualKeyEvent(event))
+            }
 
             override fun performEditorAction(actionCode: Int): Boolean {
+                Timber.i("IME performEditorAction %d", actionCode)
                 if (!isCurrent()) return false
                 finishComposingText()
                 sendKey(XKeycode.KEY_ENTER)
@@ -207,6 +256,7 @@ class IMEInputReceiver(
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
         if (Build.VERSION.SDK_INT >= 30) {
             val visible = insets.isVisible(WindowInsets.Type.ime())
+            if (visible != imeWasVisible) Timber.i("IME insets visible=%s requested=%s", visible, isKeyboardRequested)
             if (imeWasVisible && !visible) hideKeyboard()
             imeWasVisible = visible
         }
@@ -262,6 +312,7 @@ class IMEInputReceiver(
     }
 
     fun showKeyboard() {
+        Timber.i("IME show requested")
         isKeyboardRequested = true
         isFocusableInTouchMode = true
         isFocusable = true
@@ -270,6 +321,7 @@ class IMEInputReceiver(
     }
 
     fun hideKeyboard() {
+        if (isKeyboardRequested) Timber.i("IME hide")
         isKeyboardRequested = false
         dismissKeyDown = null
         connectionGeneration++

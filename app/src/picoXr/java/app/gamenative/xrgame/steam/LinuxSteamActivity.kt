@@ -31,6 +31,13 @@ import kotlinx.coroutines.launch
 
 /** Official Big Picture window with the existing Android renderer and IME. */
 class LinuxSteamActivity : ComponentActivity() {
+    companion object {
+        /** The page DebugBus `steam_ime` drives in debug builds. */
+        @Volatile var current: java.lang.ref.WeakReference<LinuxSteamActivity>? = null
+    }
+
+    /** This page's IME bridge, for DebugBus `steam_ime`; main thread only. */
+    val imeReceiver: IMEInputReceiver? get() = ime
     private var server: XServer? = null
     private var renderer: XServerRendererView? = null
     private var ime: IMEInputReceiver? = null
@@ -209,6 +216,7 @@ class LinuxSteamActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume(); immersive()
+        Companion.current = java.lang.ref.WeakReference(this)
         // Recreate the bounded input queue after pause, keeping the same X server.
         val current = server
         if (current != null && imeSession == null) attach(current)
@@ -230,5 +238,8 @@ class LinuxSteamActivity : ComponentActivity() {
         // The X server outlives this page; a later page makes its own renderer.
         (view?.renderer as? VulkanRenderer)?.release()
     }
-    override fun onDestroy() { detachRenderer(); super.onDestroy() }
+    override fun onDestroy() {
+        if (Companion.current?.get() === this) Companion.current = null
+        detachRenderer(); super.onDestroy()
+    }
 }
