@@ -40,7 +40,7 @@ class XrGameRuntimeTest {
     @Test fun ahbDriverDoesNotEnableCpuReadbackOrDisablePresentWait() {
         for (driver in listOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10", "turnip-25ef164-xrg11",
                 "turnip-04e1d66-xrg12", "turnip-adb7e30-xrg13", "turnip-adb7e30-xrg14", "turnip-adb7e30-xrg15",
-                "turnip-adb7e30-xrg16")) {
+                "turnip-adb7e30-xrg16", "turnip-55186f1-xrg17")) {
             val env = EnvVars()
             XrGameRuntime.configurePresentation(env, driver)
             assertEquals("1", env.get("XRGAME_X11_AHB"))
@@ -54,6 +54,9 @@ class XrGameRuntimeTest {
         XrGameRuntime.configurePresentation(env, "turnip-adb7e30-xrg14")
         XrGameRuntime.configurePresentation(env, "turnip-adb7e30-xrg14")
         assertEquals("noconform,fdmviz", env.get("TU_DEBUG"))
+        val current = EnvVars("TU_DEBUG=noconform XRGAME_XR_FOVEATION_DEBUG=1")
+        XrGameRuntime.configurePresentation(current, XrGameRuntimeVersions.TURNIP)
+        assertEquals("noconform,fdmviz", current.get("TU_DEBUG"))
         val older = EnvVars("TU_DEBUG=noconform XRGAME_XR_FOVEATION_DEBUG=1")
         XrGameRuntime.configurePresentation(older, "turnip-adb7e30-xrg13")
         assertEquals("noconform", older.get("TU_DEBUG"))

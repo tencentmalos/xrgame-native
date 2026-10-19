@@ -14,7 +14,7 @@ set -euo pipefail
 base=${XRGAME_BUILD_ROOT:-/work}
 reference="$base/src/mesa-turnip"
 # Same source as the Android Turnip recipe.
-pin=adb7e30a5646f1ae51e49c20ea4a0be4fa683355
+pin=55186f1f0e739a507876bb3733cf00e1734c78f1
 git -C "$reference" cat-file -e "$pin^{commit}"
 project=${XRGAME_PROJECT_ROOT:-"$base/project"}
 # The Android recipe's patches, in its order (their Android-only parts compile out here), then

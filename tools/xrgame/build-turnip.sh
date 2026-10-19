@@ -6,8 +6,11 @@ reference="$base/src/mesa-turnip"
 # bugfix/turnip_in_swan merged onto codex/turnip-xr-fdm2, plus 04e1d665 (xrg12): LRZ fast clear
 # is off on A8XX unless TU_DEBUG=lrzfc (Swan Alyx GPU hang in LRZ fast-clear passes; LRZ stays on),
 # plus adb7e30a (xrg13): the bin foveation registers are reset at every command buffer start, so
-# values left by other KGSL contexts no longer redirect render target writes on the A840.
-pin=adb7e30a5646f1ae51e49c20ea4a0be4fa683355
+# values left by other KGSL contexts no longer redirect render target writes on the A840,
+# plus 55186f1f (xrg17): KGSL device timestamps come from IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS
+# (they were UNREACHABLE, undefined behaviour in release builds), and calibrated timestamps and
+# present timing are advertised only when a probe at device enumeration succeeds.
+pin=55186f1f0e739a507876bb3733cf00e1734c78f1
 git -C "$reference" cat-file -e "$pin^{commit}"
 project=${XRGAME_PROJECT_ROOT:-"$base/project"}
 # Applied in order; the first three equal feature/malos/xrgame-wine-icd. The third (xrg10)

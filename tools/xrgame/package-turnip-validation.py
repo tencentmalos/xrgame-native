@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Package Turnip xrg16: the validated xrg13 archive with both drivers rebuilt.
+"""Package Turnip xrg17: the validated xrg16 archive with both drivers rebuilt at mesa 55186f1f.
 
-build-turnip.sh now also applies turnip-fdm-visualize.patch (TU_DEBUG=fdmviz) and
-turnip-max-samples.patch (TU_MAX_SAMPLES), so the X11/AHB driver and the app-process Android
-driver are the changed files; the XCB libraries, ICD JSON
-and licences are copied from xrg13 unchanged. The result is a private validation component.
+build-turnip.sh now pins mesa-mirror malos/main 55186f1f (KGSL device timestamps from
+IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS; calibrated timestamps and present timing advertised only
+when the probe succeeds) with the same patches as xrg16, so the X11/AHB driver and the app-process
+Android driver are the changed files; the XCB libraries, ICD JSON and licences are copied from
+xrg16 unchanged. The result is a private validation component.
 
-  package-turnip-validation.py --base turnip-adb7e30-xrg13.zip --native libvulkan_freedreno.so \
+  package-turnip-validation.py --base turnip-adb7e30-xrg16.zip --native libvulkan_freedreno.so \
       --android libvulkan_freedreno_android.so --strip <ndk>/llvm-strip \
       --readobj <ndk>/llvm-readobj --output DIR
 """
@@ -20,15 +21,17 @@ import subprocess
 import tempfile
 import zipfile
 
-BASE = 'turnip-adb7e30-xrg13.zip'
-BASE_SHA256 = 'f039931cf9b78572a1cd4128893d1fa5ca4458a8b59a1784de308ff955447d8e'
-# The same pinned xrg13 sources and XCB dependencies, rebuilt in Apple Container on Oct 11.
-# See mhr-odin3-container-20261011.md; this is an internal baseline, never a public release.
-LOCAL_BASE_SHA256 = '99a669633b312d523c95e0e174276e6c3b79fe9c89b2faa60ee3bf373b122c03'
-VERSION = 'turnip-adb7e30-xrg16'
+BASE = 'turnip-adb7e30-xrg16.zip'
+# xrg16 as packaged on 2026-10-15 from the build host's drivers (runtime-20261015-private).
+BASE_SHA256 = '20b24d3071ece86cce7c759e1038c74b97358b6853a6440966bd91e7b1fea52f'
+# xrg16 as bundled in the v14 APK (runtime-20261017-wsl-private, from the Apple Container xrg13
+# baseline); same XCB libraries and licences, different ICD JSON. Internal, never a public release.
+LOCAL_BASE_SHA256 = 'be6fbc76a4b7522ae891424d7135befaed807f4d469420a254129ade67385340'
+VERSION = 'turnip-55186f1-xrg17'
+PIN = '55186f1f0e739a507876bb3733cf00e1734c78f1'
 PATCHES = ('turnip-fdm-visualize.patch', 'turnip-max-samples.patch')
 MARKERS = (b'fdmviz\0', b'TU_MAX_SAMPLES\0')
-VALIDATION = 'Private validation build; see docs/validation/swan-alyx-vulkan-20261015.md.'
+VALIDATION = 'Private validation build; see docs/validation/turnip-kgsl-calibrated-timestamps-20261019.md.'
 
 
 def sha(data):
@@ -51,7 +54,7 @@ def main():
     here = Path(__file__).resolve().parent
     base_sha = sha(args.base.read_bytes())
     if base_sha not in (BASE_SHA256, LOCAL_BASE_SHA256):
-        raise SystemExit('Expected the validated Turnip xrg13 archive')
+        raise SystemExit('Expected the validated Turnip xrg16 archive')
     with zipfile.ZipFile(args.base) as source:
         files = {info.filename: source.read(info) for info in source.infolist()}
     inventory = json.loads(files.pop('xrgame-build.json'))
@@ -80,8 +83,8 @@ def main():
     for name in tuple('patches/' + patch for patch in PATCHES) + ('build-turnip.sh', Path(__file__).name):
         inventory['recipes']['tools/xrgame/' + name] = sha(text_bytes(here / name))
     inventory['component'] = VERSION
-    inventory['derivedFrom'] = {'file': BASE, 'patches': ['tools/xrgame/patches/' + patch for patch in PATCHES],
-                                'rebuilt': sorted(rebuilt), 'sha256': base_sha}
+    inventory['sourcePins'] = dict(inventory['sourcePins'], **{'mesa-turnip': PIN})
+    inventory['derivedFrom'] = {'file': BASE, 'sourcePin': PIN, 'rebuilt': sorted(rebuilt), 'sha256': base_sha}
     inventory['validation'] = VALIDATION
     files['xrgame-build.json'] = (json.dumps(inventory, indent=2, sort_keys=True) + '\n').encode()
     args.output.mkdir(parents=True, exist_ok=True)

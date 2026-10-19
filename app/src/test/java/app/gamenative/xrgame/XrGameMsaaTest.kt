@@ -6,7 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class XrGameMsaaTest {
-    private val turnip = "turnip-adb7e30-xrg16"
+    private val turnip = "turnip-55186f1-xrg17"
 
     @Test fun gameKeepsItsOwnMsaaUnlessEyeTrackedFoveationDrivesAVrGame() {
         val flat = EnvVars("XRGAME_XR_FOVEATION=eye")

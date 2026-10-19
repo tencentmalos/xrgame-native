@@ -17,7 +17,7 @@ object XrGameMsaa {
     enum class Mode(val key: String, val samples: Int) { GAME("game", 0), OFF("off", 1), X2("2x", 2) }
 
     /** Turnip builds carrying patches/turnip-max-samples.patch. */
-    private val MAX_SAMPLES_TURNIP = setOf("turnip-adb7e30-xrg15", "turnip-adb7e30-xrg16")
+    private val MAX_SAMPLES_TURNIP = setOf("turnip-adb7e30-xrg15", "turnip-adb7e30-xrg16", "turnip-55186f1-xrg17")
 
     fun stored(envVars: String): Mode = Mode.entries.firstOrNull { it.key == EnvVars(envVars).get(ENV) } ?: Mode.GAME
 

@@ -76,7 +76,10 @@ concurrent binning is globally off), `malos/main` `04e1d665`, which turns LRZ fa
 clear off on A8XX unless `TU_DEBUG=lrzfc`, and `malos/main` `adb7e30a`, which resets the
 bin foveation registers at every command buffer start (the Swan composite page faults, see
 [the record](../docs/validation/swan-xr-composite-faults-20261010.md)). Its tree is exactly
-what `turnip-adb7e30-xrg13` is built from. On 2026-10-09 `malos/main` was fast-forwarded from
+what `turnip-adb7e30-xrg13` is built from. On 2026-10-19 `malos/main` advanced to `55186f1f`
+(KGSL device timestamps from `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS`; calibrated timestamps and
+present timing only when the probe succeeds), which both Turnip recipes pin (Turnip xrg17); the
+gitlink still records `4815dc71`. On 2026-10-09 `malos/main` was fast-forwarded from
 `d15b7c01` to `04e1d665`, which also published the `25ef1647` merges. The RMW patch alone
 on top of `malos/main` is in `feature/malos/lrz-rmw-no-cb` (`16ad8431`). Validated runtime recipes keep
 their explicit older base commits and recorded build-copy patches; advancing a

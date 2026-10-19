@@ -26,10 +26,11 @@ object XrGameRuntime {
     /** Turnip builds carrying patches/turnip-x11-ahb.patch (Android X11 AHB presentation). */
     private val X11_AHB_TURNIP = setOf("turnip-d15b7c0-xrg5", "turnip-25ef164-xrg6", "turnip-25ef164-xrg10",
         "turnip-25ef164-xrg11", "turnip-04e1d66-xrg12", "turnip-adb7e30-xrg13", "turnip-adb7e30-xrg14", "turnip-adb7e30-xrg15",
-        "turnip-adb7e30-xrg16")
+        "turnip-adb7e30-xrg16", "turnip-55186f1-xrg17")
 
     /** Turnip builds carrying patches/turnip-fdm-visualize.patch (TU_DEBUG=fdmviz). */
-    private val FDM_VISUALIZE_TURNIP = setOf("turnip-adb7e30-xrg14", "turnip-adb7e30-xrg15", "turnip-adb7e30-xrg16")
+    private val FDM_VISUALIZE_TURNIP = setOf("turnip-adb7e30-xrg14", "turnip-adb7e30-xrg15", "turnip-adb7e30-xrg16",
+        "turnip-55186f1-xrg17")
 
     fun configure(container: Container) {
         container.containerVariant = Container.BIONIC

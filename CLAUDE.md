@@ -13,7 +13,11 @@
     - 根因：Turnip 给线性图像末级行数补齐到 4 的倍数，gralloc 的宿主 AHB 只有窗口实际的行数。高度不是 4 的倍数的窗口（如 Steam 的 1282×721）建交换链失败，Zink 杀掉交换链后在 `set_swap_interval` 里空指针崩溃；GPU 进程重启后同一窗口始终建不出交换链，所以一直黑屏。
     - 修复：宿主 WSI 改为先渲染到普通图像，呈现时拷进建在 AHB 上的 VkBuffer（Mesa 的 buffer blit）；新补丁 `mesa-zink-killed-swapchain.patch` 兜底。只改客户端组件，游戏用的 Turnip 和 `malos/main` 未动。
     - Swan 验证：确定性测试 9 个尺寸全过，GPU 模式连续导航 25.7 分钟无失败。
-    - 待用户决定：Turnip KGSL 后端的 `get_gpu_timestamp` 是 `UNREACHABLE`，却仍声明 `calibrated_timestamps`。
+    - Turnip KGSL 后端的 `get_gpu_timestamp` 原来是 `UNREACHABLE`，却仍声明 `calibrated_timestamps`。2026-10-19 经用户同意修复，提交为 mesa `malos/main` `55186f1f`：
+      - DEVICE 域改用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 读取，并在初始化时探测，探测失败就不声明这几个扩展；
+      - 两个配方都 pin 到这个提交，游戏随 Turnip xrg17（`turnip-55186f1-xrg17`）更新；
+      - Swan 上 Zink 报错降为 0，Vulkan 和 GL 时间戳都正确；
+      - 见[记录](docs/validation/turnip-kgsl-calibrated-timestamps-20261019.md)。
   - 未修（用户决定之后再查）：Hades II 2D 大屏（XR）在 FSR1 加眼动注视点时，大屏图像左下角间歇出现噪点块，约在 Wine 屏幕 (0,647)–(218,701)，营地场景 462 帧里有 28 帧。关掉 FSR 就消失（用户确认）。
   - SDK 的 `steampsp.panel` 已能截到 X server 的 SurfaceView（两种 X server 渲染器都实现了 `CaptureTap`）。
   - 输入法逐字上屏：已提交 `3bb321485`，用户在 Swan 上确认。
