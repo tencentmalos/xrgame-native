@@ -34,6 +34,15 @@ class LinuxSteamActivity : ComponentActivity() {
     companion object {
         /** The page DebugBus `steam_ime` drives in debug builds. */
         @Volatile var current: java.lang.ref.WeakReference<LinuxSteamActivity>? = null
+        private const val KEYBOARD_PREFS = "steam_page"
+        private const val KEYBOARD_X = "keyboard_button_x"
+        private const val KEYBOARD_Y = "keyboard_button_y"
+        // Above Big Picture's per-game settings button, which sits at mid-height on the right.
+        private const val KEYBOARD_DEFAULT_Y = 0.3f
+        // Holding a touch still this long presses the mouse button.
+        private const val HOLD_MS = 400L
+        // X-screen pixels of drag per wheel step.
+        private const val SCROLL_STEP = 40f
     }
 
     /** This page's IME bridge, for DebugBus `steam_ime`; main thread only. */
@@ -43,6 +52,7 @@ class LinuxSteamActivity : ComponentActivity() {
     private var ime: IMEInputReceiver? = null
     private var imeSession: SteamImeSession? = null
     private var multiTouch = false
+    private var keyboardLayout: View.OnLayoutChangeListener? = null
     private lateinit var surface: FrameLayout
     private lateinit var loading: SteamLaunchView
 
@@ -134,48 +144,201 @@ class LinuxSteamActivity : ComponentActivity() {
         renderer = rendererView
         surface.addView(view)
         attachInput(value)
+        addKeyboardButton()
+        val touch = TouchPointer(value, view)
+        view.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) multiTouch = false
+            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && event.pointerCount == 2) {
+                multiTouch = true
+                touch.cancel()
+                toggleKeyboard()
+            }
+            if (!multiTouch) touch.onTouch(event)
+            true
+        }
+        rendererView.onResume()
+    }
+
+    /**
+     * The on-screen keyboard button. A tap toggles the IME; a drag moves the button, and the
+     * place is kept (as fractions of the page) for the next page.
+     */
+    private fun addKeyboardButton() {
+        val density = resources.displayMetrics.density
+        val prefs = getSharedPreferences(KEYBOARD_PREFS, MODE_PRIVATE)
         val keyboard = ImageButton(this).apply {
             setImageResource(R.drawable.icon_keyboard)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            val padding = (12 * resources.displayMetrics.density).toInt()
+            val padding = (12 * density).toInt()
             setPadding(padding, padding, padding, padding)
             isFocusable = false
             contentDescription = getString(R.string.steam_client_keyboard)
             tooltipText = contentDescription
             setColorFilter(android.graphics.Color.WHITE)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x99202A35.toInt()); cornerRadius = 24 * resources.displayMetrics.density
+                setColor(0x99202A35.toInt()); cornerRadius = 24 * density
             }
-            setOnClickListener { toggleKeyboard() }
         }
-        val size = (48 * resources.displayMetrics.density).toInt()
-        surface.addView(keyboard, FrameLayout.LayoutParams(size, size, Gravity.END or Gravity.CENTER_VERTICAL).apply {
-            rightMargin = (8 * resources.displayMetrics.density).toInt()
-        })
-        // Direct touch coordinates account for the renderer's aspect-preserving letterbox.
-        view.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) multiTouch = false
-            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && event.pointerCount == 2) {
-                multiTouch = true
-                value.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
-                toggleKeyboard()
-            }
-            if (multiTouch) return@setOnTouchListener true
-            val width = value.screenInfo.width.toInt()
-            val height = value.screenInfo.height.toInt()
-            val scale = minOf(view.width / width.toFloat(), view.height / height.toFloat())
-            if (scale <= 0) return@setOnTouchListener true
-            val x = ((event.x - (view.width - width * scale) / 2) / scale).toInt().coerceIn(0, width - 1)
-            val y = ((event.y - (view.height - height * scale) / 2) / scale).toInt().coerceIn(0, height - 1)
-            value.injectPointerMove(x, y)
+        val size = (48 * density).toInt()
+        val margin = (8 * density).toInt()
+        surface.addView(keyboard, FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.START))
+        // Centre of the button as a fraction of the page.
+        fun place(fx: Float, fy: Float) {
+            val maxX = (surface.width - size - margin).coerceAtLeast(margin)
+            val maxY = (surface.height - size - margin).coerceAtLeast(margin)
+            keyboard.x = (fx * surface.width - size / 2f).coerceIn(margin.toFloat(), maxX.toFloat())
+            keyboard.y = (fy * surface.height - size / 2f).coerceIn(margin.toFloat(), maxY.toFloat())
+        }
+        fun placeSaved() {
+            if (surface.width == 0) return
+            // Right edge, above the middle: Big Picture keeps per-game settings at mid-height.
+            val fx = prefs.getFloat(KEYBOARD_X, -1f).takeIf { it >= 0 } ?: ((surface.width - margin - size / 2f) / surface.width)
+            place(fx, prefs.getFloat(KEYBOARD_Y, KEYBOARD_DEFAULT_Y))
+        }
+        keyboardLayout?.let { surface.removeOnLayoutChangeListener(it) }
+        keyboardLayout = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeSaved() }
+            .also { surface.addOnLayoutChangeListener(it) }
+        surface.post { placeSaved() }
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop * 2f
+        var downX = 0f; var downY = 0f; var startX = 0f; var startY = 0f; var dragging = false
+        keyboard.setOnTouchListener { button, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> value.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> value.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX; downY = event.rawY; startX = button.x; startY = button.y; dragging = false
+                    button.isPressed = true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging && Math.hypot((event.rawX - downX).toDouble(), (event.rawY - downY).toDouble()) > slop) {
+                        dragging = true
+                        button.isPressed = false
+                    }
+                    if (dragging) {
+                        place((startX + event.rawX - downX + size / 2f) / surface.width,
+                              (startY + event.rawY - downY + size / 2f) / surface.height)
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    button.isPressed = false
+                    if (dragging) {
+                        prefs.edit().putFloat(KEYBOARD_X, (button.x + size / 2f) / surface.width)
+                            .putFloat(KEYBOARD_Y, (button.y + size / 2f) / surface.height).apply()
+                    } else {
+                        button.performClick()
+                        toggleKeyboard()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> button.isPressed = false
             }
             true
         }
-        rendererView.onResume()
     }
+
+    /**
+     * Touches (fingers, and controller rays in the headset's touch emulation) on the Steam surface,
+     * as the X pointer. A tap clicks. A drag scrolls the page with wheel steps along the axis it
+     * starts on: Chromium does not scroll on a held mouse button, so a pressed drag only selected
+     * or dragged items. Holding still presses the button, for sliders and drag and drop.
+     * Coordinates account for the renderer's aspect-preserving letterbox.
+     */
+    private inner class TouchPointer(private val server: XServer, private val view: View) {
+        private val slop = android.view.ViewConfiguration.get(view.context).scaledTouchSlop * 2f
+        private var mode = Mode.IDLE
+        private var downX = 0f
+        private var downY = 0f
+        private var screenX = 0
+        private var screenY = 0
+        private var horizontal = false
+        private var scrollX = 0f
+        private var scrollY = 0f
+        private val hold = Runnable {
+            if (mode == Mode.PENDING) {
+                mode = Mode.HELD
+                server.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT)
+            }
+        }
+
+        fun onTouch(event: MotionEvent) {
+            val width = server.screenInfo.width.toInt()
+            val height = server.screenInfo.height.toInt()
+            val scale = minOf(view.width / width.toFloat(), view.height / height.toFloat())
+            if (scale <= 0) return
+            val x = ((event.x - (view.width - width * scale) / 2) / scale).toInt().coerceIn(0, width - 1)
+            val y = ((event.y - (view.height - height * scale) / 2) / scale).toInt().coerceIn(0, height - 1)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    mode = Mode.PENDING
+                    downX = event.x; downY = event.y; screenX = x; screenY = y
+                    scrollX = 0f; scrollY = 0f
+                    server.injectPointerMove(x, y)
+                    view.postDelayed(hold, HOLD_MS)
+                }
+                MotionEvent.ACTION_MOVE -> when (mode) {
+                    Mode.PENDING -> {
+                        val dx = event.x - downX
+                        val dy = event.y - downY
+                        if (Math.hypot(dx.toDouble(), dy.toDouble()) > slop) {
+                            view.removeCallbacks(hold)
+                            mode = Mode.SCROLL
+                            horizontal = Math.abs(dx) > Math.abs(dy)
+                            scroll(dx / scale, dy / scale)
+                        }
+                    }
+                    Mode.SCROLL -> scroll((event.x - downX) / scale, (event.y - downY) / scale)
+                    Mode.HELD -> server.injectPointerMove(x, y)
+                    Mode.IDLE -> Unit
+                }
+                MotionEvent.ACTION_UP -> {
+                    view.removeCallbacks(hold)
+                    when (mode) {
+                        Mode.PENDING -> {
+                            server.injectPointerMove(screenX, screenY)
+                            server.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT)
+                            server.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
+                        }
+                        Mode.HELD -> {
+                            server.injectPointerMove(x, y)
+                            server.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
+                        }
+                        else -> Unit
+                    }
+                    mode = Mode.IDLE
+                }
+                MotionEvent.ACTION_CANCEL -> cancel()
+            }
+        }
+
+        /** Releases a held button and drops the gesture (a second finger, a cancel). */
+        fun cancel() {
+            view.removeCallbacks(hold)
+            if (mode == Mode.HELD) server.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
+            mode = Mode.IDLE
+        }
+
+        /**
+         * [totalX], [totalY]: X-screen pixels dragged since the touch began. Content follows the
+         * finger, so dragging up scrolls down. The pointer stays where the touch began, over the
+         * list being scrolled.
+         */
+        private fun scroll(totalX: Float, totalY: Float) {
+            val total = if (horizontal) totalX else totalY
+            val done = if (horizontal) scrollX else scrollY
+            val steps = ((total - done) / SCROLL_STEP).toInt()
+            if (steps == 0) return
+            val button = when {
+                horizontal && steps < 0 -> Pointer.Button.BUTTON_SCROLL_CLICK_RIGHT
+                horizontal -> Pointer.Button.BUTTON_SCROLL_CLICK_LEFT
+                steps < 0 -> Pointer.Button.BUTTON_SCROLL_DOWN
+                else -> Pointer.Button.BUTTON_SCROLL_UP
+            }
+            repeat(Math.abs(steps)) {
+                server.injectPointerButtonPress(button)
+                server.injectPointerButtonRelease(button)
+            }
+            if (horizontal) scrollX += steps * SCROLL_STEP else scrollY += steps * SCROLL_STEP
+        }
+    }
+
+    private enum class Mode { IDLE, PENDING, SCROLL, HELD }
 
     /** A bounded input queue for this resume; [onPause] closes it. */
     private fun attachInput(value: XServer) {

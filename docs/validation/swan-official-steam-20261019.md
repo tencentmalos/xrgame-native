@@ -157,6 +157,23 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
   - 用户在头显里确认：关掉 FSR 就不闪了，问题出在 FSR1 加眼动注视点（ETFR）的组合。同一局里的开关对比没做成（两次都在对比前退出了游戏）。
   - 用户决定之后再查。
 
+### 键盘按钮与手柄射线拖动
+
+用户反馈了两点：键盘按钮挡住了 Steam 游戏页的设置按钮；Pico 手柄射线（默认的触摸模拟模式）拖不动画布。原因是触摸被当成「按住鼠标左键拖动」，而 Chromium 按住鼠标拖动不会滚动列表。
+
+- 键盘按钮：默认放在右侧 30% 高度（原来在中间）。可以拖动，轻点仍是开关键盘，拖动后的位置按页面比例记住（`steam_page` 偏好）。
+- 触摸手势（`LinuxSteamActivity.TouchPointer`）：
+  - 轻点：单击。
+  - 拖动：超过两倍 touch slop 后转成滚轮，每 40 个 X 屏幕像素一格。按起手时的主方向锁定轴：竖向用 4/5 键，横向用 6/7 键。内容跟手走，指针停在按下的位置。
+  - 按住 0.4 s 不动：按下左键，之后拖动的是指针，用于滑块和拖放。
+  - 双指：照旧开关键盘。
+- Swan 验证（包 `steampsp-kb1`，SHA `c61365aed6b4ac4495b66f9079f1bcab9cd80c654010651b78c456aea02b7797`，审计 0 errors；GPU 绘制，SDK 截图）：
+  - 默认按钮中心约在 (1840, 324)。
+  - `input swipe` 向上拖，主页向下滚了约一屏；在新闻行向左拖，这一行横向翻页。
+  - 拖动按钮能移到 (1700, 160)，拖回后保存为 (0.958, 0.299)。
+  - 轻点按钮能开关输入法（`mInputShown` true/false）；轻点「好友」标签能切换。
+- 没测：按住后拖动（滑块），以及真人用手柄射线的手感（测试用的是 adb 注入的触摸）。
+
 同时发现、未修（需要用户决定）：
 
 - Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。
