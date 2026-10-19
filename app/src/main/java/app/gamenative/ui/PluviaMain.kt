@@ -382,6 +382,8 @@ fun PluviaMain(
     // XRGame's launch panel (display mode and its options) for a game started from the library.
     var xrLaunchPanelAppId by rememberSaveable { mutableStateOf<String?>(null) }
     var xrLaunchPanelOffline by rememberSaveable { mutableStateOf(false) }
+    /** The panel holds a launch Official Steam handed over; it resumes or cancels that launch. */
+    var xrLaunchPanelOfficial by rememberSaveable { mutableStateOf(false) }
     val launchFromLibrary: (String, Boolean, Boolean) -> Unit = { appId, asContainer, isOffline ->
         trackGameLaunched(appId)
         viewModel.setLaunchedAppId(appId)
@@ -484,6 +486,18 @@ fun PluviaMain(
         }
     }
 
+    /** Intent launches: a launch Official Steam handed over first shows the launch panel, as the library does. */
+    val launchHandedOverApp: (resolvedAppId: String, hasTemporaryOverride: Boolean) -> Unit = { resolvedAppId, hasTemporaryOverride ->
+        val officialGame = runCatching { ContainerUtils.extractGameIdFromContainerId(resolvedAppId) }
+            .getOrNull()?.let { app.gamenative.xrgame.XrGameOfficialSteam.isOfficialGame(it) } == true
+        if (BuildConfig.XRGAME && officialGame && PrefManager.xrgameLaunchPanel) {
+            xrLaunchPanelOfficial = true
+            xrLaunchPanelAppId = resolvedAppId
+        } else {
+            launchIntentApp(resolvedAppId, hasTemporaryOverride)
+        }
+    }
+
     // process pending launch request from cold start (event bus has no replay)
     LaunchedEffect(Unit) {
         if (MainActivity.current?.get() !== context) return@LaunchedEffect
@@ -505,7 +519,7 @@ fun PluviaMain(
                             context, launchRequest.appId, launchRequest.containerConfig,
                         )
                     }
-                    launchIntentApp(resolution.finalAppId, launchRequest.containerConfig != null)
+                    launchHandedOverApp(resolution.finalAppId, launchRequest.containerConfig != null)
                 }
 
                 is GameResolutionResult.NotFound -> {
@@ -568,7 +582,7 @@ fun PluviaMain(
                         }
                     }
                     // finalAppId — track what actually launched (may differ from launchRequest.appId after resolution)
-                    launchIntentApp(resolution.finalAppId, launchRequest.containerConfig != null)
+                    launchHandedOverApp(resolution.finalAppId, launchRequest.containerConfig != null)
                 }
             }
         }
@@ -604,7 +618,7 @@ fun PluviaMain(
                     when (val resolution = resolveGameAppId(context, event.appId)) {
                         is GameResolutionResult.Success -> {
                             Timber.i("[PluviaMain]: Using appId: ${resolution.finalAppId} (original: ${event.appId}, isSteamInstalled: ${resolution.isSteamInstalled}, isCustomGame: ${resolution.isCustomGame})")
-                            launchIntentApp(
+                            launchHandedOverApp(
                                 resolution.finalAppId,
                                 IntentLaunchManager.hasTemporaryOverride(resolution.finalAppId),
                             )
@@ -1402,9 +1416,25 @@ fun PluviaMain(
                     appId = appId,
                     onLaunch = {
                         xrLaunchPanelAppId = null
-                        launchFromLibrary(appId, false, xrLaunchPanelOffline)
+                        if (xrLaunchPanelOfficial) {
+                            xrLaunchPanelOfficial = false
+                            launchIntentApp(appId, IntentLaunchManager.hasTemporaryOverride(appId))
+                        } else {
+                            launchFromLibrary(appId, false, xrLaunchPanelOffline)
+                        }
                     },
-                    onDismiss = { xrLaunchPanelAppId = null },
+                    onDismiss = {
+                        xrLaunchPanelAppId = null
+                        if (xrLaunchPanelOfficial) {
+                            xrLaunchPanelOfficial = false
+                            // Steam stops waiting for this launch, and its own page returns.
+                            runCatching { ContainerUtils.extractGameIdFromContainerId(appId) }.getOrNull()
+                                ?.let { app.gamenative.xrgame.XrGameOfficialSteam.finishGame(it) }
+                            context.startActivity(android.content.Intent().setClassName(context,
+                                "app.gamenative.xrgame.steam.LinuxSteamActivity")
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                        }
+                    },
                     onOpenSettings = { openContainerConfigForAppId = appId },
                 )
             }

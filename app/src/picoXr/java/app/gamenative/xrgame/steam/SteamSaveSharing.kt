@@ -85,6 +85,51 @@ object SteamSaveSharing {
         Files.createSymbolicLink(alias.toPath(), target.canonicalFile.toPath())
     }
 
+    /**
+     * Steam AutoCloud resolves a game's save paths, and downloads its Cloud files there, before it
+     * starts the compatibility tool. On the client's first login that can precede our link, and
+     * Steam then builds a prefix tree of its own. Adopt it only when it holds nothing the container
+     * contradicts: files the container lacks are copied in (never over a file), then the tree is
+     * kept aside so the link can take its place. Any differing file stops the launch.
+     */
+    internal fun adoptAutoCloudTree(alias: File, prefix: File) {
+        if (Files.isSymbolicLink(alias.toPath()) || !alias.isDirectory || alias.listFiles().isNullOrEmpty()) return
+        val files = alias.walkTopDown().onEnter {
+            check(!Files.isSymbolicLink(it.toPath())) { "Save tree contains an unexpected link." }; true
+        }.filter { it.isFile && it.name != "steam_autocloud.vdf" }.toList()
+        val pending = mutableListOf<Pair<File, File>>()
+        // Only AutoCloud's save folders; a real prefix (system files, registry) is never adopted.
+        if (files.any { !it.relativeTo(alias).invariantSeparatorsPath.startsWith("drive_c/users/steamuser/") }) return
+        for (file in files) {
+            check(!Files.isSymbolicLink(file.toPath())) { "Save tree contains an unexpected link." }
+            // Inside the container, Proton's steamuser is a link to this Wine runtime's xuser.
+            val relative = file.relativeTo(alias).invariantSeparatorsPath
+                .replaceFirst(Regex("^drive_c/users/steamuser/"), "drive_c/users/xuser/")
+            val target = File(prefix, relative)
+            if (target.exists()) {
+                check(target.isFile && sha256(target) == sha256(file)) {
+                    "Official Steam placed different Cloud saves outside the game container. Both copies were preserved; resolve the save conflict before launching."
+                }
+            } else pending.add(file to target)
+        }
+        for ((file, target) in pending) {
+            check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs())
+            file.copyTo(target, overwrite = false)
+            check(sha256(target) == sha256(file)) { "Save copy verification failed; original saves were preserved." }
+        }
+        val backup = File(alias.parentFile, "${alias.name}.steampsp-autocloud-${System.currentTimeMillis()}")
+        check(alias.renameTo(backup)) { "Could not keep Steam's separate save tree aside; no saves were replaced." }
+    }
+
+    private fun sha256(file: File): String {
+        val hash = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val bytes = ByteArray(65536)
+            while (true) { val n = input.read(bytes); if (n < 0) break; hash.update(bytes, 0, n) }
+        }
+        return hash.digest().joinToString("") { "%02x".format(it) }
+    }
+
     fun prepareContainer(context: Context, container: Container, appId: Int) {
         val account = SteamUtils.getSteam3AccountId() ?: error("Sign in to Official Steam first.")
         val savedAccount = app.gamenative.PrefManager.steamUserAccountId.toLong() and 0xffffffffL
@@ -94,6 +139,7 @@ object SteamSaveSharing {
         val prefix = File(container.rootDir, ".wine")
         check(prefix.isDirectory) { "The existing game container is not ready." }
         val prefixAlias = File(compatData(context), "$appId/pfx")
+        adoptAutoCloudTree(prefixAlias, prefix)
         linkDirectory(prefixAlias, prefix)
         // Steam AutoCloud uses Proton's Windows user, while this Wine runtime uses xuser.
         linkDirectory(File(prefix, "drive_c/users/steamuser"), File(prefix, "drive_c/users/xuser"))
@@ -136,12 +182,7 @@ object SteamSaveSharing {
             check(!Files.isSymbolicLink(it.toPath())) { "Save tree contains an unexpected link." }; true
         }.filter { it.isFile }.associate { file ->
             check(!Files.isSymbolicLink(file.toPath())) { "Save tree contains an unexpected link." }
-            val hash = MessageDigest.getInstance("SHA-256")
-            file.inputStream().use { input ->
-                val bytes = ByteArray(65536)
-                while (true) { val n = input.read(bytes); if (n < 0) break; hash.update(bytes, 0, n) }
-            }
-            file.relativeTo(root).path to hash.digest().joinToString("") { "%02x".format(it) }
+            file.relativeTo(root).path to sha256(file)
         }
     }
 }

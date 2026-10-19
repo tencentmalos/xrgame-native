@@ -54,6 +54,41 @@ def client_window_ready(tree):
         r'\("steamwebhelper" "steam"\)\s+(\d+)x(\d+)', tree))
 
 
+WEBHELPER_FOLD = 'zygote,audio'
+
+
+def webhelper_fold(directory):
+    """Which web helper processes the client shim folds away (zygote, network, audio).
+
+    Android's phantom-process limit counts every child of the app. A diagnostic file can
+    choose another set; an empty file keeps Steam's own process layout.
+    """
+    override = directory / 'webhelper-fold'
+    if override.is_file():
+        value = override.read_text().strip()
+        if all(part in ('zygote', 'network', 'audio') for part in filter(None, value.split(','))):
+            return value
+    return WEBHELPER_FOLD
+
+
+def session_bus(env):
+    """A private session bus, as dbus-run-session gives, without a second supervisor process.
+
+    Android caps an app's child processes (phantom processes); every resident one counts.
+    """
+    read, write = os.pipe()
+    daemon = subprocess.Popen(['/usr/bin/dbus-daemon', '--session', '--nofork', '--nopidfile',
+                               f'--print-address={write}'], env=env, pass_fds=(write,))
+    os.close(write)
+    with os.fdopen(read) as stream:
+        address = stream.readline().strip()
+    if not address:
+        daemon.kill()
+        daemon.wait()
+        raise RuntimeError('session bus did not start')
+    return daemon, address
+
+
 def main():
     if len(sys.argv) < 2:
         return 2
@@ -76,6 +111,9 @@ def main():
             print('SteamPSP: GPU component missing; the client keeps software drawing', flush=True)
     if (Path(os.environ['HOME']).parent / 'library-trace').is_file():
         nested_env['XRGAME_STEAM_LIBRARY_TRACE'] = '1'
+    if (Path(os.environ['HOME']).parent / 'crash-trace').is_file():
+        nested_env['XRGAME_STEAM_CRASH_TRACE'] = '1'
+    nested_env['XRGAME_WEBHELPER_FEWER_PROCESSES'] = webhelper_fold(Path(os.environ['HOME']).parent)
     server_env = dict(software)
     server_env.pop("LD_LIBRARY_PATH", None)  # Xorg uses the pinned userspace libraries, not Valve's copies.
     server_env.pop("XRGAME_STEAM_GPU", None)
@@ -92,6 +130,9 @@ def main():
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
     try:
+        bus, address = session_bus(server_env)
+        children.append(bus)
+        nested_env['DBUS_SESSION_BUS_ADDRESS'] = address
         # No glamor: the host server intentionally has no GLX/DRI3.
         xserver = subprocess.Popen([
             "/usr/bin/Xephyr", ":1", "-screen", screen, "-sw-cursor",

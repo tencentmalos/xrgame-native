@@ -181,6 +181,10 @@ class LinuxSteamRuntime(private val context: Context) {
                 "XDG_RUNTIME_DIR" to "/run/user/${android.os.Process.myUid()}",
                 "STEAM_RUNTIME" to "0", "STEAM_RUNTIME_PREFER_HOST_LIBRARIES" to "1",
                 "SDL_VIDEO_X11_XSHM" to "0", "QT_X11_NO_MITSHM" to "1"))
+            // Diagnostics only: PRoot's own trace level, from a file in the private directory.
+            File(directory, "proot-verbose").takeIf { it.isFile }?.readText()?.trim()?.toIntOrNull()?.let {
+                environment()["PROOT_VERBOSE"] = it.coerceIn(0, 9).toString()
+            }
             redirectErrorStream(true); redirectOutput(File(logs, logName))
         }
     }
@@ -207,11 +211,18 @@ class LinuxSteamRuntime(private val context: Context) {
     fun forwardLaunch(appId: Int): Int {
         require(appId > 0) { "invalid app ID" }
         if (!LinuxSteamService.running) return 6
-        val builder = process(listOf("${client.path}/steamrtarm64/steam", "-ifrunning", "steam://rungameid/$appId"),
-            "forward-launch.log")
+        return forward(listOf("steam://rungameid/$appId"), "forward-launch.log", 30)
+    }
+
+    /** Ask the running client to exit as its own Exit Steam does, flushing its config and Cloud state. */
+    fun forwardShutdown(timeoutSeconds: Long): Int = forward(listOf("-shutdown"), "forward-shutdown.log", timeoutSeconds)
+
+    private fun forward(arguments: List<String>, logName: String, timeoutSeconds: Long): Int {
+        val builder = process(listOf("${client.path}/steamrtarm64/steam", "-ifrunning") + arguments, logName)
         builder.environment().putAll(mapOf("LD_LIBRARY_PATH" to clientLibraryPath(), "DISPLAY" to ":1"))
         val forwarder = builder.start()
-        if (!forwarder.waitFor(30, TimeUnit.SECONDS)) { forwarder.destroyForcibly(); return -1 }
+        // PRoot ignores SIGTERM; end the forwarder's whole tree on a timeout.
+        if (!forwarder.waitFor(timeoutSeconds, TimeUnit.SECONDS)) { LinuxSteamProcesses.stopTree(forwarder); return -1 }
         return forwarder.exitValue()
     }
 

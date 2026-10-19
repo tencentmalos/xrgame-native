@@ -107,6 +107,19 @@ class LinuxSteamLibrary(private val context: Context, private val db: PluviaData
                 if (manifest(context, app.id) != null) exported++
             }
         }
+        // Custom Steam counts a game as installed from its completion marker alone
+        // (SteamService.isAppInstalled), so a library copied in or restored without
+        // app_info rows still plays there. Export those too, by their unique install folder.
+        for (directory in standard.listFiles().orEmpty()) {
+            if (!directory.isDirectory || !File(directory, ".download_complete").isFile) continue
+            val app = db.steamAppDao().findSteamAppWithInstallDir(directory.name)
+                // PICS stores 0 for a base game; older rows carry INVALID_APP_ID.
+                .filter { it.dlcForAppId == 0 || it.dlcForAppId == SteamService.INVALID_APP_ID }.singleOrNull() ?: continue
+            if (manifest(context, app.id) == null && !managed(context, app.id)) {
+                exportCustom(context, app.id, directory, app.name, "public", false)
+                if (manifest(context, app.id) != null) exported++
+            }
+        }
         linkLibrary(File(LinuxSteamRuntime(context).client, "steamapps"), File(sharedRoot(), "steamapps"))
         registerLibraries()
         reconcile()

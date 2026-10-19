@@ -56,7 +56,7 @@ class SteamImeSession(context: Context, private val server: XServer, private val
             val child = runtime.process(listOf("/usr/bin/python3", "/usr/local/lib/steampsp/ime-text.py"), "ime-status.log")
                 .redirectOutput(ProcessBuilder.Redirect.PIPE).redirectError(java.io.File("/dev/null")).start()
             process = child
-            val timeout = scope.launch { delay(5000); child.destroy() }
+            val timeout = scope.launch { delay(5000); LinuxSteamProcesses.stopTree(child) }
             try {
                 if (closed) return@enqueue
                 child.outputStream.use { it.write(text.toByteArray(Charsets.UTF_8)) }
@@ -66,7 +66,7 @@ class SteamImeSession(context: Context, private val server: XServer, private val
                 IMEInputReceiver.pressKey(server, XKeycode.KEY_V)
                 server.injectKeyRelease(XKeycode.KEY_CTRL_L)
                 check(child.waitFor(5, TimeUnit.SECONDS) && child.exitValue() == 0)
-            } finally { timeout.cancel(); child.destroy(); process = null }
+            } finally { timeout.cancel(); LinuxSteamProcesses.stopTree(child); process = null }
         } },
         keyHandler = { key -> enqueue { IMEInputReceiver.pressKey(server, key) } },
         keyEventHandler = { event ->
@@ -84,7 +84,7 @@ class SteamImeSession(context: Context, private val server: XServer, private val
 
     override fun close() {
         closed = true
-        process?.destroy()
+        process?.let(LinuxSteamProcesses::stopTree)
         operations.cancel()
         scope.cancel()
     }

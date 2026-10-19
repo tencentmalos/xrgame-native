@@ -51,7 +51,7 @@ def main():
         'droiddeck': subprocess.check_output(['git', '-C', str(droiddeck), 'rev-parse', 'HEAD'], text=True).strip(),
         'sources': {str(path.relative_to(repo)): digest(path) for path in shims},
         'adapterSha256': digest(Path(__file__).with_name('client-proc.c')),
-        'scope': 'glibc official Steam client only; no game or input hooks; web helper GL vendor switch only with XRGAME_WEBHELPER_GL_VENDOR',
+        'scope': 'glibc official Steam client only; no game or input hooks; unchanged setuid/setgid succeed; web helper GL vendor switch only with XRGAME_WEBHELPER_GL_VENDOR',
     }, indent=2) + '\n')
     # Normalize absolute guest symlinks to relative links before Android extracts them.
     # No devices, credentials, or build-host special files enter this rootfs.

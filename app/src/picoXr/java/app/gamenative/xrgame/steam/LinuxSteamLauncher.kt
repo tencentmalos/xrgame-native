@@ -79,6 +79,12 @@ class LinuxSteamLauncher : XrGameOfficialSteam.Launcher {
         env.put("SteamAppId", appId.toString())
         env.put("SteamGameId", appId.toString())
         env.put("PROTON_DISABLE_LSTEAMCLIENT", "0")
+        // Android kills an app's child processes beyond a device-wide limit (32 by default), and the
+        // official client already holds about a dozen. Wine's touch keyboard helper is one we can
+        // spare: Android's IME handles text input.
+        val overrides = env.get("WINEDLLOVERRIDES").split(';').map(String::trim).filter(String::isNotEmpty)
+            .filterNot { it.substringBefore('=').equals("tabtip.exe", ignoreCase = true) }
+        env.put("WINEDLLOVERRIDES", (overrides + "tabtip.exe=d").joinToString(";"))
         val work = base + game.canonicalFile.toPath().relativize(target.workingDirectory.toPath()).toString().replace('/', '\\')
         val args = if (target.arguments.isBlank()) "" else " ${target.arguments}"
         // Wine's /exec accepts an executable directly and waits for it. An empty

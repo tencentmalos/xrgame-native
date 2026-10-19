@@ -19,7 +19,11 @@ import java.io.File
  */
 class SteamGameHandoff(private val context: Context) {
     data class Request(val appId: Int, val file: File, val command: XrGameOfficialSteam.Command? = null,
-                       @Volatile var dispatched: Boolean = false, var started: Boolean = false)
+                       @Volatile var dispatched: Boolean = false, var started: Boolean = false,
+                       /** The Android game session (its X server or environment) has existed. */
+                       var sessionSeen: Boolean = false,
+                       /** When the session was last seen gone, 0 while it exists. */
+                       var sessionGoneAt: Long = 0)
     companion object {
         private const val TOOL_ID = "steampsp-proton-arm64"
         /** game-launch.py MAX_REQUEST; larger requests carry no command there. */
@@ -93,14 +97,22 @@ class SteamGameHandoff(private val context: Context) {
     fun poll() {
         val now = System.currentTimeMillis()
         active?.let { request ->
+            val session = PluviaApp.xServerView != null || PluviaApp.xEnvironment != null
+            if (session) { request.sessionSeen = true; request.sessionGoneAt = 0 }
+            else if (request.sessionSeen && request.sessionGoneAt == 0L) request.sessionGoneAt = now
+            // Activity handovers can clear the view for a moment; an ended session stays gone.
+            val sessionEnded = request.sessionSeen && !session && now - request.sessionGoneAt >= 1500
             if (!XrGameOfficialSteam.isOfficialGame(request.appId)) {
                 reply(request, "failed"); request.file.delete(); pending.value = null; active = null
             } else if (!request.file.isFile || now - request.file.lastModified() > 10000) {
                 XrGameOfficialSteam.finishGame(request.appId); pending.value = null; active = null
             } else if (ActiveGameRegistry.get()?.appId == request.appId) {
                 if (!request.started) { request.started = true; reply(request, "running") }
-            } else if (request.started && PluviaApp.xServerView == null) {
-                reply(request, "finished"); XrGameOfficialSteam.finishGame(request.appId); pending.value = null; active = null
+            } else if (sessionEnded) {
+                // The session ended: by the game, the quick menu, a launch error or the user
+                // leaving the page. Steam must not show the game as running any longer.
+                reply(request, if (request.started) "finished" else "failed")
+                XrGameOfficialSteam.finishGame(request.appId); pending.value = null; active = null
                 request.file.delete()
             }
             return

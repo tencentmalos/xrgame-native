@@ -165,6 +165,43 @@ class SteamLibrarySharingTest {
         assertEquals("original", File(alias, "drive_c/users/steamuser/Saved Games/Hades II/Profile1.sjson").readText())
         SteamSaveSharing.linkDirectory(alias, prefix)
     }
+    private fun autoCloudCase(): Triple<File, File, File> {
+        val prefix = File(temp.root, "container/.wine").apply { mkdirs() }
+        val saves = File(prefix, "drive_c/users/xuser/Saved Games/Hades II").apply { mkdirs() }
+        File(saves, "Profile1.sav").writeText("same")
+        // What Steam downloads before the compatibility tool starts, into its own tree.
+        val alias = File(temp.root, "compatdata/1145350/pfx")
+        val cloud = File(alias, "drive_c/users/steamuser/Saved Games/Hades II").apply { mkdirs() }
+        File(cloud, "Profile1.sav").writeText("same")
+        File(cloud, "steam_autocloud.vdf").writeText("\"steam_autocloud.vdf\"{}")
+        return Triple(prefix, saves, alias)
+    }
+    @Test fun `Steam's early AutoCloud tree is adopted when it repeats the container`() {
+        val (prefix, saves, alias) = autoCloudCase()
+        File(alias, "drive_c/users/steamuser/Saved Games/Hades II/Profile2.sav").writeText("cloud only")
+        SteamSaveSharing.adoptAutoCloudTree(alias, prefix)
+        SteamSaveSharing.linkDirectory(alias, prefix)
+        assertEquals(prefix.canonicalFile, alias.canonicalFile)
+        assertEquals("same", File(saves, "Profile1.sav").readText())
+        assertEquals("cloud only", File(saves, "Profile2.sav").readText())
+        // The tree Steam built stays beside the link.
+        val kept = File(temp.root, "compatdata/1145350").listFiles()!!.single { it.name.startsWith("pfx.steampsp-autocloud-") }
+        assertEquals("same", File(kept, "drive_c/users/steamuser/Saved Games/Hades II/Profile1.sav").readText())
+    }
+    @Test fun `Steam's early AutoCloud tree with different saves stops the launch`() {
+        val (prefix, saves, alias) = autoCloudCase()
+        File(alias, "drive_c/users/steamuser/Saved Games/Hades II/Profile1.sav").writeText("newer in cloud")
+        assertThrows(IllegalStateException::class.java) { SteamSaveSharing.adoptAutoCloudTree(alias, prefix) }
+        assertEquals("same", File(saves, "Profile1.sav").readText())
+        assertEquals("newer in cloud", File(alias, "drive_c/users/steamuser/Saved Games/Hades II/Profile1.sav").readText())
+    }
+    @Test fun `a real separate prefix is not adopted`() {
+        val (prefix, _, alias) = autoCloudCase()
+        File(alias, "system.reg").writeText("registry")
+        SteamSaveSharing.adoptAutoCloudTree(alias, prefix)
+        assertEquals("registry", File(alias, "system.reg").readText())
+        assertThrows(IllegalStateException::class.java) { SteamSaveSharing.linkDirectory(alias, prefix) }
+    }
     @Test fun `existing independent prefix cannot be hidden or overwritten`() {
         val alias = File(temp.root, "compatdata/42/pfx").apply { mkdirs() }
         File(alias, "save").writeText("keep")

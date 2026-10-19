@@ -29,6 +29,7 @@ class ClientDisplayLifecycleTest(unittest.TestCase):
         client.poll.return_value = 42
         with patch.object(launcher.sys, 'argv', ['launch-client.py', '/steam', '-nobigpicture']), \
              patch.object(launcher.signal, 'signal'), \
+             patch.object(launcher, 'session_bus', return_value=(Mock(), 'unix:abstract=steampsp-test')), \
              patch.object(launcher.subprocess, 'Popen', side_effect=[display, client]) as start, \
              patch.object(launcher.subprocess, 'run', return_value=Mock(returncode=0)), \
              patch.dict(launcher.os.environ, {'DISPLAY': ':0', 'LD_LIBRARY_PATH': '/valve', 'XRGAME_STEAM_SCREEN': '1280x720'}):
@@ -39,6 +40,8 @@ class ClientDisplayLifecycleTest(unittest.TestCase):
         self.assertNotIn('LD_LIBRARY_PATH', start.call_args_list[0].kwargs['env'])
         self.assertEqual(':1', start.call_args_list[1].kwargs['env']['DISPLAY'])
         self.assertEqual('/valve', start.call_args_list[1].kwargs['env']['LD_LIBRARY_PATH'])
+        # launch-client.py owns the session bus: no dbus-run-session process stays resident.
+        self.assertEqual('unix:abstract=steampsp-test', start.call_args_list[1].kwargs['env']['DBUS_SESSION_BUS_ADDRESS'])
         display.terminate.assert_called_once()
         display.wait.assert_called_once()
         client.terminate.assert_not_called()
@@ -48,6 +51,7 @@ class ClientDisplayLifecycleTest(unittest.TestCase):
         display.poll.return_value = 1
         with patch.object(launcher.sys, 'argv', ['launch-client.py', '/steam']), \
              patch.object(launcher.signal, 'signal'), \
+             patch.object(launcher, 'session_bus', return_value=(Mock(), 'unix:abstract=steampsp-test')), \
              patch.object(launcher.subprocess, 'Popen', return_value=display) as start:
             self.assertEqual(70, launcher.main())
         start.assert_called_once()
@@ -58,6 +62,7 @@ class ClientDisplayLifecycleTest(unittest.TestCase):
         display.poll.return_value = None
         with patch.object(launcher.sys, 'argv', ['launch-client.py', '/steam']), \
              patch.object(launcher.signal, 'signal'), \
+             patch.object(launcher, 'session_bus', return_value=(Mock(), 'unix:abstract=steampsp-test')), \
              patch.object(launcher.subprocess, 'Popen', return_value=display), \
              patch.object(launcher.subprocess, 'run', side_effect=SystemExit(143)):
             with self.assertRaises(SystemExit):
@@ -74,6 +79,7 @@ class GpuDrawingTest(unittest.TestCase):
         client.poll.return_value = 0
         with patch.object(launcher.sys, 'argv', ['launch-client.py', '/steam']), \
              patch.object(launcher.signal, 'signal'), \
+             patch.object(launcher, 'session_bus', return_value=(Mock(), 'unix:abstract=steampsp-test')), \
              patch.object(launcher, 'gpu_available', return_value=available), \
              patch.object(launcher.subprocess, 'Popen', side_effect=[display, client]) as start, \
              patch.object(launcher.subprocess, 'run', return_value=Mock(returncode=0)), \

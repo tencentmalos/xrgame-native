@@ -58,6 +58,8 @@ class LinuxSteamService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     @Volatile private var child: Process? = null
+    /** [child] while it is the client itself, not the installer. */
+    @Volatile private var clientProcess: Process? = null
     private var connector: XServerComponent? = null
     private var gameHandoff: SteamGameHandoff? = null
 
@@ -92,6 +94,8 @@ class LinuxSteamService : Service() {
             XrGameOfficialSteam.claimLibrary()
             libraryClaimed = true
             app.gamenative.service.SteamService.suspendForOfficial()
+            // Guest processes a killed PRoot detached in an earlier session of this app process.
+            LinuxSteamProcesses.stop(null, runtime.home).let { if (it > 0) android.util.Log.w("LinuxSteam", "stopped stale client processes: $it") }
             status.value = getString(R.string.steam_client_preparing)
             phase.value = LinuxSteamPhase.PREPARING
             displayReady.value = false
@@ -126,6 +130,8 @@ class LinuxSteamService : Service() {
             val library = LinuxSteamLibrary(this, db)
             library.prepare()
             SteamSaveSharing.prepareClient(this)
+            // Before the first login there is no account to link saves for; see the client loop.
+            var sharedAccount = app.gamenative.utils.SteamUtils.getSteam3AccountId()
             gameHandoff = SteamGameHandoff(this).also { it.prepare() }
             val metrics = android.util.DisplayMetrics()
             @Suppress("DEPRECATION")
@@ -174,7 +180,8 @@ class LinuxSteamService : Service() {
                 phase.value = LinuxSteamPhase.OPENING
                 val locales = Resources.getSystem().configuration.locales
                 val language = SteamClientLanguage.select((0 until locales.size()).map { locales[it] })
-                val builder = runtime.process(listOf("/usr/bin/dbus-run-session", "--",
+                // launch-client.py owns the session bus too: no dbus-run-session process.
+                val builder = runtime.process(listOf(
                     "/usr/bin/python3", "/usr/local/lib/steampsp/launch-client.py", "${runtime.client.path}/steamrtarm64/steam",
                     "-gamepadui", "-language", language, "-clientbeta", "steamdeck_publicbeta", "-no-cef-sandbox", "-cef-ozone-platform=x11") +
                     LinuxSteamGpu.cefArguments(gpu), "client-$restarts.log", gpu)
@@ -186,13 +193,30 @@ class LinuxSteamService : Service() {
                 builder.environment()["XRGAME_STEAM_SCREEN"] = "${width}x${height}"
                 val process = builder.start()
                 child = process
+                clientProcess = process
                 running = true
                 status.value = getString(R.string.steam_client_running)
                 phase.value = LinuxSteamPhase.STARTING
                 var nextLibraryScan = 0L
                 while (currentCoroutineContext().isActive && process.isAlive) {
                     if (!displayReady.value && readyFile.isFile) displayReady.value = true
+                    // Link the shared saves as soon as the first login records the account, before
+                    // Steam AutoCloud resolves a game's save paths into a prefix of its own.
+                    if (sharedAccount == null) app.gamenative.utils.SteamUtils.getSteam3AccountId()?.let {
+                        sharedAccount = it
+                        SteamSaveSharing.prepareClient(this@LinuxSteamService)
+                        android.util.Log.i("LinuxSteam", "saves shared after login: conflicts=${SteamSaveSharing.conflicts.size}")
+                    }
                     gameHandoff?.poll()
+                    if (stopWhenIdle && !gameRunning()) {
+                        if (steamPageOpen()) stopWhenIdle = false
+                        else {
+                            // onDestroy cancels this loop; runClient's finally stops the client tree.
+                            android.util.Log.i("LinuxSteam", "no Steam page left: stopping the client")
+                            stopWhenIdle = false
+                            withContext(Dispatchers.Main) { stopSelf() }
+                        }
+                    }
                     val now = android.os.SystemClock.elapsedRealtime()
                     if (now >= nextLibraryScan) {
                         library.reconcile()
@@ -202,7 +226,12 @@ class LinuxSteamService : Service() {
                 }
                 running = false
                 child = null
+                clientProcess = null
+                // A client that exited on its own, or a PRoot that Android killed, can leave
+                // detached guest processes; the next start or a retry must not inherit them.
+                LinuxSteamProcesses.stop(null, runtime.home).let { if (it > 0) android.util.Log.w("LinuxSteam", "left processes after client exit: $it") }
                 val exit = process.exitValue()
+                android.util.Log.i("LinuxSteam", "client exited: $exit")
                 if (exit != 42) {
                     status.value = getString(R.string.steam_client_exited, exit)
                     phase.value = LinuxSteamPhase.STOPPED
@@ -228,14 +257,19 @@ class LinuxSteamService : Service() {
                 var childStopped = child == null
                 try {
                     child?.let { process ->
-                        process.destroy()
-                        if (!process.waitFor(3, TimeUnit.SECONDS)) {
-                            process.destroyForcibly()
-                            check(process.waitFor(3, TimeUnit.SECONDS))
+                        // Let Valve's client save its state first, as its own Exit Steam does.
+                        if (process === clientProcess && process.isAlive) {
+                            val forwarded = runCatching { runtime.forwardShutdown(5) }.getOrDefault(-1)
+                            val exited = process.waitFor(8, TimeUnit.SECONDS)
+                            android.util.Log.i("LinuxSteam", "client shutdown: forward=$forwarded exited=$exited")
                         }
+                        val signalled = LinuxSteamProcesses.stop(LinuxSteamProcesses.pid(process), runtime.home)
+                        check(process.waitFor(3, TimeUnit.SECONDS))
+                        android.util.Log.i("LinuxSteam", "client tree stopped: signalled=$signalled")
                         childStopped = true
                     }
                     child = null
+                    clientProcess = null
                 } finally {
                     try {
                         withContext(Dispatchers.Main) {
@@ -250,9 +284,32 @@ class LinuxSteamService : Service() {
         }
     }
 
+    /**
+     * Closing the window (or swiping the task away) does not end this process, which keeps a
+     * foreground service; the client would run on without any page. Stop it once no task shows
+     * Steam, or, when the window closed during a game, as soon as that game ends.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (!steamPageOpen()) stopWhenIdle = true
+    }
+
+    @Volatile private var stopWhenIdle = false
+
+    private fun steamPageOpen(): Boolean = runCatching {
+        getSystemService(android.app.ActivityManager::class.java).appTasks.any { task ->
+            val info = task.taskInfo
+            listOfNotNull(info.baseIntent.component, info.baseActivity, info.topActivity).any {
+                it.className == LinuxSteamActivity::class.java.name || it.className == "app.gamenative.xrgame.LaunchActivity" ||
+                    it.className == OfficialSteamGameActivity::class.java.name
+            }
+        }
+    }.getOrDefault(true)
+
+    private fun gameRunning() = app.gamenative.PluviaApp.xEnvironment != null || SteamGameHandoff.pending.value != null
+
     override fun onDestroy() {
-        job?.cancel()
-        child?.destroy() // runClient's finally awaits teardown before releasing the library.
+        job?.cancel() // runClient's finally stops the client tree before releasing the library.
         connector?.stop(); connector = null; xServerState.value = null; running = false
         scope.cancel()
         super.onDestroy()
