@@ -637,7 +637,10 @@ fun XServerScreen(
     var usingScreenMirror by remember { mutableStateOf(false) }
     var hasInternalTouchpad by remember { mutableStateOf(false) }
     var hasUpdatedScreenGamepad by remember { mutableStateOf(false) }
-    var isPerformanceHudEnabled by remember { mutableStateOf(PrefManager.showFps) }
+    // In XRGame's XR sessions the quick menu's HUD switch is the XR status layer's.
+    var isPerformanceHudEnabled by remember {
+        mutableStateOf(if (immersiveHooks != null && app.gamenative.BuildConfig.XRGAME) PrefManager.xrgameStatusLayer else PrefManager.showFps)
+    }
     val shouldTrackDisplayedFrames = remember { AtomicBoolean(false) }
     var detectedMaxRefreshRateHz by remember { mutableIntStateOf(detectMaxRefreshRateHz(context, null)) }
     var fpsLimiterEnabled by rememberSaveable(container.id) { mutableStateOf(initialFpsLimiterEnabled(container)) }
@@ -884,7 +887,9 @@ fun XServerScreen(
     }
 
     fun updatePerformanceHud(show: Boolean) {
-        if (!show) {
+        // XR sessions (2D big screen, Windows VR) show the XR status layer only: this view would
+        // reach the headset through the overlay layer as a second panel.
+        if (!show || immersiveHooks != null) {
             removePerformanceHud()
             return
         }
@@ -1457,8 +1462,13 @@ fun XServerScreen(
             QuickMenuAction.PERFORMANCE_HUD -> {
                 val enabled = !isPerformanceHudEnabled
                 isPerformanceHudEnabled = enabled
-                PrefManager.showFps = enabled
-                updatePerformanceHud(enabled)
+                if (immersiveHooks != null && app.gamenative.BuildConfig.XRGAME) {
+                    // ImmersiveXrActivity's HUD sync shows or hides the status layer.
+                    PrefManager.xrgameStatusLayer = enabled
+                } else {
+                    PrefManager.showFps = enabled
+                    updatePerformanceHud(enabled)
+                }
                 if (PrefManager.usageAnalyticsEnabled) {
                     PostHog.capture(
                         event = "performance_hud_toggled",

@@ -196,6 +196,18 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
   - `gpu.tgz` 按新的 mesa pin `55186f1f` 用配方重出：`libvulkan_freedreno.so` Build ID `c88acd9c…`，`libgallium`、`libGLX` 同上。
 - Swan：19:41:10 从官方 Steam 启动《我在地府打麻将》，`Demonic Mahjong.exe` 运行，DebugBus `quickmenu status` 报告 `pointerMode: true`。日志在 19:41:24 记下 `XR pointer mode enabled for a keyboard-and-mouse game`。真人用射线操作没测。
 
+### XR 会话只显示状态层
+
+用户的系统截图（20:14:01）显示，2D 大屏上方有 XR 状态层，大屏左上角还叠着 Android 的性能面板（`PerformanceHudView`，FPS、CPU、RAM、温度）。后者是 `PrefManager.showFps` 打开后加在 X server 视图上的 View，在 XR 会话里随覆盖层一起进了头显。用户要求 XR 2D 大屏和 XR 模式只显示状态层。
+
+- `XServerScreen` 由 `ImmersiveXrActivity` 托管时（`immersiveHooks` 非空，即 2D 大屏和 Windows VR），不再添加 `PerformanceHudView`。
+- XRGAME 构建的 XR 会话里，快捷菜单的「性能 HUD」开关改为读写 `PrefManager.xrgameStatusLayer`。`ImmersiveXrActivity` 的 HUD 同步随之显示或隐藏状态层，这个开关不会变成无效开关。非 XR 页面照旧。
+- 包 `steampsp-kb4`：SHA `38a0e02b7cc6b762ee17614bae3b1c0c9e7c4eb51716c8363dd171b6d64580d7`，审计 0 errors，输入同 kb3。
+- Swan：先经快捷菜单退出正在运行的游戏，再装包。20:20:25 重新启动《我在地府打麻将》：
+  - `vr_hud` 报告 `visible: true`（游戏 60 fps、XR 90 fps）；
+  - `dumpsys activity top` 中 `ImmersiveXrActivity` 的 View 树里已经没有 `PerformanceHudView`；
+  - 指针模式仍为 `true`。
+
 同时发现、未修（需要用户决定）：
 
 - Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。
