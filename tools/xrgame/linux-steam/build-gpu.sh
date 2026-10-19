@@ -8,7 +8,8 @@
 # The web helper's compositor draws with Zink through the glvnd vendor "steampsp" (Ubuntu's Mesa
 # stays the default vendor); Zink presents through the Android X server
 # (XRGAME_X11_HOST_DISPLAY, turnip-x11-host-ahb.patch) and reads Xephyr's pixmaps back
-# (mesa-kopper-pixmap-readback.patch).
+# (mesa-kopper-pixmap-readback.patch). A swapchain Zink killed no longer crashes
+# glXSwapIntervalEXT or buffer-age queries (mesa-zink-killed-swapchain.patch).
 set -euo pipefail
 base=${XRGAME_BUILD_ROOT:-/work}
 reference="$base/src/mesa-turnip"
@@ -24,7 +25,8 @@ patches=("$project/tools/xrgame/patches/turnip-x11-ahb.patch"
          "$project/tools/xrgame/patches/turnip-fdm-visualize.patch"
          "$project/tools/xrgame/patches/turnip-max-samples.patch"
          "$project/tools/xrgame/patches/turnip-x11-host-ahb.patch"
-         "$project/tools/xrgame/patches/mesa-kopper-pixmap-readback.patch")
+         "$project/tools/xrgame/patches/mesa-kopper-pixmap-readback.patch"
+         "$project/tools/xrgame/patches/mesa-zink-killed-swapchain.patch")
 vendor=steampsp
 patch_sha=$( (echo "$pin"; cat "${patches[@]}") | sha256sum | cut -d ' ' -f1)
 work="$base/build/linux-steam-gpu/${patch_sha:0:16}"

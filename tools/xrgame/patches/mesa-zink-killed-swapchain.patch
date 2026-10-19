@@ -1,0 +1,25 @@
+--- a/src/gallium/drivers/zink/zink_kopper.c
++++ b/src/gallium/drivers/zink/zink_kopper.c
+@@ -1199,7 +1199,10 @@
+ {
+    struct zink_resource *res = zink_resource(pres);
+    struct zink_screen *screen = zink_screen(pscreen);
+-   assert(res->obj->dt);
++   /* A killed swapchain leaves the drawable's texture without one (kill_swapchain); the
++    * frontend keeps the interval for the next swapchain it creates. */
++   if (!res->obj->dt)
++      return;
+    struct kopper_displaytarget *cdt = res->obj->dt;
+    VkPresentModeKHR old_present_mode = cdt->present_mode;
+
+@@ -1224,7 +1227,9 @@
+ {
+    struct zink_context *ctx = zink_context(pctx);
+    struct zink_resource *res = zink_resource(pres);
+-   assert(res->obj->dt);
++   /* No swapchain since it was killed: the contents are undefined, as for a lost buffer. */
++   if (!res->obj->dt)
++      return 0;
+    struct kopper_displaytarget *cdt = res->obj->dt;
+
+    ctx = zink_tc_context_unwrap(pctx);

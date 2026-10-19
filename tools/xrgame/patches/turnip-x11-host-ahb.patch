@@ -1,5 +1,5 @@
 diff --git a/src/vulkan/wsi/wsi_common.c b/src/vulkan/wsi/wsi_common.c
-index e5062a2..d760f82 100644
+index e5062a2..b849afe 100644
 --- a/src/vulkan/wsi/wsi_common.c
 +++ b/src/vulkan/wsi/wsi_common.c
 @@ -405,6 +405,10 @@ get_blit_type(const struct wsi_device *wsi,
@@ -9,7 +9,7 @@ index e5062a2..d760f82 100644
 +#endif
 +#if !defined(__ANDROID__) && defined(VK_USE_PLATFORM_XCB_KHR)
 +   case WSI_IMAGE_TYPE_XRGAME_HOST:
-+      return WSI_SWAPCHAIN_NO_BLIT;
++      return WSI_SWAPCHAIN_BUFFER_BLIT;
  #endif
     case WSI_IMAGE_TYPE_CPU: {
        const struct wsi_cpu_image_params *cpu_params =
@@ -24,6 +24,16 @@ index e5062a2..d760f82 100644
  #endif
     case WSI_IMAGE_TYPE_CPU: {
        const struct wsi_cpu_image_params *cpu_params =
+@@ -3231,7 +3239,8 @@ wsi_cmd_blit_image_to_buffer(VkCommandBuffer cmd_buffer,
+                              uint32_t qfi)
+ {
+    assert(info->image_type == WSI_IMAGE_TYPE_CPU ||
+-          info->image_type == WSI_IMAGE_TYPE_DRM);
++          info->image_type == WSI_IMAGE_TYPE_DRM ||
++          info->image_type == WSI_IMAGE_TYPE_XRGAME_HOST);
+ 
+    VkImageMemoryBarrier img_mem_barrier = {
+       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 diff --git a/src/vulkan/wsi/wsi_common_private.h b/src/vulkan/wsi/wsi_common_private.h
 index c596d2b..f00ff27 100644
 --- a/src/vulkan/wsi/wsi_common_private.h
@@ -402,10 +412,10 @@ index acf3186..6fd2ba9 100644
     assert(result != VK_SUCCESS);
 diff --git a/src/vulkan/wsi/wsi_common_x11_host.inc b/src/vulkan/wsi/wsi_common_x11_host.inc
 new file mode 100644
-index 0000000..f87118d
+index 0000000..bb51fbc
 --- /dev/null
 +++ b/src/vulkan/wsi/wsi_common_x11_host.inc
-@@ -0,0 +1,447 @@
+@@ -0,0 +1,495 @@
 +/* SteamPSP: present an X11 surface through a second, host X server.
 + *
 + * XRGAME_X11_HOST_DISPLAY names the host display (for example ":0"). The
@@ -680,52 +690,105 @@ index 0000000..f87118d
 +   chain->host_mapped = geometry.viewable;
 +}
 +
++/* The application renders into an ordinary image, and each present copies it into a buffer
++ * on the host's memory. An image cannot sit on that memory directly: Turnip pads a linear
++ * image's last level to a multiple of four rows (fdl6_layout_image, for the over-fetch of
++ * the 16x4 GMEM blits), and gralloc's buffer has only the rows it was asked for, so a
++ * 722-row window needed 9 KiB more than its buffer held. A buffer's size is exact. */
 +static VkResult
 +x11_host_create_mem(const struct wsi_swapchain *chain,
 +                    const struct wsi_image_info *info,
 +                    struct wsi_image *base)
 +{
 +   struct x11_image *image = (struct x11_image *)base;
++   const struct wsi_device *wsi = chain->wsi;
 +   VK_FROM_HANDLE(vk_device, device, chain->device);
 +   if (image->host_fd < 0)
 +      return VK_ERROR_INITIALIZATION_FAILED;
 +
++   const VkExternalMemoryBufferCreateInfo external = {
++      .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
++      .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++   };
++   const VkBufferCreateInfo buffer_info = {
++      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
++      .pNext = &external,
++      .size = info->linear_size,
++      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
++      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
++   };
++   VkResult result = wsi->CreateBuffer(chain->device, &buffer_info, &chain->alloc,
++                                       &base->blit.buffer);
++   if (result != VK_SUCCESS)
++      return result;
++
 +   VkMemoryRequirements requirements;
-+   chain->wsi->GetImageMemoryRequirements(chain->device, base->image, &requirements);
++   wsi->GetBufferMemoryRequirements(chain->device, base->blit.buffer, &requirements);
 +   VkMemoryFdPropertiesKHR properties = {
 +      .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR,
 +   };
-+   VkResult result = device->dispatch_table.GetMemoryFdPropertiesKHR(
++   result = device->dispatch_table.GetMemoryFdPropertiesKHR(
 +      chain->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 +      image->host_fd, &properties);
 +   if (result != VK_SUCCESS)
 +      return result;
 +   uint32_t types = properties.memoryTypeBits & requirements.memoryTypeBits;
 +   off_t size = lseek(image->host_fd, 0, SEEK_END);
-+   if (!types || size < 0 || (uint64_t)size < requirements.size)
++   if (!types || size < 0 || (uint64_t)size < requirements.size) {
++      mesa_loge("SteamPSP: host buffer of %lld bytes (types 0x%x) for a %llu-byte copy",
++                (long long)size, properties.memoryTypeBits,
++                (unsigned long long)requirements.size);
 +      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
++   }
 +
 +   VkImportMemoryFdInfoKHR import = {
 +      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
 +      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 +      .fd = image->host_fd,
 +   };
-+   VkMemoryDedicatedAllocateInfo dedicated = {
++   VkMemoryDedicatedAllocateInfo buffer_dedicated = {
 +      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
 +      .pNext = &import,
-+      .image = base->image,
++      .buffer = base->blit.buffer,
 +   };
-+   VkMemoryAllocateInfo allocate = {
++   VkMemoryAllocateInfo buffer_allocate = {
 +      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-+      .pNext = &dedicated,
++      .pNext = &buffer_dedicated,
 +      .allocationSize = size,
 +      .memoryTypeIndex = ffs(types) - 1,
 +   };
-+   result = chain->wsi->AllocateMemory(chain->device, &allocate, &chain->alloc, &base->memory);
++   result = wsi->AllocateMemory(chain->device, &buffer_allocate, &chain->alloc,
++                                &base->blit.memory);
++   if (result != VK_SUCCESS)
++      return result;
 +   /* A successful import owns the fd. */
-+   if (result == VK_SUCCESS)
-+      image->host_fd = -1;
-+   return result;
++   image->host_fd = -1;
++   result = wsi->BindBufferMemory(chain->device, base->blit.buffer, base->blit.memory, 0);
++   if (result != VK_SUCCESS)
++      return result;
++   /* The host's renderer reads the buffer on its own device. */
++   base->blit.to_foreign_queue = true;
++
++   wsi->GetImageMemoryRequirements(chain->device, base->image, &requirements);
++   const VkMemoryDedicatedAllocateInfo image_dedicated = {
++      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
++      .image = base->image,
++   };
++   const VkMemoryAllocateInfo image_allocate = {
++      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
++      .pNext = &image_dedicated,
++      .allocationSize = requirements.size,
++      .memoryTypeIndex = info->select_image_memory_type(wsi, requirements.memoryTypeBits),
++   };
++   result = wsi->AllocateMemory(chain->device, &image_allocate, &chain->alloc, &base->memory);
++   if (result != VK_SUCCESS)
++      return result;
++
++   base->num_planes = 1;
++   base->sizes[0] = info->linear_size;
++   base->row_pitches[0] = info->linear_stride;
++   base->offsets[0] = 0;
++   return VK_SUCCESS;
 +}
 +
 +VkResult
@@ -733,14 +796,17 @@ index 0000000..f87118d
 +                             const VkSwapchainCreateInfoKHR *info,
 +                             struct wsi_image_info *image_info)
 +{
-+   VkResult result = wsi_configure_image(chain, info,
-+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, image_info);
-+   if (result == VK_SUCCESS) {
-+      image_info->image_type = WSI_IMAGE_TYPE_XRGAME_HOST;
-+      image_info->color_space = info->imageColorSpace;
-+      image_info->create_mem = x11_host_create_mem;
-+   }
-+   return result;
++   VkResult result = wsi_configure_image(chain, info, 0, image_info);
++   if (result != VK_SUCCESS)
++      return result;
++   /* The copy's stride and size are the host buffer's, set per image in
++    * x11_host_image_init. */
++   wsi_configure_buffer_image(chain, info, 1, 1, image_info);
++   image_info->image_type = WSI_IMAGE_TYPE_XRGAME_HOST;
++   image_info->color_space = info->imageColorSpace;
++   image_info->create_mem = x11_host_create_mem;
++   image_info->select_image_memory_type = wsi_select_device_memory_type;
++   return VK_SUCCESS;
 +}
 +
 +/* Receive the flattened GraphicBuffer; keep its first fd (the dma-buf). */
@@ -827,18 +893,10 @@ index 0000000..f87118d
 +      goto fail;
 +   }
 +
-+   /* A copy of the shared create info gives this image the host's pitch. */
++   /* A copy of the shared create info gives this image's copy the host's pitch. */
 +   struct wsi_image_info info = chain->base.image_info;
-+   const VkSubresourceLayout layout = { .rowPitch = (VkDeviceSize)stride * 4 };
-+   VkImageDrmFormatModifierExplicitCreateInfoEXT explicit_layout = {
-+      .sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT,
-+      .pNext = info.create.pNext,
-+      .drmFormatModifier = DRM_FORMAT_MOD_LINEAR,
-+      .drmFormatModifierPlaneCount = 1,
-+      .pPlaneLayouts = &layout,
-+   };
-+   info.create.pNext = &explicit_layout;
-+   info.create.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
++   info.linear_stride = stride * 4;
++   info.linear_size = (uint64_t)info.linear_stride * chain->extent.height;
 +   VkResult result = wsi_create_image(&chain->base, &info, &image->base);
 +   if (result != VK_SUCCESS)
 +      goto fail;
