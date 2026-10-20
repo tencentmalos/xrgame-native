@@ -19,6 +19,12 @@
       - Fixed in mesa `malos/main` `55186f1f` on 2026-10-19, with the user's approval. Device timestamps now come from `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS`, whose DEVICE domain is the CPU arch counter that KGSL seeds into the GPU always-on counter. The calibrated timestamp and present timing extensions are advertised only when a probe at enumeration succeeds.
       - Both recipes pin `55186f1f`. Games get Turnip xrg17 (`turnip-55186f1-xrg17`).
       - Verified on Swan with builds of the same source: the Zink lines dropped to 0, Vulkan and GL timestamps are monotonic and GPU-written timestamps fall inside calibrated brackets, and there were no GPU faults. See [the record](docs/validation/turnip-kgsl-calibrated-timestamps-20261019.md).
+  - Half-Life: Alyx "needs network" on official launch (2026-10-20, fixed, uncommitted):
+    - The real failure was Steam API init: Alyx asks for `SteamUtils011` and `SteamNetworkingSockets013`, and our lsteamclient (proton-wine `5d0d333e`, Steamworks SDK 1.64) returned null for both, so `CSteamAPIContext::Init()` failed ("Is Steam running?").
+    - `tools/xrgame/patches/lsteamclient-sdk165.patch` ports Valve Proton `f9d6f6e4` and `0745bfbc`. The unix side builds in `linux-steam/build-wine-client.py`, the PE side in the new `build-lsteamclient-pe.sh` on the configured Wine tree.
+    - `package-proton-validation.py --release linux-steam2` puts both on xrg7, which also brings the xrg6/xrg7 fixes the official line lacked (linux-steam1 derived from xrg3). The runtime bundle is `bundle-steam2`.
+    - Swan kb6: Play from Steam reached `a1_intro_world`.
+    - A launch whose activity goes to the background while preparing stays on the spinner; not fixed.
   - Open (user deferred): in Hades II's 2D big screen (XR), FSR1 combined with eye-tracked foveation intermittently shows a noise block at the bottom-left of the big-screen image. It covers about Wine-screen (0,647)-(218,701) and appeared in 28 of 462 frames in the camp scene. Turning FSR off removes it (user-confirmed).
   - The SDK's `steampsp.panel` now includes X server SurfaceViews (`CaptureTap` in both X server renderers).
   - IME streaming: committed as `3bb321485` (user-confirmed on Swan).

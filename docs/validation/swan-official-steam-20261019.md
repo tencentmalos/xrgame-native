@@ -221,6 +221,44 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
 - 包 `steampsp-kb5`：SHA `88714cf0c59e16e6bc9cc2c5667771ab384b766d79da7857b81f4c2975a826c8`，审计 0 errors，输入同 kb3（`bundle-turnip17`，catalog `97a05f69…`）。
 - Swan：21:11 装上 kb5。装包前只查了有没有 Wine 游戏在运行，没注意到用户正在官方 Steam 里重新下载这个游戏；装包停掉了应用和 Steam 客户端，打断了下载。之后两次 DebugBus 启动只得到 `Game not installed`（游戏已被用户删除重下）。用户下载完后在头显里测试，确认牌能正常拖动。日志里 21:24:00–21:24:12 有 14 次 `pointer down`，按下和抬起成对出现，都是右手。按住时间 0.14–1.09 s；按住较久的几次，抬起点离按下点约 25–40 像素，即拖动。
 
+### Alyx 官方启动提示「需要网络」：lsteamclient 缺 SDK 1.65 接口（2026-10-20）
+
+用户反馈：从官方 Steam 启动 Half-Life: Alyx，进不去，提示需要网络。
+
+- 现象：09:27 启动，`hlvr.exe` 建好 Vulkan 设备和窗口，09:28:10 前后退出。Alyx 自己的 `-condebug` 日志最后两行是 `CNetworkSystem::Init() m_SteamAPIContextClient.Init ( ) failed (no Steam?)` 和 `Need Steam Networking sockets available to connect locally. Is Steam running?`。所谓「需要网络」是 Steam API 初始化失败，不是联网问题。
+- 原因：
+  - 官方模式下游戏的 Steam API 走 Proton 的 `lsteamclient`（PE `lsteamclient.dll` → Unix `lsteamclient.so` → 官方 Bionic `libsteamclient.so`）。Source 2 的 `CSteamAPIContext` 一次取一组接口，任何一个为空，`Init()` 就失败。
+  - Alyx 当前版本的 `networksystem.dll` 请求 `SteamClient023`、`SteamUser023`、`SteamUtils011`、`SteamNetworkingSockets013`、`SteamNetworkingUtils004` 等；`steam_api64.dll` 还有 `SteamInput007`。
+  - 我们的 lsteamclient（proton-wine pin `5d0d333e`）等于 Valve Proton 的 `336d8d72` 加 GameNative 的改动（`owned_dlcs` 等），最高只到 SDK 1.64：SteamUtils010、SteamNetworkingSockets012、SteamInput006。`create_win_interface` 不认识 `SteamUtils011` 和 `SteamNetworkingSockets013`，返回空接口，`Init()` 随即失败。Hades II 和麻将用的是旧接口版本，所以不受影响。
+  - Valve Proton `proton_11.0` 用 `f9d6f6e4 lsteamclient: Support SDK 1.65.` 加上了这些版本；`0745bfbc` 修 32/64 位 `networking_message` 结构布局。`SteamNetworkingSocketsSerialized004`（Alyx 自带的 `steamnetworkingsockets.dll` 用）Valve 也不支持，Alyx 在 Linux Proton 上照样能运行。
+- 另一个问题：官方线的运行时包（`bundle-turnip17`）里的 Proton 是 `linux-steam1`，它从 xrg3 派生，没有 xrg6 的 `VK_EXT_host_image_copy`（Alyx `-vulkan` 进场景要用）和 xrg7 的新线程信号屏蔽修复。
+- 修复：
+  - `tools/xrgame/patches/lsteamclient-sdk165.patch`：`f9d6f6e4` 和 `0745bfbc` 应用在 pin 的 lsteamclient 上，无冲突；`owned_dlcs` 改动保留（`STEAMAPPS_INTERFACE_VERSION009` 原本就没有）。补丁之后 `wine-linux-steam-client.patch` 照常能打。
+  - Unix 侧：`linux-steam/build-wine-client.py` 先打 SDK 1.65 补丁，再打原补丁，构建记录增加 `sdk_patch_sha256`。产物 `lsteamclient.so` `667304c4…`（打包时 strip 为 `dfd1e955…`）。
+  - PE 侧：新配方 `tools/xrgame/build-lsteamclient-pe.sh`，在云端已配置的 Android Wine 树里增量编译两份 `lsteamclient.dll`。补丁前用同一棵树重编，结果与 xrg7 包里的哈希一致（`c810eed1…`、`687b3e83…`），说明树能复现。补丁后为 `aarch64-windows` `742b9bbe…`、`i386-windows` `3b29b619…`，环境 `environment.sh` `f6583fcb…`，与 bootstrap 构建相同。树里的 Makefile 写死了 `ccache`，镜像里没有，配方用只转调编译器的垫片代替（不影响产物）。
+  - `package-proton-validation.py --release linux-steam2`：以 xrg7（`a0de997e…`）为底，换上这三份 lsteamclient，并核对两边的构建记录。`derivedFrom.patch` 仍为 `wine-linux-steam-client.patch`（`LinuxSteamLauncher` 靠它识别官方运行时），另记 `patches`。包 `proton-11.0-2-arm64ec-linux-steam2.wcp` `2bf62c8e…`。
+  - `bundle-steam2`：`bundle-turnip17` 只换 Proton，catalog `fed4d3ff…`。
+- 包 `steampsp-kb6`：SHA `dec6c079251309cefd81e786d6b4dcdeb98d475c935d9e160ce4c385e54b25a3`，审计 0 errors，含 kb5 的指针修复。Linux Steam 组件里留档的 `lsteamclient.so` 和构建记录也换成了新版本（运行时加载的是 Proton 包里那份）。
+- Swan（boot `69df66bf-d29e-4a0b-b384-89599ba4a88d`，fingerprint `…/20260922015006:user/test-keys`）：
+  - 09:54:31 装上 kb6。首次启动时应用装上新的 Proton（`Installed bundled archive: proton-11.0-2-arm64ec`）。
+  - 第一次由我经 DebugBus `linux_steam launch 546560` 发起，没有起来：
+    - 10:01:02 设置里打开了 Pico 的 IPD 调节窗口（用户当时戴着头显），OfficialSteamGameActivity 被切到后台。
+    - 10:01:20 启动准备做完，要拉起 ImmersiveXrActivity 时应用还在后台，这一步丢了。回到前台后停在转圈页面，没有起任何 Wine 进程。
+    - 这是独立的问题（启动准备期间被切到后台会卡住），未修。
+    - 另外，DebugBus `launch <appId>` 在官方模式下进的是 Custom 游戏库首页，不会转给官方 Steam。
+  - 用户关掉转圈页面，从 Steam 里点 Play：
+    - 10:10:35 Alyx 启动（`hlvr.exe` PID 23346）。控制台日志依次出现：
+      - 10:10:36 `[Networking] Got ISteamNetworkingSockets user interfaces from steam client`、`Network System Initialized`；
+      - 10:10:57 `[SteamNetSockets] AuthStatus … OK`；
+      - 10:11:09 `[VR] Submitting first frame to the compositor`；
+      - 10:11:38 `Spawn Server: a1_intro_world`（读的是 `s0/autosave`，来自先前 DebugBus 留下的一次性读档参数）。
+    - 4 分钟时 `game_state`：`inScene: true`，未暂停。状态层：游戏 47.5 fps，XR 90.1 / 90 Hz，GPU 99%，输入为 XR 手柄。
+    - `/proc/23346/maps` 里有 Proton 目录的 `lsteamclient.so`（`dfd1e955…`）和官方 `androidarm64/libsteamclient.so`。Alyx 容器的 `system32`、`syswow64` 中 `lsteamclient.dll` 分别为 `742b9bbe…`、`3b29b619…`。
+    - SDK `xr` 左眼截图：`alyx-sdk165/1015-alyx-in-scene-xr-left.png`（`44481248…`），场景画面正常。
+  - 10:26 用户从 Steam 启动 D3D11 版本：`Network System Initialized`，10:27:08 `AuthStatus … OK`，进入主菜单（`Spawn Server: startup`）。
+  - 上面这次是 Vulkan 渲染（容器 `execArgs` 为 `-condebug -vulkan`）。10:21 按用户要求改回 D3D11：`execArgs` 改为 `-condebug`，原文件备份在证据目录 `alyx-sdk165/STEAM_546560.container.before-dx`。不带 `-vulkan` 时 `WindowsVrPayloadManager` 会删掉 `opencomposite.ini`。root 用 `sed -i` 改完后文件标签丢了 MLS 分类（变成 `s0`），已 `chcon` 回目录的 `s0:c155,c256,c512,c768`。
+  - 没测：长时间游玩、Hades II 与麻将在 `linux-steam2` 下的回归（两者用旧接口版本，lsteamclient 只是新增接口）、Custom 模式（不加载 lsteamclient，但 Proton 基线从 xrg3 系换成了 xrg7）。
+
 同时发现、未修（需要用户决定）：
 
 - （已由 `bc17c7733` 修复：Turnip xrg17 用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现。）Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。

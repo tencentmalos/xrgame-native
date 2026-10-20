@@ -39,9 +39,13 @@ def main():
     with archive.open('wb') as stream:
         run(['git', '-C', REPO / 'references/proton-wine', 'archive', PIN, 'lsteamclient', 'include'], stdout=stream)
     run(['tar', '-xf', archive, '-C', source])
+    # Steamworks SDK 1.65 interfaces from Valve's Proton (f9d6f6e4, 0745bfbc), which current games
+    # such as Half-Life: Alyx request; the PE lsteamclient.dll must be built from the same patch.
+    sdk = REPO / 'tools/xrgame/patches/lsteamclient-sdk165.patch'
     patch = REPO / 'tools/xrgame/patches/wine-linux-steam-client.patch'
-    run(['git', 'apply', '--check', patch], cwd=source)
-    run(['git', 'apply', patch], cwd=source)
+    for path in (sdk, patch):
+        run(['git', 'apply', '--check', path], cwd=source)
+        run(['git', 'apply', path], cwd=source)
     # keysym.h/keysymdef.h contain architecture-independent X11 protocol constants;
     # never add the host's whole /usr/include to an Android compiler's search path.
     headers = out / 'headers/X11'
@@ -74,6 +78,7 @@ def main():
     run([tc / 'llvm-readelf', '-d', out / 'lsteamclient.so'])
     manifest = dict(schema=1, wine_pin=PIN, wine_bundle_sha256=BASE_SHA256,
                     patch_sha256=hashlib.sha256(patch.read_bytes()).hexdigest(),
+                    sdk_patch_sha256=hashlib.sha256(sdk.read_bytes()).hexdigest(),
                     sha256=hashlib.sha256((out / 'lsteamclient.so').read_bytes()).hexdigest())
     (out / 'wine-client-build.json').write_text(json.dumps(manifest, indent=2) + '\n')
 
