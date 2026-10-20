@@ -22,7 +22,7 @@
     - 原因是 Steam API 初始化失败：我们的 lsteamclient（proton-wine `5d0d333e`）只到 Steamworks SDK 1.64，Alyx 要 `SteamUtils011`、`SteamNetworkingSockets013`，拿到空接口，`CSteamAPIContext::Init()` 失败。
     - 修复：移植 Valve Proton 的 SDK 1.65 支持（`lsteamclient-sdk165.patch`），Unix 侧和 PE 侧一起重建（新配方 `build-lsteamclient-pe.sh`），出包 Proton `linux-steam2`。它以 xrg7 为底，同时补上官方线原先缺的 xrg6/xrg7 修复。运行时包为 `bundle-steam2`。
     - Swan kb6 上从 Steam 点 Play 进入场景 `a1_intro_world`。
-    - 启动准备期间应用被切到后台会卡在转圈页面，未修。
+    - 启动准备期间应用被切到后台（比如弹出 IPD 调节窗口）会卡在转圈页面：已修，`MainViewModel` 等发起启动的 Activity 回到前台后再拉起沉浸式 Activity；Swan kb7 上用 IPD 窗口复现，回到前台约 160 ms 后游戏启动。
   - 未修（用户决定之后再查）：Hades II 2D 大屏（XR）在 FSR1 加眼动注视点时，大屏图像左下角间歇出现噪点块，约在 Wine 屏幕 (0,647)–(218,701)，营地场景 462 帧里有 28 帧。关掉 FSR 就消失（用户确认）。
   - SDK 的 `steampsp.panel` 已能截到 X server 的 SurfaceView（两种 X server 渲染器都实现了 `CaptureTap`）。
   - 输入法逐字上屏：已提交 `3bb321485`，用户在 Swan 上确认。

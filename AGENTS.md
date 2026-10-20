@@ -24,7 +24,7 @@
     - `tools/xrgame/patches/lsteamclient-sdk165.patch` ports Valve Proton `f9d6f6e4` and `0745bfbc`. The unix side builds in `linux-steam/build-wine-client.py`, the PE side in the new `build-lsteamclient-pe.sh` on the configured Wine tree.
     - `package-proton-validation.py --release linux-steam2` puts both on xrg7, which also brings the xrg6/xrg7 fixes the official line lacked (linux-steam1 derived from xrg3). The runtime bundle is `bundle-steam2`.
     - Swan kb6: Play from Steam reached `a1_intro_world`.
-    - A launch whose activity goes to the background while preparing stays on the spinner; not fixed.
+    - A launch whose activity went to the background while preparing (the IPD adjustment window, for one) stayed on the spinner, because Android dropped the immersive activity start from the background. `MainViewModel` now starts it once the launching activity is resumed again (`withResumed`); on Swan kb7 the game started about 160 ms after the activity returned.
   - Open (user deferred): in Hades II's 2D big screen (XR), FSR1 combined with eye-tracked foveation intermittently shows a noise block at the bottom-left of the big-screen image. It covers about Wine-screen (0,647)-(218,701) and appeared in 28 of 462 frames in the camp scene. Turning FSR off removes it (user-confirmed).
   - The SDK's `steampsp.panel` now includes X server SurfaceViews (`CaptureTap` in both X server renderers).
   - IME streaming: committed as `3bb321485` (user-confirmed on Swan).

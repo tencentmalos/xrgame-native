@@ -2,9 +2,12 @@ package app.gamenative.ui.model
 
 import android.content.Context
 import android.os.Process
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.withResumed
 import app.gamenative.BuildConfig
 import app.gamenative.PluviaApp
 import app.gamenative.PrefManager
@@ -664,8 +667,10 @@ class MainViewModel @Inject constructor(
                 val activity = if (container.getExtra("xrPresentationMode", "sbs") == "openxr")
                     "app.gamenative.ui.screen.xr.ImmersiveXrActivity"
                 else "app.gamenative.ui.screen.xr.sbs.SbsVrActivity"
-                context.startActivity(android.content.Intent().setClassName(context, activity)
-                    .putExtra("app_id", appId).putExtra("is_offline", _offline.value))
+                startWhenResumed(context, appId) {
+                    context.startActivity(android.content.Intent().setClassName(context, activity)
+                        .putExtra("app_id", appId).putExtra("is_offline", _offline.value))
+                }
             } else if (container.isLaunchImmersiveMode() &&
                 app.gamenative.MainActivity.isHeadset(context)
             ) {
@@ -673,10 +678,35 @@ class MainViewModel @Inject constructor(
                 bootingSplashTimeoutJob = null
                 setShowBootingSplash(false)
                 SteamService.keepAlive = true
-                app.gamenative.ui.screen.xr.ImmersiveXrActivity.start(context, appId, _offline.value)
+                startWhenResumed(context, appId) {
+                    app.gamenative.ui.screen.xr.ImmersiveXrActivity.start(context, appId, _offline.value)
+                }
             } else {
                 _uiEvent.send(MainUiEvent.LaunchApp)
             }
+        }
+    }
+
+    /**
+     * Runs [start] once the launching activity is in front. Android drops an activity start from
+     * an app in the background, and nothing would start the game again: on a headset a system
+     * window (the IPD adjustment, for one) can cover ours while the launch prepares.
+     */
+    private suspend fun startWhenResumed(context: Context, appId: String, start: () -> Unit) {
+        val owner = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .firstNotNullOfOrNull { it as? LifecycleOwner }
+        if (owner == null) {
+            start()
+            return
+        }
+        if (!owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            Timber.i("Launch of %s waits for the launching activity to return to the foreground", appId)
+        }
+        try {
+            owner.withResumed { start() }
+        } catch (e: CancellationException) {
+            Timber.w("Launch of %s dropped: the launching activity closed before it returned", appId)
+            throw e
         }
     }
 

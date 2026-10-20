@@ -244,7 +244,7 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
   - 第一次由我经 DebugBus `linux_steam launch 546560` 发起，没有起来：
     - 10:01:02 设置里打开了 Pico 的 IPD 调节窗口（用户当时戴着头显），OfficialSteamGameActivity 被切到后台。
     - 10:01:20 启动准备做完，要拉起 ImmersiveXrActivity 时应用还在后台，这一步丢了。回到前台后停在转圈页面，没有起任何 Wine 进程。
-    - 这是独立的问题（启动准备期间被切到后台会卡住），未修。
+    - 这是独立的问题（启动准备期间被切到后台会卡住），修复见下文 kb7。
     - 另外，DebugBus `launch <appId>` 在官方模式下进的是 Custom 游戏库首页，不会转给官方 Steam。
   - 用户关掉转圈页面，从 Steam 里点 Play：
     - 10:10:35 Alyx 启动（`hlvr.exe` PID 23346）。控制台日志依次出现：
@@ -256,6 +256,22 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
     - `/proc/23346/maps` 里有 Proton 目录的 `lsteamclient.so`（`dfd1e955…`）和官方 `androidarm64/libsteamclient.so`。Alyx 容器的 `system32`、`syswow64` 中 `lsteamclient.dll` 分别为 `742b9bbe…`、`3b29b619…`。
     - SDK `xr` 左眼截图：`alyx-sdk165/1015-alyx-in-scene-xr-left.png`（`44481248…`），场景画面正常。
   - 10:26 用户从 Steam 启动 D3D11 版本：`Network System Initialized`，10:27:08 `AuthStatus … OK`，进入主菜单（`Spawn Server: startup`）。
+  - 上面第一次启动卡在转圈页，修复（kb7）：
+    - 原因：`MainViewModel.launchApp` 在启动准备（`restoreSteamApi` 等，这次约 5 s）做完后直接 `startActivity` 拉起 ImmersiveXrActivity（Windows VR）或 2D 大屏。当时应用已在后台：10:01:03 Activity 进入 onStop，10:01:20 才调用 `startActivity`，超出 Android 后台启动的宽限期，这次启动被系统丢弃。10:01:22 Activity 回到前台，但没有任何代码再发起启动。系统日志在调查时已滚掉，没留下 BAL 拦截的那一行。
+    - 修复：新增 `startWhenResumed`，在发起启动的 Activity 回到 RESUMED 后再调用 `startActivity`（`lifecycle-runtime-ktx` 的 `withResumed`）；Activity 本来就在前台时立即启动。需要等待时记一行 `Launch of … waits for the launching activity to return to the foreground`；等待期间 Activity 被关掉时，放弃这次启动并记录。两条沉浸式分支都改了，`LaunchApp`（同一 Activity 内导航）不受影响。
+    - 包 `steampsp-kb7`：SHA `f4e3de9d00f094e8224313391e2036e5658194a8b3bb2e6f10d7f24fd510ca0c`，审计 0 errors，输入同 kb6。
+    - Swan 复现（boot `06ddeeff-c3f7-46ca-8a3b-221d8ef96e6d`；设备约 10:24 重启过，之后 adb 需重新 `adb root`）：
+      - 10:31:03 装上 kb7。装包前的检查没有拦住：Steam 为 Alyx 起的启动链（`reaper SteamLaunch AppId=546560` 等）还在，装包把它们一并停掉了。
+      - 用户从 Steam 点 Play 并在面板上点「启动」，脚本在交接后立即以 root 拉起 IPD 窗口。时间线：
+        - 10:47:16.7 面板交接；
+        - 10:47:18.0 OfficialSteamGameActivity onStop；
+        - 10:47:19–21 `restoreSteamApi`、ACF；
+        - 10:47:22.8 `Launch of STEAM_546560 waits for the launching activity to return to the foreground`（前台是 `EtIpdStageActivity`）；
+        - 10:47:30.9 Activity 回到前台（IPD 窗口由用户关掉，早于脚本预定的关闭时间）；
+        - 10:47:31.1 ImmersiveXrActivity 创建，`hlvr.exe` PID 18649 启动；
+        - 10:47:54 Alyx 控制台开始写日志，`game_state` `session: true`。
+      - 这次从 onStop 到准备完成只有 4.8 s，没有证明旧代码在这么短的间隔里一定会失败（10:01 那次失败的间隔是 17 s）。但它证明了：被盖住时启动会等待，回到前台后约 160 ms 内接上。
+      - 复现过程中的一次失误：面板处于触摸模式时，adb 发的 A 键先把焦点给了第一个可选项「SBS」，并把草稿改成了 SBS。随后按 B 取消、丢弃了草稿，保存的设置（`windowsVrEnabled` true、`xrPresentationMode` openxr）没有变。
   - 上面这次是 Vulkan 渲染（容器 `execArgs` 为 `-condebug -vulkan`）。10:21 按用户要求改回 D3D11：`execArgs` 改为 `-condebug`，原文件备份在证据目录 `alyx-sdk165/STEAM_546560.container.before-dx`。不带 `-vulkan` 时 `WindowsVrPayloadManager` 会删掉 `opencomposite.ini`。root 用 `sed -i` 改完后文件标签丢了 MLS 分类（变成 `s0`），已 `chcon` 回目录的 `s0:c155,c256,c512,c768`。
   - 没测：长时间游玩、Hades II 与麻将在 `linux-steam2` 下的回归（两者用旧接口版本，lsteamclient 只是新增接口）、Custom 模式（不加载 lsteamclient，但 Proton 基线从 xrg3 系换成了 xrg7）。
 
