@@ -113,6 +113,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val POINTER_BAR_RADIUS_METERS = 0.06f
         private const val POINTER_GRAB_PRESS_THRESHOLD = 0.65f
         private const val POINTER_GRAB_RELEASE_THRESHOLD = 0.3f
+        /** Smallest ray movement on the screen that moves the hover cursor (about half a pixel). */
+        private const val POINTER_HOVER_STEP_METERS = 0.0005f
         private const val MIN_CAPTURE_INTERVAL_MS = 11L // ~90fps cap, matches the HMD's own fixed
 
         private const val EXTRA_QUAD_DISTANCE = "immersiveQuadDistance"
@@ -281,6 +283,13 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     private var pointerTouchDownTimeLeft = 0L
     private var pointerTouchDownTimeRight = 0L
+    // UI thread: whether each hand's press reached the UI, and where its last event went.
+    private val pointerTouchActive = BooleanArray(2)
+    private val pointerTouchLast = FloatArray(4)
+    // The hand that pressed last drives the hover cursor; the right one until then.
+    private var pointerHoverHand = 1
+    private var pointerHoverLocalX = Float.NaN
+    private var pointerHoverLocalY = Float.NaN
 
     @Volatile
     private var quickMenuVisible = false
@@ -455,6 +464,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                                 pointerGrabHand = null
                                 pointerCursorLeftValid = false
                                 pointerCursorRightValid = false
+                                releasePointerTouches()
                             }
                             Timber.i("Immersive: resize handles toggled %s from quick menu, pointer mode now %s", enabled, enabled)
                         },
@@ -910,6 +920,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                             pointerGrabHand = null
                             pointerCursorLeftValid = false
                             pointerCursorRightValid = false
+                            releasePointerTouches()
                         }
                     }
                     val inMenuMode = quickMenuVisible || PluviaApp.isOverlayPaused
@@ -1012,6 +1023,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         if (!posesValid) {
             pointerCursorLeftValid = false
             pointerCursorRightValid = false
+            if (leftReleasedNow) dispatchPointerTouch(0, android.view.MotionEvent.ACTION_UP, null)
+            if (rightReleasedNow) dispatchPointerTouch(1, android.view.MotionEvent.ACTION_UP, null)
             return
         }
 
@@ -1056,26 +1069,32 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         }
         when {
             pressedNow -> {
+                pointerHoverHand = hand
                 if (!tryStartPointerGrab(hand, handPoses)) {
                     dispatchPointerTouch(hand, android.view.MotionEvent.ACTION_DOWN, hit)
                 }
             }
             releasedNow -> dispatchPointerTouch(hand, android.view.MotionEvent.ACTION_UP, hit)
             held -> dispatchPointerTouch(hand, android.view.MotionEvent.ACTION_MOVE, hit)
+            hand == pointerHoverHand && !lastLeftActionPressed && !lastRightActionPressed && pointerGrabHand == null ->
+                dispatchPointerHover(hit)
         }
     }
 
     /** Converts a hand's quad-local hit point (meters) into content-view pixel coordinates and
      * dispatches a synthetic touch event there — lets the XR pointer act as a real touch/mouse
      * input for whatever Compose UI is on screen (menu buttons, adjustment +/-, the Resume
-     * button...), the same way tapping a Quest system panel with a controller ray does. */
+     * button...), the same way tapping a Quest system panel with a controller ray does.
+     *
+     * The events come from a pen (see [pointerEvent]). A move or release off the screen is
+     * clamped to its edge, so the game always gets the release of a press it saw. */
     private fun dispatchPointerTouch(hand: Int, action: Int, hit: FloatArray?) {
-        if (hit == null) return
         val halfWidth = (ImmersiveControls.BASE_WIDTH_METERS * quadScale) / 2f
         val halfHeight = (ImmersiveControls.BASE_HEIGHT_METERS * quadScale) / 2f
         if (halfWidth <= 0f || halfHeight <= 0f) return
-        val localX = hit[0]
-        val localY = hit[1]
+        if (hit == null && action != android.view.MotionEvent.ACTION_UP) return
+        val localX = hit?.get(0)
+        val localY = hit?.get(1)
 
         val now = android.os.SystemClock.uptimeMillis()
         if (action == android.view.MotionEvent.ACTION_DOWN) {
@@ -1090,12 +1109,29 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             val height = uiView.height
             if (width <= 0 || height <= 0) return@runOnUiThread
 
-            val px = ((localX + halfWidth) / (2f * halfWidth)) * width
-            val py = ((halfHeight - localY) / (2f * halfHeight)) * height
-            if (px < 0f || px > width || py < 0f || py > height) return@runOnUiThread
+            var px = pointerTouchLast[hand * 2]
+            var py = pointerTouchLast[hand * 2 + 1]
+            if (localX != null && localY != null) {
+                val pixel = toPixel(localX, localY, halfWidth, halfHeight, width, height)
+                px = pixel[0]
+                py = pixel[1]
+            }
+            if (action == android.view.MotionEvent.ACTION_DOWN) {
+                if (px < 0f || px > width || py < 0f || py > height) return@runOnUiThread
+                pointerTouchActive[hand] = true
+            } else {
+                if (!pointerTouchActive[hand]) return@runOnUiThread
+                px = px.coerceIn(0f, width.toFloat())
+                py = py.coerceIn(0f, height.toFloat())
+                if (action == android.view.MotionEvent.ACTION_UP) pointerTouchActive[hand] = false
+            }
+            pointerTouchLast[hand * 2] = px
+            pointerTouchLast[hand * 2 + 1] = py
+            if (action != android.view.MotionEvent.ACTION_MOVE) {
+                Timber.i("Immersive: pointer %s hand=%d at (%.0f,%.0f)", if (action == android.view.MotionEvent.ACTION_DOWN) "down" else "up", hand, px, py)
+            }
 
-            val event = android.view.MotionEvent.obtain(downTime, now, action, px, py, 0)
-            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+            val event = pointerEvent(downTime, now, action, px, py)
             try {
                 // Straight to the UI root: it extends past the portrait window, whose own hit
                 // testing would drop touches beyond its width.
@@ -1104,6 +1140,82 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 event.recycle()
             }
         }
+    }
+
+    /** Lifts a press still held when pointer mode turns off, so no mouse button stays down. */
+    private fun releasePointerTouches() {
+        dispatchPointerTouch(0, android.view.MotionEvent.ACTION_UP, null)
+        dispatchPointerTouch(1, android.view.MotionEvent.ACTION_UP, null)
+    }
+
+    /** Moves the game's cursor with the ray while no button is held, as a pen hovering over a
+     * tablet does, so the game shows hover and a press lands where its cursor already is. Goes to
+     * the touchpad itself: Compose's interop filter hands its child touch events only. */
+    private fun dispatchPointerHover(hit: FloatArray?) {
+        if (hit == null) return
+        if (kotlin.math.abs(hit[0] - pointerHoverLocalX) < POINTER_HOVER_STEP_METERS &&
+            kotlin.math.abs(hit[1] - pointerHoverLocalY) < POINTER_HOVER_STEP_METERS
+        ) {
+            return
+        }
+        pointerHoverLocalX = hit[0]
+        pointerHoverLocalY = hit[1]
+        val halfWidth = (ImmersiveControls.BASE_WIDTH_METERS * quadScale) / 2f
+        val halfHeight = (ImmersiveControls.BASE_HEIGHT_METERS * quadScale) / 2f
+        if (halfWidth <= 0f || halfHeight <= 0f) return
+        val localX = hit[0]
+        val localY = hit[1]
+
+        runOnUiThread {
+            val touchpad = PluviaApp.touchpadView ?: return@runOnUiThread
+            val uiView = overlayRoot ?: findViewById<android.view.View>(android.R.id.content)
+            val width = uiView.width
+            val height = uiView.height
+            if (width <= 0 || height <= 0) return@runOnUiThread
+            val (px, py) = toPixel(localX, localY, halfWidth, halfHeight, width, height)
+            if (px < 0f || px > width || py < 0f || py > height) return@runOnUiThread
+
+            val rootLocation = IntArray(2)
+            val touchpadLocation = IntArray(2)
+            uiView.getLocationInWindow(rootLocation)
+            touchpad.getLocationInWindow(touchpadLocation)
+            val now = android.os.SystemClock.uptimeMillis()
+            val event = pointerEvent(
+                now,
+                now,
+                android.view.MotionEvent.ACTION_HOVER_MOVE,
+                px + rootLocation[0] - touchpadLocation[0],
+                py + rootLocation[1] - touchpadLocation[1],
+            )
+            try {
+                touchpad.onHoverEvent(event)
+            } finally {
+                event.recycle()
+            }
+        }
+    }
+
+    /** A pen event, not a finger: the touchpad's touchscreen gestures press a mouse button only
+     * once a finger has moved 50 px, and then press and move in the same instant, so a game sees
+     * the press where the drag already went (a mahjong tile pressed on never lifted). A pen
+     * presses where it touches, moves while down and releases on lift, which is what the ray
+     * and its trigger are. */
+    private fun pointerEvent(downTime: Long, eventTime: Long, action: Int, x: Float, y: Float): android.view.MotionEvent {
+        val properties = android.view.MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = android.view.MotionEvent.TOOL_TYPE_STYLUS
+        }
+        val coords = android.view.MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+            pressure = if (action == android.view.MotionEvent.ACTION_HOVER_MOVE) 0f else 1f
+            size = 1f
+        }
+        return android.view.MotionEvent.obtain(
+            downTime, eventTime, action, 1, arrayOf(properties), arrayOf(coords),
+            0, 0, 1f, 1f, 0, 0,
+            android.view.InputDevice.SOURCE_STYLUS or android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
+        )
     }
 
     private val pointerCursorPaint = android.graphics.Paint().apply {

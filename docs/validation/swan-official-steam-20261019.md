@@ -208,9 +208,22 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
   - `dumpsys activity top` 中 `ImmersiveXrActivity` 的 View 树里已经没有 `PerformanceHudView`；
   - 指针模式仍为 `true`。
 
+### XR 指针模式：在牌上按下拖不动
+
+用户反馈：《我在地府打麻将》里用手柄射线抓牌，在牌上按下拖不动；先在牌旁边按下再划过去，反而能拖起来。
+
+- 原因：指针模式把扳机当成手指，合成触屏事件交给 `TouchpadView`。容器默认是触屏模式（XR/XRGAME 构建），它的手势逻辑在手指按下时只移动光标、不按鼠标键，手指移出 50 像素（`LONG_PRESS_MOVE_TOLERANCE`）后才「开始拖动」：在按下的位置补发左键，紧接着把光标移到当前位置，两者在同一时刻送进 X server。游戏在同一帧里收到按下和移动，按光标的当前位置判断点中什么。在牌上按下，判断点已在 50 像素外，落空；在牌旁边按下再划过牌，判断点正好落在牌上，所以能拖。
+- 修复（`ImmersiveXrActivity`）：
+  - 射线的事件改为手写笔事件（`TOOL_TYPE_STYLUS`）。`TouchpadView` 对手写笔按真正的指针处理：按下立即在该点按左键，按住时移动，抬起时松开。与触屏/触控板模式及手势配置无关。
+  - 不按键时，最后按过键的那只手（起初是右手）的射线以悬停事件移动游戏光标，按下前游戏已经知道光标在牌上，也能显示悬停效果。悬停直接交给 `TouchpadView.onHoverEvent`，因为 Compose 的 `pointerInteropFilter` 只转交触摸事件。
+  - 按住时射线移出大屏，移动和抬起都夹到大屏边缘，不再丢掉；关闭指针模式或手柄位姿失效时补发抬起，鼠标键不会一直按着。
+  - 按下、抬起各记一行日志：`Immersive: pointer down|up hand=… at (x,y)`。
+- 包 `steampsp-kb5`：SHA `88714cf0c59e16e6bc9cc2c5667771ab384b766d79da7857b81f4c2975a826c8`，审计 0 errors，输入同 kb3（`bundle-turnip17`，catalog `97a05f69…`）。
+- Swan：21:11 装上 kb5。装包前只查了有没有 Wine 游戏在运行，没注意到用户正在官方 Steam 里重新下载这个游戏；装包停掉了应用和 Steam 客户端，打断了下载。之后两次 DebugBus 启动只得到 `Game not installed`（游戏已被用户删除重下）。用户下载完后在头显里测试，确认牌能正常拖动。日志里 21:24:00–21:24:12 有 14 次 `pointer down`，按下和抬起成对出现，都是右手。按住时间 0.14–1.09 s；按住较久的几次，抬起点离按下点约 25–40 像素，即拖动。
+
 同时发现、未修（需要用户决定）：
 
-- Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。
+- （已由 `bc17c7733` 修复：Turnip xrg17 用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现。）Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。
 - ANGLE 每帧调用 `eglGetMscRateANGLE`。Mesa GLX 用 XF86VidMode 实现它，Xephyr 没有这个扩展，所以 webhelper 日志每帧多两行。
 - ANGLE 启动时建 pbuffer 失败 4 次（GLX `CreateDRIDrawable` 打印 `failed to create drawable`），修复前后都有，界面正常。
 
