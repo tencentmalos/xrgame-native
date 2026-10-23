@@ -287,6 +287,9 @@ __attribute__((constructor)) static void crash_trace_start(void) {
  * processes beyond a device-wide limit (32 by default), and Steam with a running game is close to
  * it. Start the browser process again with no zygotes and the network and audio services inside
  * it, keeping the features Steam already sets (Chromium reads the last copy of a switch).
+ * Instant scrolling (XRGAME_WEBHELPER_INSTANT_SCROLL=1) swaps Steam's --enable-smooth-scrolling
+ * for --disable-smooth-scrolling in the same start: a page dragged with wheel steps then
+ * follows the hand instead of animating each step.
  */
 #include <stdio.h>
 static int webhelper_fold(const char *list, const char *name) {
@@ -299,16 +302,20 @@ static int webhelper_fold(const char *list, const char *name) {
 __attribute__((constructor)) static void webhelper_processes(int argc, char **argv) {
     // A comma list of zygote, network and audio; "1" folds all three.
     const char *fold = getenv("XRGAME_WEBHELPER_FEWER_PROCESSES");
-    if (!fold || getenv("XRGAME_WEBHELPER_REEXEC") || strcmp(program_invocation_short_name, "steamwebhelper") != 0) return;
+    const char *instant_scroll = getenv("XRGAME_WEBHELPER_INSTANT_SCROLL");
+    int instant = instant_scroll && strcmp(instant_scroll, "1") == 0;
+    if (!fold) fold = "";
+    if (getenv("XRGAME_WEBHELPER_REEXEC") || strcmp(program_invocation_short_name, "steamwebhelper") != 0) return;
     for (int i = 1; i < argc; i++) if (argv[i] && strncmp(argv[i], "--type=", 7) == 0) return;
     int want_zygote = webhelper_fold(fold, "zygote"), want_network = webhelper_fold(fold, "network");
     int want_audio = webhelper_fold(fold, "audio");
-    if (!want_zygote && !want_network && !want_audio) return;
-    char **next = calloc((size_t)argc + 4, sizeof *next);
+    if (!want_zygote && !want_network && !want_audio && !instant) return;
+    char **next = calloc((size_t)argc + 5, sizeof *next);
     if (!next) return;
     int count = 0, zygote = !want_zygote, enable = !want_network, disable = !want_audio;
     for (int i = 0; i < argc; i++) {
         char *merged = NULL;
+        if (instant && strcmp(argv[i], "--enable-smooth-scrolling") == 0) continue;
         if (strcmp(argv[i], "--no-zygote") == 0) zygote = 1;
         if (want_network && strncmp(argv[i], "--enable-features=", 18) == 0 &&
             asprintf(&merged, "%s,NetworkServiceInProcess2", argv[i]) > 0) enable = 1;
@@ -319,6 +326,7 @@ __attribute__((constructor)) static void webhelper_processes(int argc, char **ar
     if (!zygote) next[count++] = "--no-zygote";
     if (!enable) next[count++] = "--enable-features=NetworkServiceInProcess2";
     if (!disable) next[count++] = "--disable-features=AudioServiceOutOfProcess";
+    if (instant) next[count++] = "--disable-smooth-scrolling";
     next[count] = NULL;
     setenv("XRGAME_WEBHELPER_REEXEC", "1", 1);
     execv("/proc/self/exe", next);

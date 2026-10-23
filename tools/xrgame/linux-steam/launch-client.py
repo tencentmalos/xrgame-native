@@ -71,6 +71,22 @@ def webhelper_fold(directory):
     return WEBHELPER_FOLD
 
 
+WEBHELPER_INSTANT_SCROLL = '0'
+
+
+def webhelper_instant_scroll(directory):
+    """Whether the web helper applies a wheel step at once instead of animating it ('1' or '0').
+
+    A drag on the page (a finger on the 2D page, the ray on the XR big screen) becomes wheel
+    steps, and Chromium's smooth scrolling animates each one, so the page trails the hand. A
+    diagnostic file holding 0 or 1 chooses otherwise.
+    """
+    override = directory / 'webhelper-instant-scroll'
+    if override.is_file() and override.read_text().strip() in ('0', '1'):
+        return override.read_text().strip()
+    return WEBHELPER_INSTANT_SCROLL
+
+
 def session_bus(env):
     """A private session bus, as dbus-run-session gives, without a second supervisor process.
 
@@ -114,6 +130,7 @@ def main():
     if (Path(os.environ['HOME']).parent / 'crash-trace').is_file():
         nested_env['XRGAME_STEAM_CRASH_TRACE'] = '1'
     nested_env['XRGAME_WEBHELPER_FEWER_PROCESSES'] = webhelper_fold(Path(os.environ['HOME']).parent)
+    nested_env['XRGAME_WEBHELPER_INSTANT_SCROLL'] = webhelper_instant_scroll(Path(os.environ['HOME']).parent)
     server_env = dict(software)
     server_env.pop("LD_LIBRARY_PATH", None)  # Xorg uses the pinned userspace libraries, not Valve's copies.
     server_env.pop("XRGAME_STEAM_GPU", None)

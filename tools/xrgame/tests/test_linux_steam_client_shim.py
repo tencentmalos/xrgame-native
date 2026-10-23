@@ -117,11 +117,13 @@ class FewerProcessesTest(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.work)
 
-    def arguments(self, program, *arguments, enabled=True, fold='1'):
+    def arguments(self, program, *arguments, enabled=True, fold='1', instant=None):
         env = dict(os.environ, LD_PRELOAD=str(self.shim))
         env.pop('XRGAME_WEBHELPER_REEXEC', None)
         if enabled:
             env['XRGAME_WEBHELPER_FEWER_PROCESSES'] = fold
+        if instant is not None:
+            env['XRGAME_WEBHELPER_INSTANT_SCROLL'] = instant
         return subprocess.run([str(self.work / program), *arguments], env=env, check=True,
                               capture_output=True, text=True).stdout.splitlines()
 
@@ -141,6 +143,16 @@ class FewerProcessesTest(unittest.TestCase):
                           '--disable-features=SpareRendererForSitePerProcess,AudioServiceOutOfProcess', '--no-zygote'],
                          self.arguments('steamwebhelper', *steam, fold='zygote,audio'))
         self.assertEqual(steam, self.arguments('steamwebhelper', *steam, fold=''))
+
+    def test_instant_scrolling_replaces_smooth_scrolling(self):
+        steam = ['-lang=en', '--enable-smooth-scrolling']
+        self.assertEqual(['-lang=en', '--disable-smooth-scrolling'],
+                         self.arguments('steamwebhelper', *steam, fold='', instant='1'))
+        self.assertEqual(['-lang=en', '--disable-smooth-scrolling'],
+                         self.arguments('steamwebhelper', *steam, enabled=False, instant='1'))
+        self.assertEqual(steam, self.arguments('steamwebhelper', *steam, fold='', instant='0'))
+        self.assertEqual(['--type=renderer', '--enable-smooth-scrolling'],
+                         self.arguments('steamwebhelper', '--type=renderer', '--enable-smooth-scrolling', instant='1'))
 
     def test_children_other_programs_and_the_opt_out_keep_their_arguments(self):
         self.assertEqual(['--type=renderer'], self.arguments('steamwebhelper', '--type=renderer'))
