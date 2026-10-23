@@ -26,7 +26,6 @@ public class GraphicsContext extends XResource {
     public static final int FLAG_ARC_MODE = 1<<22;
     public enum Function {CLEAR, AND, AND_REVERSE, COPY, AND_INVERTED, NO_OP, XOR, OR, NOR, EQUIV, INVERT, OR_REVERSE, COPY_INVERTED, OR_INVERTED, NAND, SET}
     public enum SubwindowMode {CLIP_BY_CHILDREN, INCLUDE_INFERIORS}
-    public final Drawable drawable;
     private Function function = Function.COPY;
     private int background = 0xffffff;
     private int foreground = 0x000000;
@@ -34,9 +33,13 @@ public class GraphicsContext extends XResource {
     private int planeMask = -1;
     private SubwindowMode subwindowMode = SubwindowMode.CLIP_BY_CHILDREN;
 
-    public GraphicsContext(int id, Drawable drawable) {
+    /**
+     * Keeps nothing of the drawable it is created for. Clients leave GCs behind (Mesa's X11 WSI
+     * never frees its swapchains' GCs), and a GC holding a window's content kept its pixels on
+     * the Java heap after the window was resized or destroyed, until the app ran out of memory.
+     */
+    public GraphicsContext(int id) {
         super(id);
-        this.drawable = drawable;
     }
 
     public int getForeground() {

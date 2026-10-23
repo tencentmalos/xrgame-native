@@ -2,7 +2,6 @@ package com.winlator.xserver.requests;
 
 import com.winlator.xconnector.XInputStream;
 import com.winlator.xconnector.XOutputStream;
-import com.winlator.xserver.Drawable;
 import com.winlator.xserver.GraphicsContext;
 import com.winlator.xserver.Bitmask;
 import com.winlator.xserver.XClient;
@@ -19,9 +18,8 @@ public abstract class GraphicsContextRequests {
 
         if (!client.isValidResourceId(gcId)) throw new BadIdChoice(gcId);
 
-        Drawable drawable = client.xServer.drawableManager.getDrawable(drawableId);
-        if (drawable == null) throw new BadDrawable(drawableId);
-        GraphicsContext graphicsContext = client.xServer.graphicsContextManager.createGraphicsContext(gcId, drawable);
+        if (client.xServer.drawableManager.getDrawable(drawableId) == null) throw new BadDrawable(drawableId);
+        GraphicsContext graphicsContext = client.xServer.graphicsContextManager.createGraphicsContext(gcId);
         if (graphicsContext == null) throw new BadIdChoice(gcId);
 
         client.registerAsOwnerOfResource(graphicsContext);

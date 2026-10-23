@@ -11,9 +11,9 @@ public class GraphicsContextManager extends XResourceManager {
         return graphicsContexts.get(id);
     }
 
-    public GraphicsContext createGraphicsContext(int id, Drawable drawable) {
+    public GraphicsContext createGraphicsContext(int id) {
         if (graphicsContexts.indexOfKey(id) >= 0) return null;
-        GraphicsContext graphicsContext = new GraphicsContext(id, drawable);
+        GraphicsContext graphicsContext = new GraphicsContext(id);
         graphicsContexts.put(id, graphicsContext);
         triggerOnCreateResourceListener(graphicsContext);
         return graphicsContext;
