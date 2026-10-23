@@ -137,7 +137,8 @@ class LinuxSteamService : Service() {
             @Suppress("DEPRECATION")
             getSystemService(android.hardware.display.DisplayManager::class.java)
                 .getDisplay(android.view.Display.DEFAULT_DISPLAY)?.getRealMetrics(metrics)
-            val (width, height) = SteamClientDisplay.resolution(metrics.widthPixels, metrics.heightPixels)
+            val (width, height) = SteamClientDisplay.resolution(this@LinuxSteamService,
+                app.gamenative.MainActivity.isHeadset(this@LinuxSteamService), metrics.widthPixels, metrics.heightPixels)
             withContext(Dispatchers.Main) {
                 val server = XServer(ScreenInfo(width, height), true, false, 24)
                 // DesktopHelper recognizes Wine's WM_HINTS window group. Xephyr
@@ -300,8 +301,8 @@ class LinuxSteamService : Service() {
         getSystemService(android.app.ActivityManager::class.java).appTasks.any { task ->
             val info = task.taskInfo
             listOfNotNull(info.baseIntent.component, info.baseActivity, info.topActivity).any {
-                it.className == LinuxSteamActivity::class.java.name || it.className == "app.gamenative.xrgame.LaunchActivity" ||
-                    it.className == OfficialSteamGameActivity::class.java.name
+                it.className == LinuxSteamActivity::class.java.name || it.className == SteamXrActivity::class.java.name ||
+                    it.className == "app.gamenative.xrgame.LaunchActivity" || it.className == OfficialSteamGameActivity::class.java.name
             }
         }
     }.getOrDefault(true)

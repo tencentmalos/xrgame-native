@@ -815,6 +815,7 @@ bool XrImmersiveSession::setupInstanceAndSession() {
             vulkan_ = std::move(compositor);
             perfHud_ = std::make_unique<PerfHud>();
             keyboard_ = std::make_unique<XrKeyboard>();
+            launchPanel_ = std::make_unique<XrLaunchPanel>();
             if (capture::Available()) {
                 capture_ = std::make_unique<capture::XrCapture>(vulkan_->context());
                 vulkan_->setCapture(capture_.get());
@@ -1335,8 +1336,12 @@ void XrImmersiveSession::pollXrEvents() {
             const uint32_t serial = tracked ? recenterSerial_.fetch_add(1) + 1 : recenterSerial_.load();
             LOGI("OpenXR reference space change: type=%d poseValid=%d counted=%d serial=%u",
                  static_cast<int>(change->referenceSpaceType), change->poseValid ? 1 : 0, tracked ? 1 : 0, serial);
-            // The world-locked HUD lives in LOCAL; after a recentre it is placed in front of the head again.
-            if (change->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL && perfHud_) perfHud_->reanchor();
+            // The world-locked HUD and keyboard live in LOCAL; after a recentre they are placed in
+            // front of the head again.
+            if (change->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL) {
+                if (perfHud_) perfHud_->reanchor();
+                if (keyboard_) keyboard_->reanchor();
+            }
         } else if (event.type == XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED) {
             auto logProfile = [this](const char *hand, XrPath handPath) {
                 XrInteractionProfileState profileState{XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -2128,6 +2133,12 @@ void XrImmersiveSession::submitQuadLayer(XrTime predictedDisplayTime, XrSpace sp
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&quad));
     }
     if (capture_) capture_->note(layers.back(), capture::Source::Screen);
+    // The launch panel covers the screen in its place; the status layer and keyboard stay above.
+    XrCompositionLayerQuad panel{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    if (submitLaunchPanel(&panel, quad)) {
+        layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&panel));
+        if (capture_) capture_->note(layers.back(), capture::Source::LaunchPanel);
+    }
     XrCompositionLayerQuad hud{XR_TYPE_COMPOSITION_LAYER_QUAD};
     if (submitPerfHud(&hud, false, predictedDisplayTime, &quad, curved ? radius : 0.0f)) {
         layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&hud));
@@ -2216,6 +2227,20 @@ bool XrImmersiveSession::submitKeyboard(XrCompositionLayerQuad *quad, XrTime dis
     XrProfileScope profile("host.vr.keyboard.update");
     if (!keyboard_->update(session_, vulkan_->context(), input, localSpace_, viewSpace_, displayTime, screen)) return false;
     keyboard_->fill(localSpace_, quad);
+    return true;
+}
+
+bool XrImmersiveSession::submitLaunchPanel(XrCompositionLayerQuad *quad, const XrCompositionLayerQuad &screen) {
+    if (!launchPanel_ || !vulkan_ || localSpace_ == XR_NULL_HANDLE) return false;
+    InputSnapshot input;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex_);
+        input = snapshot_;
+    }
+    if (capture_) capture_->attach(capture::Source::LaunchPanel, launchPanel_->imguiLayer());
+    XrProfileScope profile("host.vr.launch_panel.update");
+    if (!launchPanel_->update(session_, vulkan_->context(), input, screen)) return false;
+    launchPanel_->fill(localSpace_, quad);
     return true;
 }
 
@@ -2594,6 +2619,7 @@ void XrImmersiveSession::teardown() {
         // The panels stop copying into the capture's images before they go.
         if (perfHud_ && perfHud_->imguiLayer()) perfHud_->imguiLayer()->SetCaptureTarget(VK_NULL_HANDLE);
         if (keyboard_ && keyboard_->imguiLayer()) keyboard_->imguiLayer()->SetCaptureTarget(VK_NULL_HANDLE);
+        if (launchPanel_ && launchPanel_->imguiLayer()) launchPanel_->imguiLayer()->SetCaptureTarget(VK_NULL_HANDLE);
         if (vulkan_) vulkan_->setCapture(nullptr);
         capture_.reset();
     }
@@ -2604,6 +2630,10 @@ void XrImmersiveSession::teardown() {
     if (keyboard_) {
         keyboard_->destroy();
         keyboard_.reset();
+    }
+    if (launchPanel_) {
+        launchPanel_->destroy();
+        launchPanel_.reset();
     }
     if (vulkan_) vulkan_->releaseResources();
     windowsProjection_.shutdown();

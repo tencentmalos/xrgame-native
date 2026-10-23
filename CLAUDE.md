@@ -25,6 +25,14 @@
     - 启动准备期间应用被切到后台（比如弹出 IPD 调节窗口）会卡在转圈页面：已修，`MainViewModel` 等发起启动的 Activity 回到前台后再拉起沉浸式 Activity；Swan kb7 上用 IPD 窗口复现，回到前台约 160 ms 后游戏启动。
   - 未修（用户决定之后再查）：Hades II 2D 大屏（XR）在 FSR1 加眼动注视点时，大屏图像左下角间歇出现噪点块，约在 Wine 屏幕 (0,647)–(218,701)，营地场景 462 帧里有 28 帧。关掉 FSR 就消失（用户确认）。
   - SDK 的 `steampsp.panel` 已能截到 X server 的 SurfaceView（两种 X server 渲染器都实现了 `CaptureTap`）。
+  - 2026-10-20 Steam XR 模式（未提交，kb8–kb18）：首页选 2D/XR 后进入 Steam；XR 下 Steam 客户端本身显示在 XR 大屏上（`SteamXrActivity`）。规格 §13，记录同上：
+    - Steam 里的普通游戏跟随入口（XR 入口为 2D 大屏）；VR 专有游戏按 `appinfo.vdf` 的 `onlyvrsupport` 识别，一律进 VR。
+    - 游戏用自己的会话和图层，游戏期间 Steam 的图层隐藏、渲染停下。大屏尺寸和弧形与游戏共用，分辨率各自设置（Steam 的在首页选）。
+    - 游戏的启动面板直接画在大屏上（ImGui，`xr_launch_panel.cpp`；选项逻辑与 2D 面板共用 `XrGameLaunchOptions`），准备和启动都不经过 2D 页面。
+    - XR 键盘有拼音输入：AOSP PinyinIME 引擎加词库，候选栏在键盘顶部，中文经 `SteamImeSession` 粘贴进 Steam。引擎目前从仓库外复制（两处 64 位/NDK 修复是本地提交），要先 fork 到 tencentmalos 才能作为子仓库提交。
+    - 中文送进 Wine 游戏（kb25 通过）：X server 把字符的 Unicode keysym 映射到备用键位 120–131 再按键，winex11 转成 `WM_CHAR`。Wine 在窗口 `TranslateMessage` 时才按当时的映射查键位，所以键位要轮流用、同一个字复用（`Keyboard.unicodeKeycode`）。测试入口 DebugBus `guest_exec [名=值] <程序>` 在游戏的 Wine 桌面里起程序（如 `WINEDEBUG=key notepad`）。
+    - Steam XR 下 Java 堆 OOM 崩溃（kb22 上约 18 分钟后崩溃）：Mesa X11 WSI 每重建一次交换链就漏一个 GC，而我们 X server 的 `GraphicsContext` 强引用着创建时的 drawable，每个漏掉的 GC 都把一块约 8 MB 的窗口内容留在堆里（hprof 里 28 块）。kb26 让 GC 不再持有 drawable：同样场景 15 分钟堆稳定在约 86 MB（kb25 每分钟涨 16 MB）。
+    - Swan kb18 已验证：面板、开始、出帧、退出回到 Steam XR、取消、"你好"上屏。射线交互和 Alyx 未测。
   - 输入法逐字上屏：已提交 `3bb321485`，用户在 Swan 上确认。
 
 - 2026-10-17 用户要求游戏下载目录统一：新装使用 `/sdcard/SteamPSP`；旧版已有 `/sdcard/XRGameNative` 游戏库原地复用。Official/Custom Steam 共用同一份 `steamapps` 和现有每游戏容器的存档，不做两套目录的双向复制。

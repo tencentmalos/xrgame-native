@@ -847,6 +847,30 @@ abstract class LinuxSteamAssetsTask : DefaultTask() {
     }
 }
 
+/**
+ * The XR keyboard's pinyin dictionary from AOSP PinyinIME (its engine is built with
+ * app/src/main/cpp/xrimmersive) as assets/pinyin/dict_pinyin.dat, which XrPinyinDictionary unpacks.
+ * Without the PinyinIME checkout the keyboard stays Latin and nothing is packaged.
+ */
+abstract class PinyinDictionaryTask : DefaultTask() {
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
+    abstract val dictionary: ConfigurableFileCollection
+    @get:OutputDirectory abstract val assets: DirectoryProperty
+    @TaskAction fun stage() {
+        val out = assets.get().asFile
+        out.deleteRecursively()
+        dictionary.files.firstOrNull { it.isFile }?.copyTo(out.resolve("pinyin/dict_pinyin.dat"), overwrite = true)
+    }
+}
+
+androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->
+    val task = tasks.register<PinyinDictionaryTask>("stagePinyin${variant.name.replaceFirstChar { it.uppercase() }}") {
+        dictionary.from(file("src/main/cpp/extras/pinyinime/res/raw/dict_pinyin.dat"))
+        assets.set(layout.buildDirectory.dir("generated/pinyin/${variant.name}/assets"))
+    }
+    variant.sources.assets?.addGeneratedSourceDirectory(task, PinyinDictionaryTask::assets)
+}
+
 androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->
     val task = tasks.register<LinuxSteamAssetsTask>("stageLinuxSteam${variant.name.replaceFirstChar { it.uppercase() }}") {
         staging.set(rootProject.layout.projectDirectory.dir("build/xrgame-linux-steam"))

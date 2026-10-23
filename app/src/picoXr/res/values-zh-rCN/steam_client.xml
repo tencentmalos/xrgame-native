@@ -27,4 +27,23 @@
     <string name="steam_mode_custom_short">非官方 · 游戏库与设置</string>
     <string name="steam_mode_other_title">其他</string>
     <string name="steam_mode_other_short">GOG、Epic、Amazon、本地应用 · 兼容模式 Steam 库</string>
+    <string name="steam_display_label">Steam 显示方式</string>
+    <string name="steam_display_2d">2D 窗口</string>
+    <string name="steam_display_xr">XR 大屏</string>
+    <string name="steam_xr_menu_title">Steam · XR 大屏</string>
+    <string name="steam_xr_menu_2d">切换到 2D</string>
+    <string name="steam_xr_menu_keyboard">键盘</string>
+    <string name="steam_xr_menu_recenter">重置位置</string>
+    <string name="steam_xr_menu_passthrough">透视</string>
+    <string name="steam_xr_menu_home">返回首页</string>
+    <string name="steam_xr_menu_close">关闭</string>
+    <string name="steam_xr_menu_hint">长按 Start 打开此菜单</string>
+    <string name="steam_xr_menu_resize">调整大屏位置和大小</string>
+    <string name="steam_xr_screen_size">大屏尺寸</string>
+    <string name="steam_xr_resolution">Steam 分辨率</string>
+    <string name="steam_xr_curved">弧形</string>
+    <string name="steam_xr_custom">自定义</string>
+    <string name="steam_xr_screen_note">尺寸和弧形与从 Steam 启动的游戏共用，状态层与所有游戏共用；透视和分辨率只用于 Steam</string>
+    <string name="steam_xr_status_layer">状态层</string>
+    <string name="steam_xr_restarting">正在以 %1$s 重启 Steam</string>
 </resources>

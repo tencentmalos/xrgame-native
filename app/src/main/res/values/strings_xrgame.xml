@@ -52,6 +52,10 @@
     <string name="xrgame_launch_summary_xr_vr">XR · VR headset</string>
     <string name="xrgame_launch_refresh">Refresh rate</string>
     <string name="xrgame_launch_custom">Custom</string>
+    <string name="xrgame_launch_xr_footer">Point at an option and pull the trigger · the right stick scrolls</string>
+    <string name="xrgame_launch_xr_starting">Starting the game…</string>
+    <string name="xrgame_launch_xr_failed">The game could not be started</string>
+    <string name="xrgame_launch_screen_shared">Shared with the Steam big screen (size and curve; the resolution is this game\'s own)</string>
     <string name="xrgame_launch_off">Off</string>
     <string name="xrgame_launch_on">On</string>
     <string name="xrgame_launch_resolution">Game resolution</string>

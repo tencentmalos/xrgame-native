@@ -736,7 +736,7 @@ class MainViewModel @Inject constructor(
                     // cloud UI or background connection should take over the official session.
                     SteamService.keepAlive = false
                     context.startActivity(android.content.Intent().setClassName(context,
-                        "app.gamenative.xrgame.steam.LinuxSteamActivity")
+                        app.gamenative.xrgame.XrGameOfficialSteam.homeActivity(app.gamenative.MainActivity.isHeadset(context)))
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
                     return@launch
                 }

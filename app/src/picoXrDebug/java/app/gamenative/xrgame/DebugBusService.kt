@@ -41,7 +41,7 @@ class DebugBusService : Service() {
         init { System.loadLibrary("xrgame_debugbus") }
         private val ARGUMENT_COMMANDS = setOf("present", "api_capture", "vr_tuning", "vr_upscale", "vr_grip",
             "launch", "input", "quickmenu", "vr_hud", "vr_oc", "vr_keyboard", "guest_patch", "guest_debugger", "linux_steam",
-            "steam_ime")
+            "steam_ime", "guest_exec", "vr_pen")
         private val CAPTURE_COMMANDS = setOf("capture_source", "capture_screenshot", "capture_video", "capture_config")
         private const val LAUNCH_GAME = "app.gamenative.LAUNCH_GAME"
         @Volatile private var lastLaunch: Int? = null
@@ -116,11 +116,13 @@ class DebugBusService : Service() {
             "quickmenu" -> quickMenu(args)
             "vr_hud" -> vrHud(args)
             "vr_keyboard" -> vrKeyboard(args)
+            "vr_pen" -> vrPen(args)
             "game_state" -> gameState()
             "vr_oc" -> vrOpenComposite(args)
             "guest_patch" -> guestPatch(args)
             "guest_debugger" -> guestDebuggerCommand(args)
             "steam_ime" -> steamIme(args)
+            "guest_exec" -> guestExec(args)
             else -> error("unknown_provider")
         }
         result.put("schema", 1).put("sampledAtBootNs", SystemClock.elapsedRealtimeNanos()).toString()
@@ -316,7 +318,81 @@ class DebugBusService : Service() {
         return JSONObject(activity.debugQuickMenu(action)).put("active", true).put("action", action)
     }
 
+    /**
+     * Starts a program in the running game's Wine, for tests that need a window of their own, such
+     * as `notepad` to receive XR keyboard text. The game's explorer.exe supplies the environment
+     * (same prefix, wineserver and esync; official launches have no winhandler.exe to EXEC) and its
+     * desktop: a process outside that desktop gets the default one, whose explorer fails to start,
+     * so the program runs as `wine explorer /desktop=<the game's> <program>`. Leading `NAME=value`
+     * arguments override the environment (`WINEDEBUG=key`, say: debugbus.py passes no `+`, and
+     * Wine reads a bare channel as `+`); Wine's output goes to files/guest-exec.log, since an
+     * undrained pipe would stop a talkative program.
+     */
+    private fun guestExec(arguments: Array<String>): JSONObject {
+        val overrides = arguments.takeWhile { Regex("[A-Z_][A-Z0-9_]*=.*").matches(it) }
+        val args = arguments.drop(overrides.size)
+        require(args.isNotEmpty() && args[0].isNotBlank()) { "usage: guest_exec [NAME=value ...] <program> [arguments]" }
+        val explorer = requireNotNull(
+            com.winlator.core.ProcessHelper.listRunningWineProcesses().firstNotNullOfOrNull { pid ->
+                val argv = runCatching { File("/proc/$pid/cmdline").readText().split('\u0000') }.getOrNull()
+                val desktop = argv?.firstOrNull { it.startsWith("/desktop=") }
+                if (desktop != null && argv.any { it.substringAfterLast('\\').equals("explorer.exe", ignoreCase = true) }) {
+                    pid to desktop
+                } else {
+                    null
+                }
+            },
+        ) { "no_game_running" }
+        val (pid, desktop) = explorer
+        // The server socket, preloader reservation and no-exec flag belong to that process alone:
+        // with them, wine exits at once.
+        val perProcess = setOf("WINESERVERSOCKET", "WINEPRELOADRESERVE", "WINELOADERNOEXEC")
+        val env = File("/proc/$pid/environ").readText().split('\u0000')
+            .filter { it.contains('=') && it.substringBefore('=') !in perProcess }
+            .associate { it.substringBefore('=') to it.substringAfter('=') } +
+            overrides.associate { it.substringBefore('=') to it.substringAfter('=') }
+        val wine = env["PATH"]?.split(':')?.map { File(it, "wine") }?.firstOrNull { it.isFile }
+        requireNotNull(wine) { "no_wine_on_path" }
+        val log = File(filesDir, "guest-exec.log")
+        // App data is not executable on modern Android; the linker loads the program (ProcessHelper).
+        val launcher = if (BuildConfig.MODERN_ANDROID) listOf("/system/bin/linker64") else emptyList()
+        val process = ProcessBuilder(launcher + listOf(wine.path, "explorer", desktop) + args)
+            .directory(File("/proc/$pid/cwd").canonicalFile)
+            .redirectErrorStream(true)
+            .redirectOutput(log)
+            .apply { environment().run { clear(); putAll(env) } }
+            .start()
+        kotlin.concurrent.thread(name = "DebugBusGuestExec") {
+            android.util.Log.i("DebugBus", "guest_exec ${args[0]} exited with ${process.waitFor()}")
+        }
+        return JSONObject().put("started", args[0]).put("desktop", desktop.substringAfter('='))
+            .put("overrides", JSONArray(overrides.map { it.substringBefore('=') })).put("log", log.path)
+    }
+
     /** The XR keyboard: show/hide it in the running immersive session; status never includes typed text. */
+    /**
+     * A pen stroke on the XR page (Steam's big screen first, else a game's), as the ray and its
+     * trigger make: `vr_pen <x1,y1> <x2,y2> [ms]` in page pixels; equal points tap. Returns at
+     * once; the stroke runs on its own thread.
+     */
+    private fun vrPen(args: Array<String>): JSONObject {
+        require(args.size in 2..3) { "usage: vr_pen <x1,y1> <x2,y2> [ms]" }
+        fun point(text: String): Pair<Float, Float> {
+            val parts = text.split(',')
+            require(parts.size == 2) { "usage: vr_pen <x1,y1> <x2,y2> [ms]" }
+            return parts[0].toFloat() to parts[1].toFloat()
+        }
+        val (x1, y1) = point(args[0])
+        val (x2, y2) = point(args[1])
+        val ms = args.getOrNull(2)?.toLong()?.coerceIn(0L, 5000L) ?: 300L
+        val activity: ImmersiveXrActivity = requireNotNull(
+            app.gamenative.xrgame.steam.SteamXrActivity.current?.get()?.takeIf { !it.isFinishing }
+                ?: ImmersiveXrActivity.current?.get(),
+        ) { "no_immersive_session" }
+        require(activity.debugPen(x1, y1, x2, y2, ms)) { "no_page" }
+        return JSONObject().put("from", "$x1,$y1").put("to", "$x2,$y2").put("ms", ms)
+    }
+
     private fun vrKeyboard(args: Array<String>): JSONObject {
         val action = args.firstOrNull() ?: "status"
         require(args.size <= 1 && action in listOf("status", "show", "hide")) { "usage: vr_keyboard [status|show|hide]" }

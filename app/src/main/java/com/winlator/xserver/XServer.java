@@ -295,6 +295,15 @@ public class XServer {
         }
     }
 
+    /** Types one character by its keysym, on a spare keycode (Keyboard.unicodeKeycode). */
+    public void injectUnicodeKey(int keysym) {
+        try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
+            byte keycode = keyboard.unicodeKeycode(keysym);
+            keyboard.setKeyPress(keycode, keysym);
+            keyboard.setKeyRelease(keycode);
+        }
+    }
+
     public void injectKeyRelease(XKeycode xKeycode) {
         try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
             keyboard.setKeyRelease(xKeycode.getId());

@@ -154,6 +154,9 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
             scenePending.set(false);
         } else {
             onPointerMove(xServer.pointer.getX(), xServer.pointer.getY());
+            // The retired frames come back from what each window last presented: an idle client
+            // (a UI waiting for input) would otherwise leave its windows empty.
+            xServerView.queueEvent(this::replayPresentedFrames);
             queueSceneUpdate();
             xServerView.requestRender();
         }

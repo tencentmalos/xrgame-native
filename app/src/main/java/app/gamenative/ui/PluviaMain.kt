@@ -486,13 +486,24 @@ fun PluviaMain(
         }
     }
 
-    /** Intent launches: a launch Official Steam handed over first shows the launch panel, as the library does. */
+    /**
+     * Intent launches: a launch Official Steam handed over first shows the launch panel, as the
+     * library does. Its display mode is not a per-game choice: it is written first, from the entry.
+     */
     val launchHandedOverApp: (resolvedAppId: String, hasTemporaryOverride: Boolean) -> Unit = { resolvedAppId, hasTemporaryOverride ->
         val officialGame = runCatching { ContainerUtils.extractGameIdFromContainerId(resolvedAppId) }
             .getOrNull()?.let { app.gamenative.xrgame.XrGameOfficialSteam.isOfficialGame(it) } == true
-        if (BuildConfig.XRGAME && officialGame && PrefManager.xrgameLaunchPanel) {
-            xrLaunchPanelOfficial = true
-            xrLaunchPanelAppId = resolvedAppId
+        if (BuildConfig.XRGAME && officialGame) {
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { app.gamenative.xrgame.XrGameOfficialSteam.applyDisplay(context, resolvedAppId) } }
+                    .onFailure { Timber.e(it, "Official launch: setting the display mode of %s failed", resolvedAppId) }
+                if (PrefManager.xrgameLaunchPanel) {
+                    xrLaunchPanelOfficial = true
+                    xrLaunchPanelAppId = resolvedAppId
+                } else {
+                    launchIntentApp(resolvedAppId, hasTemporaryOverride)
+                }
+            }
         } else {
             launchIntentApp(resolvedAppId, hasTemporaryOverride)
         }
@@ -1414,6 +1425,7 @@ fun PluviaMain(
             xrLaunchPanelAppId?.takeIf { openContainerConfigForAppId == null }?.let { appId ->
                 XrGameLaunchPanel(
                     appId = appId,
+                    followsEntry = xrLaunchPanelOfficial,
                     onLaunch = {
                         xrLaunchPanelAppId = null
                         if (xrLaunchPanelOfficial) {
@@ -1431,7 +1443,7 @@ fun PluviaMain(
                             runCatching { ContainerUtils.extractGameIdFromContainerId(appId) }.getOrNull()
                                 ?.let { app.gamenative.xrgame.XrGameOfficialSteam.finishGame(it) }
                             context.startActivity(android.content.Intent().setClassName(context,
-                                "app.gamenative.xrgame.steam.LinuxSteamActivity")
+                                app.gamenative.xrgame.XrGameOfficialSteam.homeActivity(app.gamenative.MainActivity.isHeadset(context)))
                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
                         }
                     },

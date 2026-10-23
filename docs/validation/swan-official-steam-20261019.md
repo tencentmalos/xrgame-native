@@ -275,6 +275,164 @@ Android 对所有 app 的子进程合计设上限（`max_phantom_processes`，Sw
   - 上面这次是 Vulkan 渲染（容器 `execArgs` 为 `-condebug -vulkan`）。10:21 按用户要求改回 D3D11：`execArgs` 改为 `-condebug`，原文件备份在证据目录 `alyx-sdk165/STEAM_546560.container.before-dx`。不带 `-vulkan` 时 `WindowsVrPayloadManager` 会删掉 `opencomposite.ini`。root 用 `sed -i` 改完后文件标签丢了 MLS 分类（变成 `s0`），已 `chcon` 回目录的 `s0:c155,c256,c512,c768`。
   - 没测：长时间游玩、Hades II 与麻将在 `linux-steam2` 下的回归（两者用旧接口版本，lsteamclient 只是新增接口）、Custom 模式（不加载 lsteamclient，但 Proton 基线从 xrg3 系换成了 xrg7）。
 
+### Steam XR 模式（2026-10-20）
+
+用户要求：进 Steam 前在 Swan 上选择 2D 或 XR，Steam 客户端本身也能跑在 XR 大屏里；进 Steam 后不再给每个游戏保留 2D/SBS/XR 选项，普通游戏跟随入口；Alyx 这类 VR 专有游戏要能正确启动；SBS 暂时不需要；注意功耗。方案和实施见[规格 §13](../specs/xrgame-native-big-screen-rendering-v1.md)。
+
+- VR 专有游戏的识别：用官方客户端 `appcache/appinfo.vdf`（v29）验证过：
+  - Alyx 546560、The Lab 450390 有 `common/onlyvrsupport = 1` 和 `openvrsupport = 1`，VR 启动项类型为 `vr`；
+  - Hades II 1145350、麻将 3444020 没有这些键。
+- 包与上机过程：
+  - kb8 `7db8ae88…`：单元测试 13 项通过。首页右上角显示「Steam 显示方式：2D 窗口 / XR 大屏」，用方向键选 XR 后偏好写成 `display=xr`。进入后 `SteamXrActivity` 在前台，但没有建立 XR 会话。
+    - 原因：`onResume` 里生命周期还是 STARTED，代码却要求 RESUMED；改为 STARTED。
+  - kb9 `c2b60704…`：会话建立：72 Hz、1280×720 大屏、Vulkan 合成，客户端 VulkanRenderer 的直通桥接上。但 SDK `xr` 截图 99.9% 黑。
+    - 原因：沿用了 2D 页面的黑色页面背景，被当作叠加层盖在画面上；改为透明。
+  - kb10 `f1e6b1a6…`：装包后直接用 `am start` 拉起 `SteamXrActivity`，主线程卡死，DebugBus 超时。
+    - 原因（堆栈留档 `steam-xr/stack-kb10-egl-linker-deadlock.txt`）：
+      - XR 运行时线程在建会话时 `dlopen` Pico 的 `libpxrcompositor.so`，持有链接器锁执行构造函数，构造函数调用 `eglGetProcAddress`，等 EGL 初始化锁；
+      - 主线程第一次初始化 EGL（X server 的 `GPUImage.createImageKHR` → `eglGetDisplay`），持有 EGL 锁，又在 `dlsym` 里等链接器锁。
+    - VR 页面不画 HWUI 帧，新进程直接进 XR 页面时没人提前初始化 EGL。修法：`ImmersiveXrActivity.onCreate` 先在主线程初始化 EGL（游戏页面也受益）。期间强停过一次应用。
+  - kb11 `0ab18cd5…`：同样的冷启动不再卡死。
+    - SDK 截图：`steam-xr/1225-kb11-xr-left.png`（头部视角合成）、`steam-xr/1226-kb11-canvas.png`（大屏 1280×720，Big Picture 首页和射线光标）。
+    - 叠加层中心像素透明。但它仍以约 28 Hz 持续重画：每次画叠加层都会翻转渲染视图的透明度，这一翻转又被记成页面变化。改为忽略渲染视图自己的重绘。
+  - kb12 `e4f10729…`：
+    - 12:27:42 会话建立，直通桥接上；
+    - 加载页动画期间，叠加层约每 1.8 s 重画 30 次（约 16 Hz）；
+    - 12:27:49 加载页消失后，到 12:28:07 没有新的「overlay layer refreshed」记录，即 18 s 内不到 30 次；
+    - 光标静止、页面不变时不再重画。
+  - 用户在 kb12 上从 Steam XR 启动 Hades II（12:43，`Official launch of STEAM_1145350: xr (vr=false, entry=xr)`），游戏一直不出帧，OpenXR 一直转圈。
+    - 原因：2D 启动面板弹出时 `SteamXrActivity` 没有暂停，Steam 的会话还在（12:43:02 降为 VISIBLE）。
+    - 12:43:09.590 游戏页面 `onResume` 建会话，报 `xrInitializeLoaderKHR failed: -6`，会话线程放弃；`SteamXrActivity` 的 `onStop` 12:43:09.782 才到。
+    - 修复（kb13 `4cf90413…`，审计 0 errors，未装机）：游戏页面建会话前，如果有托管客户端的会话，先在主线程结束它。
+  - 用户随后决定（不共用会话）：
+    - 游戏用自己的会话和新图层；
+    - 游戏期间 Steam 的图层隐藏、渲染停下；
+    - 分辨率 Steam 和游戏各自设置，大屏尺寸共用。
+    - kb14 实现见[规格 §13.5](../specs/xrgame-native-big-screen-rendering-v1.md)。代码路径核对：Steam 页面停止后，原来的 `XServerView.onPause` 是空操作，`stopXrSession` 又把平面呈现打开了，所以游戏期间 Steam 的每个 Present 仍会拷进渲染器。kb14 在 `onStop` 关掉平面呈现，回来时补画最后一帧。
+    - kb14 `be773606…`：单元测试 16 项通过，审计 0 errors。用户同意后，13:12:48 装机（boot `06ddeeff`；装机前先用快捷菜单正常退出了 kb12 那局 Hades II）。
+      - 13:13:01.9 Steam XR 会话建立：72 Hz、1280×720，直通桥接上；Big Picture 首页截图 `steam-xr/1318-kb14-steam-canvas.png`。
+      - `linux_steam launch 1145350` 转交成功（`launchForward` 0）。启动面板在 13:16:42 被按下开始（有人在头显里按的，不是我们注入的）。
+      - 13:16:51.610 游戏页面打出 `ending the hosted session before the game's`；游戏会话 13:16:51.921 进入 FOCUSED，没有 `xrInitializeLoaderKHR` 错误。
+      - Hades II 出帧，截图 `steam-xr/1318-kb14-hades-canvas.png`（大屏层 2250×1264）。
+      - 同一时刻 Steam 页面 `onStop` 关掉了它的平面呈现。游戏期间 5 s 线程采样里，占 CPU 的都是游戏会话的线程，Steam 那一路的线程都是 0%。
+      - 13:17:59 有人按了右手柄 Home 键，13:18:05.71 Pico 系统界面强制停止了 SteamPSP（`Force stopping … from com.picoxr.systemui`）。我们随后的 `quickmenu exit` 发到时进程已经没了，所以"退出游戏回到 Steam XR"这一步这轮**没有测到**。
+      - 之后从启动器重开，首页把 Steam 分辨率选成 1920×1080（偏好里 `resolution=1920x1080`），从首页进入 Steam XR，客户端按 1920×1080 启动。日志 13:18:36.044 `hosted screen now 1920x1080, starting the session again`，新会话 13:18:36.243 进入 FOCUSED，画面环为 1920×1080。
+  - 用户随后要求：大屏下游戏的启动面板直接画在大屏上（ImGui 图层，不切回 2D Activity），XR 大屏支持输入法。设计见[规格 §13.6](../specs/xrgame-native-big-screen-rendering-v1.md)。
+    - Foundation 里没有拼音引擎，用户选择移植 AOSP PinyinIME。
+    - WSL x86_64 上的 64 位验证：用自带词库，`nihao` 出 你好、`zhongguo` 出 中国、`woaibeijingtiananmen` 出 我爱北京天安门。
+    - kb15 `25e67ad0…` 没打进词库，作废。kb16 `5dc7fd74…` 包含 `assets/pinyin/dict_pinyin.dat`（审计 verified），单元测试 16 项通过，审计 0 errors。
+    - kb16 装机（用户同意，14:00:34，boot `06ddeeff`）：
+      - 从首页进 Steam XR，客户端按偏好的 1920×1080 起；`linux_steam launch 1145350` 后 14:01:27.558 `launch panel shown`。前台一直是 `SteamXrActivity`，没有切到 2D 页面。
+      - SDK `xr` 截图 `steam-xr/1401-kb16-launch-panel-xr-left.png`：面板在大屏位置、和大屏一样大，但中文全是"?"。日志 `ImGui could not load the CJK font`：Swan 的 `NotoSansCJK-Regular.ttc` 是 CFF2 可变字体（5 个面，表里有 `CFF2`/`fvar`），ImGui 用的 stb_truetype 不支持 CFF2。改为依次尝试 Pico 的 `PICOSansSC-Regular.ttf`（TrueType glyf，7.7 MB）等字体，先检查表、跳过 CFF2（kb17）。
+      - `input btn a` 在面板上按开始：14:02:51 保存选项，`preLaunchApp` 跑完（游戏修正、`restoreSteamApi`、ACF），14:02:59.998 游戏的沉浸式页面起来，`ending the hosted session before the game's`。全程没有 2D 页面。
+      - 14:03:00.191 主线程崩溃：`ControllerManager.scanForDevices` 中 `InputManager` 为空。这个单例和 `ContainerUtils.setContainerDefaults`（进程级的 XRGame 默认运行时版本）原来都由 MainActivity 初始化；新流程里进程从没跑过 MainActivity。系统随后以 force-crash 结束了两个页面并杀掉进程。kb17 在 `ImmersiveXrActivity.onCreate` 补上这两项（`installLaunchReadiness` 在 picoXr 是空函数，不需要）。
+    - kb17 `2d3910c0…`（单元测试 16 项通过，审计 0 errors）装机：
+      - 14:08:36.8 面板出现，字体为 `PICOSansSC-Regular.ttf`，中文正常（`steam-xr/1408-kb17-launch-panel-xr-left.png`）。
+      - 有两个显示问题：这个字体没有 Ⓐ Ⓑ，显示成"?"；面板背景 4% 透明，底下的 Steam 页面透出来。
+      - `input btn a` 开始：14:09:04.9 保存选项，14:09:13.5 游戏页面起来并结束 Steam 的会话，14:09:13.776 进入 FOCUSED，没有崩溃。Steam 页面关掉平面呈现。Hades II 主菜单出帧（`steam-xr/1409-kb17-hades-canvas.png`）。
+      - `quickmenu exit`（14:11:33.4）：游戏页面在 14:11:33.78 结束。0.1 s 后 Steam XR 重新建会话（1920×1080 画面环），平面呈现重新打开；Steam 页面立即有画面，不是黑屏（`steam-xr/1411-kb17-steam-after-exit.png`，Hades II 详情页，"STEAM 云: 已是最新"）。**游戏退出回到 Steam XR 这一步通过。**
+      - 拼音：两个摇杆同时按下（`input btn l3_r3`）打开键盘，键盘默认拼音模式（设备语言是中文），14:12:59.926 `pinyin engine open`。用左摇杆导航加 A 打 n-i-h-a-o 后，状态为组字中；但按 Y（空格）没有上屏。
+        - 原因：AOSP 这版引擎的 `im_add_letter` 是空函数（直接 `return 0`），逐个加字母一直是 0 个候选。在 WSL 上用相同调用顺序复现。改为每加一个字母对整段拼音调用 `im_search`（引擎按公共前缀增量搜索），WSL 上 `nihao` 出 62 个候选，`im_choose(0)` 后整句固定（fixed 2 = 拼音节数 2）（kb18）。
+    - kb18 `8eadb026…`（单元测试 16 项通过，审计 0 errors；面板背景改为不透明，按键提示改用字母 A/B，键盘翻页键改为 `<` `>`）装机：
+      - 拼音：14:18:51 打开键盘，打 n-i-h-a-o 后按 Y（空格），键盘提交一段文字（`typed` 1，组字结束）。14:19:10.817 Steam 输入法会话 `pasting 2 characters`，即"你好"经客户端剪贴板粘贴进 Steam。当时 Steam 里没有聚焦的输入框，所以只验证了送达路径，没有验证文字落进哪个输入框。
+      - 面板：不透明，底部提示为"射线指向选项按扳机选择 · A 开始 · B 取消 · 右摇杆滚动"（`steam-xr/1419-kb18-launch-panel-xr-left.png`）。
+      - 取消：14:19:44.665 按 B，`XR launch panel: STEAM_1145350 cancelled`，面板隐藏，没有启动游戏，Steam 的 `SteamLaunch` 进程退出，前台仍是 Steam XR。
+  - 用户随后要求：XR 键盘的中文送进 Wine 游戏；面板和键盘参考 shadPS4 加图标、调样式；分辨率等长列表用下拉框。设计见[规格 §13.6](../specs/xrgame-native-big-screen-rendering-v1.md)。每版审计 0 errors，装机前都先用快捷菜单正常退出上一局 Hades II。
+    - kb19 `c664a19d…`：游戏中文（`typeUnicode`，120 号键位）和测试入口 `guest_exec`。原生命令表漏了登记，`guest_exec` 报 unknown command。
+    - kb20 `9782e05b…`：shadPS4 样式，合并系统符号字体后图标正常。面板 `steam-xr/1448-kb20-launch-panel-xr-left.png`；Hades II 里打开 XR 键盘打 nihao，候选栏为"你好 你 拟 尼…"（`steam-xr/1452-kb20-keyboard-pinyin-xr-left.png`）。`guest_exec` 这版发 WinHandler EXEC，没有反应：官方启动链里没有 `winhandler.exe`。
+    - kb21 `8a577e40…`：超过 3 个选项的行改为下拉框（`steam-xr/1459-kb21-launch-panel-xr-left.png`）。`guest_exec` 改用启动器组件，报 `no_game_running`：`XEnvironment.getComponent` 按确切类匹配，启动器是子类。
+    - kb22 `8be18f28…`：`guest_exec notepad` 返回 started，但没有 notepad 进程。用 root 手工复现（游戏 `Hades2.exe` 的 `/proc/<pid>/environ`，经打过补丁的 run-as `--app-domain` 在 App 域里跑 wine）找到三个原因：
+      - 带着游戏进程自己的 `WINESERVERSOCKET`：`Bad server socket 23`；
+      - 带着 `WINELOADERNOEXEC`：wine 不经 preloader 直接退出 1，没有输出（`WINEDEBUG=-all` 又排在前面，加的调试通道不生效）；
+      - 新进程落在默认桌面，要另起 explorer 而失败：`nodrv_CreateWindow … The explorer process failed to start`。
+      - 去掉前两个变量、改为 `wine explorer /desktop=shell,1280x720 notepad` 后，notepad 出现在游戏桌面上（15:15，`steam-xr/1515-kb22-notepad.png`）。
+    - kb22 上的中文测试（15:17–15:18）：XR 键盘打 nihao，首选"你好"（`steam-xr/1517-kb22-game-keyboard-pinyin.png`）；按 Y 后 notepad 的光标从 Col 1 到 Col 3，即收到两个字符，但看不见（Wine 自带字体没有汉字，`steam-xr/1518-kb22-notepad-nihao.png`）。
+      - 用 `WINEDEBUG=+key` 重开 notepad 再打一次：两次按键都是 `keysym=100597d (U597D)`，`ToUnicodeEx returning 1 with L"\597d"`，`WM_CHAR` 两次都是"好"，"你"丢了。
+      - 原因：120 号先映射成"你"、按下，再映射成"好"、按下；Wine 在 notepad 的 `TranslateMessage` 时才按当时的映射查键位，那时已经是"好"了。
+      - 修复：120–131 号键位轮流用，已映射到同一个字的键位直接复用（`Keyboard.unicodeKeycode`）。`guest_exec` 改为借用游戏 `explorer.exe` 的环境和桌面，前置 `名=值` 覆盖环境，输出写 `files/guest-exec.log`，见规格。
+      - kb23 `c23d8fc3…`、kb24 `30349ffe…`（审计都是 0 errors）作废，没有装机：新单测 `KeyboardUnicodeKeycodeTest` 发现上限常量声明成 `byte`，131 溢出为 −125，备用键列表是空的，打中文会抛 `IndexOutOfBoundsException`；`setKeysyms`/`hasKeysym` 也按有符号数算下标，128 号以上会越界。kb25 改为 `short` 常量、下标按无符号取，单测 4 项（含原有 `KeyboardPauseTest`）通过。
+    - kb25 `7b5ee3ed…`：审计 0 errors，构建内单测 20 项通过。装机前没有游戏在跑（kb22 那局已在 15:28 因下文的 OOM 结束）。
+      - 从 Steam XR 启动 Hades II，大屏面板按 A 开始。游戏出帧后 `guest_exec WINEDEBUG=key notepad`：返回 `desktop shell,1280x720`，notepad 出现在游戏桌面上（`steam-xr/1538-kb25-guest-exec-notepad.png`），跟踪写进 `files/guest-exec.log`。
+      - XR 键盘打 nihao、按 Y 上屏：跟踪里 `KeyPress : keysym=1004f60 (U4F60)`、`keysym=100597d (U597D)`，`TranslateMessage` 依次投递 `WM_CHAR` `L"\4f60"`（扫描码 0x60）和 `L"\597d"`（0x61），即"你好"两个字都对了（`steam-xr/1540-kb25-notepad-key-trace.log`；notepad 截图 `1540-kb25-notepad-nihao.png` 看不见汉字，原因同上）。**XR 键盘的中文送进 Wine 游戏这一步通过。**
+  - Steam XR 下游戏运行时应用 OOM 崩溃（kb22 上发生，kb25 上复现并定位，kb26 修复待测）：
+    - kb22 那局 Hades II 在 15:28:02 结束：`FATAL EXCEPTION … java.lang.OutOfMemoryError: Failed to allocate a 8310747 byte allocation`，线程是 Steam 客户端那个 X server（`linux-steam/root/tmp/.X11-unix/X0`）的请求线程，栈在 `DRI3Extension.pixmapForHardwareBuffer` → `Drawable.<init>`；Java 堆 509/512 MB。系统随后以 force-crash 结束页面、杀掉进程（`oom-kb25/kb22-oom-crash-logcat.txt`）。这次没有人操作头显，手柄读数一直是 0。
+    - kb25 每 30 s 记一次 `dumpsys meminfo`（`oom-kb25/heap-watch-kb25.txt`）：只有 Steam XR 时 Dalvik 已分配约 82 MB 且平稳；游戏开始后约 108 MB，约 3 分钟后开始每分钟涨约 16 MB（关掉 notepad 后照样涨），15:49 到 343 MB。
+    - 15:46 的 hprof（388 MB，分析后已删除，SHA 见 `oom-kb25/hprof-sha256.txt`；解析脚本 `oom-kb25/hprof_big.py`）：≥1 MB 的原始数组 43 个、共 319 MB，全是 `Drawable.data` 的直接缓冲。从 GC 根出发的最短路径（`oom-kb25/root-paths.txt`）：28 个（21 个 1922×1081、4 个 1920×1080、3 个 1280×800）挂在 `GraphicsContextManager.graphicsContexts` → `GraphicsContext.drawable` 上。按客户端分（`oom-kb25/graphics-contexts.txt`）：Steam X server 上客户端 `0x00c00000` 的 19 个 GC 引用着 1922×1081、已不是现存窗口内容的 drawable。
+    - 原因：
+      - 我们的 X server 里 `GraphicsContext` 强引用它创建时所在的 drawable（窗口内容或 pixmap），而这个字段没有任何地方读。GC 不释放，窗口改尺寸或销毁后的旧内容（每块约 8 MB）就一直留在 Java 堆里。
+      - Mesa X11 WSI（`wsi_common_x11.c` 建交换链时 `xcb_create_gc`）销毁交换链时从不 `xcb_free_gc`，每重建一次交换链就漏一个 GC。Steam 的 GPU 进程（Zink）经这个 WSI 呈现；推断是 Steam 的窗口反复重建交换链，每次都漏一个 GC。游戏退出、回到 Steam XR 后堆照样涨（15:51 为 369 MB），所以不只发生在游戏期间；开头那 3 分钟没涨，什么时候开始重建没有量。
+    - 修复（kb26，在 X server 侧，不改 Mesa/Turnip）：`GraphicsContext` 不再保存 drawable（X 协议里 GC 也只记 root 和深度）；`CreateGC` 仍校验 drawable 存在。
+    - kb26 `6f83dabc…`（审计 0 errors，构建内单测 20 项通过；同一次开机 `06ddeeff`，PID 17996）同样从 Steam XR 启动 Hades II，每 30 s 记堆（`oom-kb25/heap-watch-kb25-kb26.txt`）：
+      - 游戏 15:53–16:08 共 15 分钟：Java 堆 70 MB，15:58 一次 +16 MB，16:02 一次 +8 MB 后又回落，其余时间平稳，结束时 87 MB。kb25 同样时长内持续每分钟 +16 MB，到了 343 MB。
+      - 期间前 10 分钟不碰键盘、不起 notepad；16:03–16:04 在游戏里用 XR 键盘打了 3 次"nihao"上屏，之后 4 分钟堆仍为 86 MB。
+      - 退出游戏回到 Steam XR 后 4 分钟：56 MB，平稳（kb25 这一段仍在涨）。
+      - 更长时间、2D 模式的 Steam 没有测。
+  - 用户要求键盘放低、倾斜，往下看刚好看到（规格 §13.6「键盘位置」）。kb27 `f91892a7…`（审计 0 errors，单测 20 项通过）装机后，Steam XR 里打开键盘：日志 `XR keyboard placed 34 degrees below the eyes`（按这块大屏下沿算出来的，比默认 32° 低）。随后用户戴上头显试用，并反馈：
+    - recenter 后键盘留在原处：键盘的锚点在 LOCAL 空间里，recenter 时只有状态层重新放置。改为两者都重新放。
+    - OpenXR 手柄拖不动 Steam 大屏：日志里 16:58:47–16:58:57 有 5 次扳机按下，都是 `not in a grab zone`，位置在画面中间或离右下角 0.095 m（角的判定半径 0.06 m），而且控制点要先在菜单里打开才生效。改为侧握键在屏上任意位置抓起移动。
+    - 两处都在 kb28。
+  - kb28 `7dd0574c…`（审计 0 errors，单测 20 项通过）在用户摘下头显后装机（17:41，同一次开机 `06ddeeff`）：
+    - Steam XR 里打开键盘：`XR keyboard placed 32 degrees below the eyes`。SDK `xr` 截图 `steam-xr/1742-kb28-keyboard-tilted-xr-left.png`：键盘在视野下方，近处的下沿宽、远处的上沿窄，是向后仰的。没人戴时头显朝向和大屏不一致，所以大屏在画面右侧。
+    - 关键盘后用 DebugBus 按住右侧握键 1.5 s：`pointer grab started hand=1 resize=false grip=true`。松开后按扳机，`pointer down`/`pointer up` 照常送到页面，说明抓取已结束。
+    - 没测，等用户在头显里试：手移动时大屏是否跟着走、位置是否保存；recenter 后键盘是否重新放置。Pico 在 recenter 时是否发 LOCAL 的 `REFERENCE_SPACE_CHANGE_PENDING` 还没在设备上见过（状态层依赖同一个事件，也没验证过）。
+  - 用户确认侧握拖屏好用，又要求 OpenXR 手柄能拖动 Steam 当前页的内容（像 2D Steam 页那样）。原因和修法见规格 §13.6「用扳机拖动 Steam 页面内容」。kb29 `cb249486…`（审计 0 errors，单测 20 项通过）17:54 装机，Steam XR 正常起来（1920×1080）。拖动滚动要人拿着手柄才能测，等用户在头显里试。
+  - 用户要求 XR 大屏也有键盘显示/隐藏图标（规格 §13.6「Steam 大屏上的键盘图标」），kb30。
+    - kb30 `aa36e453…`（审计 0 errors，单测 20 项通过）18:01 装机。大屏截图 `steam-xr/1805-kb30-scroll-before.png` 右边缘 30% 高度处有键盘图标。用户随后试用说"好很多"。
+    - 用户在 kb29 上反馈拖动不跟手、键盘开着时主面板的射线不能操作（后者 kb30 已改）。kb31 `8ce9789e…`（审计 0 errors，单测 20 项、shim 测试 11 项通过）加了 DebugBus `vr_pen`（模拟射线拖动）和即时滚动开关（`webhelper-instant-scroll`，shim 把 Steam 的 `--enable-smooth-scrolling` 换成 `--disable-smooth-scrolling`；默认关）。用右摇杆注入 3 格滚轮测每格滚动距离时，X 指针停在底栏上，页面没动（`1806-kb30-scroll-after3.png`），每格像素数还没量到。
+    - 用户要求键盘不跟头转、跟主面板位置稳定（规格 §13.6「键盘位置」），kb32。
+    - 用户说拖动"还是不太跟手"，让我测试优化（设备可用）。kb32 `ff967d43…`、kb33 `db274fc2…`（审计都是 0 errors，单测 20 项通过）。
+      - kb32 的 `vr_pen` 在 DebugBus 里卡住：DebugBus 在主线程上应答并等命令做完（2 s），`vr_pen` 又等主线程处理每个笔事件，结果超时、笔划被拖到 2 s 以后才一起处理。这是测试工具的问题，真实射线不经过 DebugBus。kb33 改为在单独线程按 11 ms 一次发事件，命令立即返回，并记下落下/抬起的 uptime。
+      - 测法：`capture_video` 录大屏（36 fps，时间戳与 uptime 同一时钟），`vr_pen` 匀速拖动，逐帧累加相邻帧的竖直位移（脚本 `drag/drag-video.sh`、`drag_timeline2.py`，结果在 `drag/` 下）。Steam XR 为 1920×1080。
+      - 首页（kb33，每格 53 像素）：拖 400 像素，两个方向都停在 372 像素（7 格），中段页面速度是笔的 2.6 倍：首页按行吸附，不能用来量。
+      - 商店，平滑滚动（Steam 默认 `--enable-smooth-scrolling`）：拖 400 像素，页面滚 1193 像素（比例 2.98），抬起后还滚了约 170 ms。
+      - 商店，即时滚动（`webhelper-instant-scroll`=1，重启客户端）：每格固定 170.4 像素（170、341…1193，共 7 格）；从笔走到该发一格的位置，到画面动起来约 80 ms（含 Xephyr、Chromium 绘制、合成和录像）。
+      - 库：一格 170、171 像素（两次）。
+      - 结论：Steam 的页面每格滚轮约 170 像素（1080p），而拖动按 53（kb33）或 40（kb29–kb32）像素一格发，页面是手的 3.2 或 4.3 倍快，这是不跟手的主因。kb34：每格的拖动距离 = 屏幕高度 × 170/1080，四舍五入发格（误差在半格内），平滑滚动保持开（即时模式每次跳 170 像素）。其他分辨率下的每格距离没有量，按 Big Picture 随屏幕高度缩放推算。
+      - kb34 `5f5b9cfa…`（审计 0 errors，单测 20 项通过）18:34 装机，平滑滚动恢复（webhelper 带 `--enable-smooth-scrolling`）。库里拖 400 像素、600 ms（`drag/v-library-kb34`）：页面滚 341 像素（2 格，比例 0.85，不到半格的零头不滚）；第 1 格在笔走过 85 像素时发出，页面约 120 ms 后开始平滑移动；笔抬起时页面正好到第 2 格，之后不再滑动。
+      - 局限：Steam 每格就是 170 像素（屏幕高度的六分之一），这是滚轮模拟能做到的最细粒度；手在半格以内的小幅移动不会让页面动。要做到逐像素跟手，需要 Chromium 收到像素级的精确滚动，而 Xephyr 只把宿主的滚轮按键转给 Steam，做不到。
+  - 用户要求首页选项改成两排、透视（VST）能在首页直接开关、Steam 分辨率像游戏的 2D 大屏那样按单眼尺寸和当前屏幕折算（规格 §13.5「首页两排选项」）。
+    - kb35 `89fb5710…`（审计 0 errors，构建内单测 21 项通过，`SteamClientDisplayTest` 4 项覆盖折算、合并、上限、档位映射和旧尺寸映射）19:04 装机，用户同意。
+    - 首页截图 `steam-xr/1905-kb35-home.png`（SDK `steampsp.panel`）：标题行是显示方式；第一排大屏尺寸 65/80/100/120″、弧形、透视；第二排 Steam 分辨率。80″ 时为 1280×720、推荐 1392×782、高 1824×1026、极高 2240×1260。原来存的 1920×1080 按最接近的宽度对应到「高 1824×1026」。
+    - 没测：在首页点选（2D 面板在 Pico 的虚拟窗口里，`adb input tap` 的坐标对不上，没有乱点）；换尺寸后的分辨率只由单测覆盖；透视开关进 Steam XR 后是否生效，等用户在头显里试。
+    - 用户看过 kb35 后决定：分辨率回到固定的 1280×720、1600×900、1920×1080；弧形和透视改成和单选区分开的样式；首页直接用英文（只改首页）。
+    - kb36 `db8b76cd…`（审计 0 errors，单测 20 项通过）装机，用户同意。截图 `steam-xr/1915-kb36-home.png`：首页为英文，分辨率为固定三档，弧形和透视是开关。两个问题：
+      - 两个开关接在第一排尺寸后面，英文下放不下：「Passthrough」折行，开关被右边缘截掉。
+      - 选中的是 1280×720：偏好里还是 kb35 的档位名 `resolution=maximum`，固定三档不认识，按默认 1280×720 读。Steam 实际也按 1280×720 启动，显示和实际一致，所以不另做映射，用户重新点一次即可。
+    - 用户要求排成两列，两个开关不必挤一行。kb37 `cd2272e8…`（审计 0 errors，单测 20 项通过）装机，用户同意。每排左边是单选胶囊，右边缘一个开关：第一排尺寸和 Curved，第二排分辨率和 Passthrough，两个开关上下对齐。截图 `steam-xr/1916-kb37-home.png`（SDK `steampsp.panel`，1920×1080）显示 Curved 关、Passthrough 开，与偏好一致；去掉了 kb36 的竖分隔线。
+    - 用户要求 Steam 分辨率默认 1920×1080。kb38 `4cf9ef67…`（审计 0 errors，单测 20 项通过）：没存过或存的值不在三档里（包括 kb35 的档位名）时用 1920×1080，`SteamClientDisplayTest` 覆盖 `null`、`2560x1440` 和 `maximum`。装机，用户同意。截图 `steam-xr/1948-kb38-home.png` 选中 1920×1080。装机前偏好里已经是 `resolution=1920x1080`（kb37 期间在首页点选过），所以设备上走的是读已存值，没有走默认值那条路；默认值只由单测覆盖。
+  - 用户反馈：进 XR 大屏后首页挡在前面（规格 §13.4「首页面板」）。kb38 时的任务：`SteamXrActivity` 在任务 #112（Pico 给 VR 类型的 Activity 单开任务），首页在 #110，标为 `visible=false`，但首页的 2D 面板仍在前面。游戏页面靠 `moveTaskToBack` 收起启动器（10-10），Steam XR 走托管分支，没有这一步。
+    - kb39 `62d87f03…`（审计 0 errors，单测 20 项通过）装机，用户同意。用方向键在首页选中 Steam 卡片、按 Enter 进入，再用 DebugBus `input btn menu 800` 打开 Steam XR 菜单，用 `dumpsys activity top` 找到按钮位置，`vr_pen` 点击：
+      - 进入：20:01:10.200 `launcher task 113 moved to the back`（`SteamXrActivity` 在任务 #115）。
+      - 「返回首页」：20:03:13.277 `launcher task 113 brought back`，前台是原来的首页（同一个 ActivityRecord，任务 #113，没有多出一个首页），截图 `steam-xr/2003-kb39-home-after-home-item.png`。
+      - 再进入：20:03:45.556 首页任务又移到后面（`SteamXrActivity` 在 #117）。
+      - 「切到 2D」：`LinuxSteamActivity` 落在首页任务 #113、首页之上，是前台；20:04:17.826 首页任务拿回前面也没有盖住它。截图 `steam-xr/2004-kb39-switch-to-2d.png`（`steampsp.panel`，Big Picture 首页）。
+      - 头显里首页面板是否真的不再挡住大屏，SDK 截不到 Pico 的 2D 面板（`xr` 只合成我们会话的图层），等用户在头显里确认。
+    - 测试中发现：「切到 2D」把显示方式存成 `display=2d`，但首页回到前台时不重读，仍然显示「XR big screen」，这时点 Steam 卡片会按 XR 进入，和存的设置不一致。kb40 在首页 `onResume` 里重读显示方式。测试改掉了用户的显示方式（原为 XR），需要改回去。
+    - kb40 `ab8f3f0a…`（审计 0 errors，单测 20 项通过）装机，用户同意。新进程的首页显示存着的「2D window」；用方向键选「XR big screen」（每步用 SDK 截图比对焦点所在的按钮），存回 `display=xr`。
+    - 同一进程里重复 kb39 的路径：进 Steam XR（任务 #121），菜单「切到 2D」（`display=2d`，`LinuxSteamActivity` 在首页任务 #119 之上），再回到同一个首页（`--activity-clear-top`，同一 ActivityRecord）。首页显示「2D window」，截图 `steam-xr/2015-kb40-home-after-2d.png` 与新进程显示 2D 的截图 SHA 相同（`e90e5034…`）。之后再选回 XR，结束时为 `display=xr`、首页在前台，与测试前一致。
+    - 用方向键时要先确认焦点：一次从 XR 选项往下按三格，焦点落在「Other」卡片上（亮青色边框），这时按 Enter 会切到 Custom 模式；改为按左一格、截图确认后再按 Enter。
+    - 用户在头显里确认首页不再挡在大屏前面。
+  - 用户要求状态层能在首页设置，默认可见（规格 §13.5「首页两排选项」）。kb41 `2866260d…`（审计 0 errors，单测 20 项通过）装机，用户同意。说明文字一行的右边缘加了「Status layer」开关，和 Curved、Passthrough 排成一列，读写的就是游戏启动面板里的同一个设置 `PrefManager.xrgameStatusLayer`。
+    - 首页截图 `steam-xr/2019-kb41-home.png`：三个开关对齐，Status layer 开；DebugBus `vr_hud` 为 `statusLayer: true`。
+    - 关：在首页用方向键选中开关按 Enter，`statusLayer: false`；进 Steam XR 后 `vr_hud` 为 `visible: false`，`xr` 截图 `steam-xr/2020-kb41-steam-xr-status-off.png` 大屏上方没有状态层。
+    - 开：菜单「返回首页」，再按开关，`statusLayer: true`；进 Steam XR 后 `visible: true`，截图 `steam-xr/2022-kb41-steam-xr-status-on.png` 大屏上方有状态层。结束时状态层为开，Steam XR 在前台，与装机前一致。
+    - 游戏启动面板里的「状态层（所有游戏）」没有去掉，两处是同一个设置；本轮没有从游戏里看。
+  - 用户报：大屏上选中游戏后的启动面板（ImGui）里，射线指到几个同名的「开」「关」时提示 ID 冲突。原因：药丸按钮的 ID 只有序号加文字（`PushID(i)` + 标签），各行没有自己的 ID 作用域，几行「关 / 开」顺序相同，同名选项 ID 就相同；只有下拉框按行压了 ID。kb42 把按行的 `PushID(section * 1000 + index)` 提到整行外层，并在 `NewFrame` 后读 ImGui 的 `DebugDrawIdConflictsId`，发现新的冲突时记 `ImGui ID conflict on the pointed item`（标签 `xrimmersive_launch`）。ImGui 只检查射线指着的控件，所以要在头显里把选项指一遍才能确认。
+    - kb42 `41e36769…`（审计 0 errors，单测 20 项通过）装机，用户同意（取消了正在等面板的 Hades II 启动）。从首页进 Steam XR，DebugBus `linux_steam launch 1145350`，20:31:04 面板出现；截图 `steam-xr/2031-kb42-launch-panel.png` 有 VST 透视、曲面屏、ETFR 调试视图等几行「关 / 开」。
+    - 用户在头显里用射线指过这些选项，确认不再提示冲突；面板 20:35:29 关闭，这段时间 logcat 里 `ImGui ID conflict` 为 0 行。
+  - 用户问大屏模式能否按左右眼或单眼录像，要的是模拟合成器的画面，不是游戏窗口本身。这就是 SDK 的 `xr` 源（按眼把会话提交的图层做光线求交合成，无镜头畸变），不用改代码。kb42 上 Hades II 2D 大屏（XR）同一局里各录 5 s（`eye-video/`）：
+    - `xr` 左眼、右眼各 1296×1200（推荐眼尺寸的一半），两眼 2592×1200；分别 189、184、183 帧，约 36 fps（72 Hz），`skipped` 全为 0，合成耗时平均 4.5–5.0 ms。第 90 帧：大屏和状态层按各自的眼位置透视，左右眼有视差。
+    - `canvas` 为大屏图本身（2252×1266，mono），选眼不起作用。
+    - 和真实合成器的差别：没有镜头畸变，没有透视（VST）和 Pico 系统图层，按我们提交时的位姿合成（不含运行时的重投影）；录像最大为推荐眼尺寸的一半（`max_size` 只能再缩小），全尺寸只有截图。
+    - 用户要求从应用启动开始用 `xr` 源录到喊停。录像随会话结束，新进程的截取源是 `canvas`，所以在电脑上跑守候脚本：前台是 `SteamXrActivity`/`ImmersiveXrActivity` 时设 `capture_source xr` 并 `capture_video start both`，只认 `stereo_sbs` 的录像，会话结束后等下一个会话接着录。kb42 冷启动后 20:50–20:56 录了 4 段（`eye-video/session-20261020-2050/`，每段原始 H.264 加逐帧 CSV）：Steam XR 62.4 s / 36.0 fps，Hades II 74.5 s / 36.0 fps，Steam XR 36.1 s / 35.9 fps，Alyx（VR）222.0 s / 32.6 fps（24 处帧间隔超过 60 ms，最长 139 ms）。每段比会话开始晚约 1–3 s（轮询加启动）；会话之间的 2D 页面不在 `xr` 源里。按各段平均帧率封装为 MP4 后拼成 `session-xr-both.mp4`（6:35，2592×1200）。
+    - SDK 截图的局限：`xr` 截图按头显当前位姿合成。没人佩戴时头显朝向是固定的，面板和键盘只有一部分在视野里，所以截图只用来核对字体和样式，完整画面要戴上头显看。
+    - 还没测，等用户在头显里试：
+      - 用射线点面板上的选项（DebugBus 只能注入手柄，不能注入射线）；
+      - 射线点候选、翻页、中/EN 切换；
+      - 中文输入进 Steam 的实际输入框（比如商店搜索）；
+      - 从 XR 入口启动 Alyx（VR 游戏的面板选项和启动）。
+  - 还没测，等用户在头显里操作：射线点击、右摇杆滚动、A/B、XR 键盘、长按 Start 的菜单、从 XR 入口启动普通游戏和 Alyx 并返回、切到 2D 入口后的游戏方式。
+
 同时发现、未修（需要用户决定）：
 
 - （已由 `bc17c7733` 修复：Turnip xrg17 用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现。）Turnip 的 KGSL 后端里 `kgsl_device_get_gpu_timestamp` 是 `UNREACHABLE`，但设备有 `has_persistent_counter` 时仍声明 `VK_KHR/EXT_calibrated_timestamps`。release 构建下调用它是未定义行为：Zink 每次取 GL 时间戳都报 `vkGetCalibratedTimestampsEXT failed (VK_ERROR_OUT_OF_HOST_MEMORY)`，客户端启动约 2 分钟就有 3459 行，拿到的时间戳也不可信。游戏用的 Turnip 是同一份代码。修法是用 `IOCTL_KGSL_READ_CALIBRATED_TIMESTAMPS` 实现它，或者在 KGSL 上不声明这两个扩展；这要改共享 Turnip，需要用户同意。

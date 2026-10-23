@@ -11,6 +11,7 @@
 #include <unordered_set>
 
 #include "xr_immersive.h"
+#include "xr_pinyin.h"
 #include "xr_vulkan_compositor.h"
 #include "xr_vulkan_projection.h"
 
@@ -306,6 +307,11 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeSetXrKeyboardVisible(JNIEnv *, j
     xrimmersive::SetXrKeyboardRequested(visible == JNI_TRUE);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeXrKeyboardPointed(JNIEnv *, jclass) {
+    return xrimmersive::XrKeyboardPointed() ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jstring JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeDrainXrKeyboard(JNIEnv *env, jclass) {
     const std::string out = xrimmersive::DrainXrKeyboardOutput();
@@ -315,6 +321,33 @@ Java_app_gamenative_ui_screen_xr_XrNative_nativeDrainXrKeyboard(JNIEnv *env, jcl
 JNIEXPORT void JNICALL
 Java_app_gamenative_ui_screen_xr_XrNative_nativeXrKeyboardPad(JNIEnv *, jclass, jint action) {
     xrimmersive::QueueXrKeyboardPad(action);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetPinyin(JNIEnv *env, jclass, jstring systemDictionary,
+                                                         jstring userDictionary, jboolean chinese) {
+    auto text = [env](jstring value) {
+        if (value == nullptr) return std::string();
+        const char *chars = env->GetStringUTFChars(value, nullptr);
+        std::string out = chars != nullptr ? chars : "";
+        if (chars != nullptr) env->ReleaseStringUTFChars(value, chars);
+        return out;
+    };
+    xrimmersive::SetPinyinDictionary(text(systemDictionary), text(userDictionary));
+    xrimmersive::SetXrKeyboardChinese(chinese == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeSetLaunchPanel(JNIEnv *env, jclass, jstring model) {
+    const char *chars = model != nullptr ? env->GetStringUTFChars(model, nullptr) : nullptr;
+    xrimmersive::SetLaunchPanelModel(chars != nullptr ? chars : "");
+    if (chars != nullptr) env->ReleaseStringUTFChars(model, chars);
+}
+
+JNIEXPORT jstring JNICALL
+Java_app_gamenative_ui_screen_xr_XrNative_nativeDrainLaunchPanel(JNIEnv *env, jclass) {
+    const std::string out = xrimmersive::DrainLaunchPanelEvents();
+    return out.empty() ? nullptr : env->NewStringUTF(out.c_str());
 }
 
 JNIEXPORT jstring JNICALL

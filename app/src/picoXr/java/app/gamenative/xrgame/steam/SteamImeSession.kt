@@ -44,31 +44,40 @@ class SteamImeSession(context: Context, private val server: XServer, private val
         if (!closed && operations.trySend(operation).isFailure) failed()
     }
 
+    /**
+     * Text into the focused Steam field: printable ASCII as key presses, anything else (Chinese,
+     * say) through the client's clipboard and Ctrl+V. Queued behind earlier input; any thread.
+     */
+    fun commit(text: String) = enqueue {
+        check(text.toByteArray(Charsets.UTF_8).size <= 16384)
+        if (text.all { it.code in 32..126 || it == '\n' }) {
+            val typed = text.count { IMEInputReceiver.typeCharacter(server, it) }
+            android.util.Log.i("SteamIme", "typed $typed of ${text.length} characters as keys")
+            return@enqueue
+        }
+        android.util.Log.i("SteamIme", "pasting ${text.length} characters")
+        val child = runtime.process(listOf("/usr/bin/python3", "/usr/local/lib/steampsp/ime-text.py"), "ime-status.log")
+            .redirectOutput(ProcessBuilder.Redirect.PIPE).redirectError(java.io.File("/dev/null")).start()
+        process = child
+        val timeout = scope.launch { delay(5000); LinuxSteamProcesses.stopTree(child) }
+        try {
+            if (closed) return@enqueue
+            child.outputStream.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+            check(child.inputStream.bufferedReader().readLine() == "ready")
+            if (closed) return@enqueue
+            server.injectKeyPress(XKeycode.KEY_CTRL_L, 0)
+            IMEInputReceiver.pressKey(server, XKeycode.KEY_V)
+            server.injectKeyRelease(XKeycode.KEY_CTRL_L)
+            check(child.waitFor(5, TimeUnit.SECONDS) && child.exitValue() == 0)
+        } finally { timeout.cancel(); LinuxSteamProcesses.stopTree(child); process = null }
+    }
+
+    /** One press and release of [key], queued behind earlier input. Any thread. */
+    fun press(key: XKeycode) = enqueue { IMEInputReceiver.pressKey(server, key) }
+
     fun receiver(context: Context) = IMEInputReceiver(context, server,
-        textHandler = { text -> enqueue {
-            check(text.toByteArray(Charsets.UTF_8).size <= 16384)
-            if (text.all { it.code in 32..126 || it == '\n' }) {
-                val typed = text.count { IMEInputReceiver.typeCharacter(server, it) }
-                android.util.Log.i("SteamIme", "typed $typed of ${text.length} characters as keys")
-                return@enqueue
-            }
-            android.util.Log.i("SteamIme", "pasting ${text.length} characters")
-            val child = runtime.process(listOf("/usr/bin/python3", "/usr/local/lib/steampsp/ime-text.py"), "ime-status.log")
-                .redirectOutput(ProcessBuilder.Redirect.PIPE).redirectError(java.io.File("/dev/null")).start()
-            process = child
-            val timeout = scope.launch { delay(5000); LinuxSteamProcesses.stopTree(child) }
-            try {
-                if (closed) return@enqueue
-                child.outputStream.use { it.write(text.toByteArray(Charsets.UTF_8)) }
-                check(child.inputStream.bufferedReader().readLine() == "ready")
-                if (closed) return@enqueue
-                server.injectKeyPress(XKeycode.KEY_CTRL_L, 0)
-                IMEInputReceiver.pressKey(server, XKeycode.KEY_V)
-                server.injectKeyRelease(XKeycode.KEY_CTRL_L)
-                check(child.waitFor(5, TimeUnit.SECONDS) && child.exitValue() == 0)
-            } finally { timeout.cancel(); LinuxSteamProcesses.stopTree(child); process = null }
-        } },
-        keyHandler = { key -> enqueue { IMEInputReceiver.pressKey(server, key) } },
+        textHandler = { text -> commit(text) },
+        keyHandler = { key -> press(key) },
         keyEventHandler = { event ->
             if (forwardsKey(event)) enqueue {
                 server.keyboard.onVirtualKeyEvent(event)

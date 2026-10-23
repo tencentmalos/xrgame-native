@@ -855,6 +855,13 @@
       "sha256": "d3e48717c9aa147e0ab21063ba0e8e0211cabf8bf40b222640829519edbf58e1"
     },
     {
+      "pattern": "assets/pinyin/dict_pinyin.dat",
+      "kind": "official-dependency",
+      "license": "Apache-2.0",
+      "source": "AOSP platform/packages/inputmethods/PinyinIME 49aebad1c1cfbbcaa9288ffed5161e79e57c3679 res/raw/dict_pinyin.dat (XR keyboard pinyin)",
+      "sha256": "6bf0bbde4e3134cce38d08524a9f4dc1af40435243c8e36b38eb68d1e14462b2"
+    },
+    {
       "pattern": "lib/arm64-v8a/libandroidx.graphics.path.so",
       "kind": "official-dependency",
       "license": "Apache-2.0",

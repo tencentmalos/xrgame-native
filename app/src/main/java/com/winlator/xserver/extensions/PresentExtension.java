@@ -460,6 +460,10 @@ public class PresentExtension implements Extension {
         long msc = ust / (targetFps > 0 ? (1_000_000L / targetFps) : (1_000_000L / 60));
 
         if (!client.xServer.isFlatPresentationEnabled()) {
+            // Not drawn now, but the frame a renderer shows once presentation resumes.
+            if (app.gamenative.BuildConfig.XRGAME && pixmap.drawable.getTexture() instanceof GPUImage) {
+                synchronized (shownFrames) { shownFrames.put(window, pixmap); }
+            }
             sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.SKIP, ust, msc);
             if (targetFps > 0) scheduleIdleNotify(window, pixmap, serial, idleFence, targetFps, vr);
             else sendIdleNotify(window, pixmap, serial, idleFence);

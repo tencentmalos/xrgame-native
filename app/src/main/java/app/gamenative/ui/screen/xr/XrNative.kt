@@ -105,6 +105,21 @@ object XrNative {
     /** Shows or hides the XR keyboard (xr_keyboard.cpp); the panel can also close itself. */
     external fun nativeSetXrKeyboardVisible(visible: Boolean)
 
+    /** Whether a hand's ray is on the open XR keyboard, as of its last frame. */
+    external fun nativeXrKeyboardPointed(): Boolean
+
+    /**
+     * The XR keyboard's pinyin (xr_pinyin.cpp): the unpacked system dictionary, a writable user
+     * dictionary, and whether the keyboard opens in pinyin.
+     */
+    external fun nativeSetPinyin(systemDictionary: String?, userDictionary: String?, chinese: Boolean)
+
+    /** The launch panel on the big screen (xr_launch_panel.cpp, model from XrLaunchPanel.kt); null hides it. */
+    external fun nativeSetLaunchPanel(model: String?)
+
+    /** What was picked on the launch panel since the last call, one event per line, or null. */
+    external fun nativeDrainLaunchPanel(): String?
+
     /**
      * Text typed on the XR keyboard since the last call, or null. U+E000 is Backspace, U+E001
      * Enter and U+E002 means the keyboard closed.

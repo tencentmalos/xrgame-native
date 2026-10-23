@@ -28,4 +28,23 @@
     <string name="steam_mode_steam_title" translatable="false">Steam</string>
     <string name="steam_mode_other_title">Other</string>
     <string name="steam_mode_other_short">GOG, Epic, Amazon, local apps · Steam compatibility library</string>
+    <string name="steam_display_label">Steam display</string>
+    <string name="steam_display_2d">2D window</string>
+    <string name="steam_display_xr">XR big screen</string>
+    <string name="steam_xr_menu_title">Steam on the XR big screen</string>
+    <string name="steam_xr_menu_2d">Switch to 2D</string>
+    <string name="steam_xr_menu_keyboard">Keyboard</string>
+    <string name="steam_xr_menu_recenter">Recenter</string>
+    <string name="steam_xr_menu_passthrough">Passthrough</string>
+    <string name="steam_xr_menu_home">Home page</string>
+    <string name="steam_xr_menu_close">Close</string>
+    <string name="steam_xr_menu_hint">Hold Start to open this menu</string>
+    <string name="steam_xr_menu_resize">Move and resize the screen</string>
+    <string name="steam_xr_screen_size">Screen size</string>
+    <string name="steam_xr_resolution">Steam resolution</string>
+    <string name="steam_xr_curved">Curved</string>
+    <string name="steam_xr_custom">Custom</string>
+    <string name="steam_xr_screen_note">Size and curve are shared with the games Steam starts, the status layer with every game; passthrough and resolution are Steam\'s own.</string>
+    <string name="steam_xr_status_layer">Status layer</string>
+    <string name="steam_xr_restarting">Restarting Steam at %1$s</string>
 </resources>

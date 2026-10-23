@@ -141,6 +141,9 @@ Java_app_gamenative_xrgame_DebugBusService_execute(JNIEnv* env, jobject provider
                           "k:<text>|f|d:<n>|x|e ... (percent-encoded test text, never returned)"},
             {"vr_oc", "OpenComposite full-texture copy A/B switch; vr_oc [full_copy=0|1]"},
             {"vr_keyboard", "XR on-screen keyboard; vr_keyboard [status|show|hide]"},
+            {"vr_pen", "A ray-and-trigger pen stroke on the XR page, page pixels; vr_pen <x1,y1> <x2,y2> [ms]"},
+            {"guest_exec", "Start a program on the running game's Wine desktop, output in files/guest-exec.log; "
+                           "guest_exec [NAME=value ...] <program> [arguments]"},
             {"guest_patch", "Guest patches; guest_patch [status [appId]] | select <appId> [name,...] | "
                             "enable|disable [package|hook|package/hook]"},
             {"guest_debugger", "WineDbg started by the app (the game's SELinux domain); guest_debugger start "

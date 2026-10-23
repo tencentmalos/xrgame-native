@@ -72,7 +72,7 @@ import timber.log.Timber
 
 /** Dedicated entry point for launching a game directly in Meta Quest immersive mode. */
 @AndroidEntryPoint
-class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
+open class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     companion object {
         private const val EXTRA_APP_ID = "app_id"
@@ -111,6 +111,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         private const val POINTER_CORNER_RADIUS_METERS = 0.06f
         private const val POINTER_BAR_HALF_WIDTH_METERS = 0.08f
         private const val POINTER_BAR_RADIUS_METERS = 0.06f
+        // How far past the screen's edge the grip still grabs it.
+        private const val POINTER_GRIP_MARGIN_METERS = 0.05f
         private const val POINTER_GRAB_PRESS_THRESHOLD = 0.65f
         private const val POINTER_GRAB_RELEASE_THRESHOLD = 0.3f
         /** Smallest ray movement on the screen that moves the hover cursor (about half a pixel). */
@@ -131,6 +133,20 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         internal var current: java.lang.ref.WeakReference<ImmersiveXrActivity>? = null
             private set
 
+        /** OpenXR sessions alive in this process; a hosted client waits for a game's to end. */
+        private val liveSessions = java.util.concurrent.atomic.AtomicInteger()
+
+        /** The page whose hosted client (Steam) holds a session; a game's page ends it first. Main thread. */
+        private var hostedSessionOwner: java.lang.ref.WeakReference<ImmersiveXrActivity>? = null
+        private const val HOSTED_SESSION_RETRY_MS = 100L
+        private const val HOSTED_REFRESH_RATE = 72f
+        // Right-stick deflection that scrolls, and the fastest step rate at full deflection.
+        private const val HOSTED_SCROLL_DEADZONE = 0.35f
+        private const val HOSTED_SCROLL_MIN_INTERVAL_MS = 60L
+        private const val HOSTED_SCROLL_MAX_INTERVAL_MS = 260L
+        // The overlay is drawn again only when a cursor moves at least this far, in pixels.
+        private const val HOSTED_CURSOR_STEP_PX = 2
+
         fun start(context: Context, appId: String, isOffline: Boolean) {
             val intent = Intent(context, ImmersiveXrActivity::class.java).apply {
                 putExtra(EXTRA_APP_ID, appId)
@@ -142,6 +158,22 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     private val viewModel: MainViewModel by viewModels()
+
+    /** The client this activity hosts instead of a Wine game; null for games. */
+    private var hosted: XrHostedClient? = null
+
+    /** A subclass that hosts a client (the official Steam client) returns it here. */
+    protected open fun createHostedClient(): XrHostedClient? = null
+
+    /** The 2D page this session started from, which it hides on headsets: the game library here. */
+    protected open fun launcherActivity(): android.app.Activity? = app.gamenative.MainActivity.current?.get()
+
+    /** The renderer the big screen samples: the hosted client's, else the game's. */
+    private val frameView: com.winlator.widget.XServerRendererView?
+        get() = hosted?.rendererView ?: PluviaApp.xServerView
+
+    // Hosted overlay: the cursor positions last drawn, so a still cursor costs no redraw.
+    private var hostedCursorKey = Long.MIN_VALUE
 
     /** True while this session has moved the launcher's task to the back (headsets). */
     private var launcherHidden = false
@@ -266,8 +298,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     private var resizeHandlesEnabled by mutableStateOf(false)
     @Volatile private var lastLeftActionPressed = false
     @Volatile private var lastRightActionPressed = false
+    @Volatile private var lastLeftGripPressed = false
+    // The hosted page's ray was on the open XR keyboard at the last poll.
+    private var hostedRayOnKeyboard = false
+    @Volatile private var lastRightGripPressed = false
     @Volatile private var pointerGrabHand: Int? = null // 0 = left, 1 = right
     private var pointerGrabIsResize = false
+    // The grab was started by the grip (anywhere on the screen) and ends when the grip is let go.
+    private var pointerGrabByGrip = false
     private val pointerGrabStartHandPos = FloatArray(3)
     private var pointerGrabStartDistance = 0f
     private var pointerGrabStartHorizontal = 0f
@@ -342,12 +380,31 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // What MainActivity sets up for game launches: this process may never have run it (Steam on
+        // the big screen, opened from the home page, starts games itself).
+        app.gamenative.utils.ContainerUtils.setContainerDefaults(applicationContext)
+        com.winlator.inputcontrols.ControllerManager.getInstance().let { if (!it.isInitialized) it.init(applicationContext) }
         Timber.i(
             "Immersive: density override applied -> %.3f (logical size %dx%d dp)",
             resources.displayMetrics.density,
             (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt(),
             (resources.displayMetrics.heightPixels / resources.displayMetrics.density).toInt(),
         )
+
+        // Load the EGL drivers before any session starts. Pico's runtime loads its compositor
+        // library on the session's thread and calls EGL from its constructor while holding the
+        // linker lock; a first EGL use on this thread at the same time (the X server's images)
+        // waits for that lock while holding EGL's, and both stop for good. A VR page draws no
+        // HWUI frame, so nothing else initialises EGL when the process starts here.
+        runCatching {
+            val display = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
+            android.opengl.EGL14.eglInitialize(display, IntArray(1), 0, IntArray(1), 0)
+        }.onFailure { Timber.w(it, "Immersive: EGL preload failed") }
+
+        createHostedClient()?.let {
+            onCreateHosted(it)
+            return
+        }
 
         val appId = intent.getStringExtra(EXTRA_APP_ID)
         val isOffline = intent.getBooleanExtra(EXTRA_IS_OFFLINE, false)
@@ -460,8 +517,11 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                             xrPointerModeActive = enabled
                             lastLeftActionPressed = false
                             lastRightActionPressed = false
+                            lastLeftGripPressed = false
+                            lastRightGripPressed = false
                             if (!enabled) {
                                 pointerGrabHand = null
+                                pointerGrabByGrip = false
                                 pointerCursorLeftValid = false
                                 pointerCursorRightValid = false
                                 releasePointerTouches()
@@ -516,6 +576,89 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             Timber.i("Immersive: UI laid out at %dx%d px", uiSize.x, uiSize.y)
         }
     }
+
+    /**
+     * A hosted client's page, without a Wine container: the controller rays are its mouse from
+     * the start, and the big screen's placement comes from the client's own preferences.
+     */
+    private fun onCreateHosted(client: XrHostedClient) {
+        hosted = client
+        AppUtils.keepScreenOn(this)
+        xrPointerModeActive = true
+        loadHostedSettings(client)
+        setContentView(client.createContent())
+        overlayRoot = findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)?.also { root ->
+            root.layoutParams = android.widget.FrameLayout.LayoutParams(uiSize.x, uiSize.y)
+        }
+        Timber.i("Immersive: hosting %s", client.javaClass.simpleName)
+    }
+
+    private fun hostedPreferences(client: XrHostedClient) = getSharedPreferences(client.settingsName, MODE_PRIVATE)
+
+    private fun loadHostedSettings(client: XrHostedClient) {
+        val preferences = hostedPreferences(client)
+        quadDistance = preferences.getFloat(EXTRA_QUAD_DISTANCE, defaultQuadDistance())
+        quadScale = preferences.getFloat(EXTRA_QUAD_SCALE, defaultQuadScale())
+        quadHorizontal = preferences.getFloat("immersiveQuadHorizontal", ImmersiveControls.DEFAULT_OFFSET)
+        quadVertical = preferences.getFloat("immersiveQuadVertical", ImmersiveControls.DEFAULT_OFFSET)
+        passthroughEnabled = preferences.getBoolean(EXTRA_PASSTHROUGH_ENABLED, false)
+        curvedScreen = preferences.getBoolean(EXTRA_CURVED_SCREEN, false)
+        immersiveSettingsLoaded = true
+    }
+
+    private fun persistHostedSettings(client: XrHostedClient) {
+        hostedPreferences(client).edit()
+            .putFloat(EXTRA_QUAD_DISTANCE, quadDistance)
+            .putFloat(EXTRA_QUAD_SCALE, quadScale)
+            .putFloat("immersiveQuadHorizontal", quadHorizontal)
+            .putFloat("immersiveQuadVertical", quadVertical)
+            .putBoolean(EXTRA_PASSTHROUGH_ENABLED, passthroughEnabled)
+            .putBoolean(EXTRA_CURVED_SCREEN, curvedScreen)
+            .apply()
+    }
+
+    /** Hosted menu: passthrough on or off. */
+    protected fun setHostedPassthrough(enabled: Boolean) {
+        passthroughEnabled = enabled
+        if (xrSessionHandle != 0L) XrNative.nativeSetPassthroughEnabled(xrSessionHandle, enabled)
+        hosted?.let { persistHostedSettings(it) }
+    }
+
+    protected val hostedPassthrough: Boolean get() = passthroughEnabled
+
+    /** Hosted menu: the big screen back at its default place; its size is the client's choice. */
+    protected fun resetHostedScreen() {
+        quadDistance = defaultQuadDistance()
+        quadHorizontal = ImmersiveControls.DEFAULT_OFFSET
+        quadVertical = ImmersiveControls.DEFAULT_OFFSET
+        applyQuadTransform()
+        hosted?.let { persistHostedSettings(it) }
+    }
+
+    // A game the hosted client handed over, chosen and prepared on the big screen.
+    private var launchPanel: XrLaunchPanel? = null
+
+    /** Hosted client: starts [appId] from a launch panel drawn on the big screen, never a 2D page. */
+    protected fun launchHostedGame(appId: String) {
+        (launchPanel ?: XrLaunchPanel(this, viewModel::launchApp).also { launchPanel = it }).open(appId)
+    }
+
+    /** The hosted screen size the live session's layer was made for. */
+    private var hostedSessionSize: android.util.Size? = null
+
+    /** Hosted client: its screen changed size (a client started again), which the layer must match. */
+    protected fun hostedScreenChanged() {
+        val size = hosted?.screenSize ?: return
+        if (xrSessionHandle == 0L || size == hostedSessionSize) return
+        Timber.i("Immersive: hosted screen now %dx%d, starting the session again", size.width, size.height)
+        stopXrSession()
+        startHostedSessionWhenFree()
+    }
+
+    /** Hosted menu: the corner and edge handles that move and resize the big screen. */
+    protected var hostedResizeHandles: Boolean
+        get() = resizeHandlesEnabled
+        set(value) { resizeHandlesEnabled = value }
 
     private fun loadImmersiveSettings(appId: String) {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -575,6 +718,11 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             container.putExtra(EXTRA_WINDOWS_VR_ENABLED, windowsVrEnabled.toString())
             container.putExtra(EXTRA_WINDOWS_VR_OPEN_COMPOSITE, openCompositeEnabled.toString())
             container.saveData()
+            // Steam's XR big screen shares its size with the ordinary games it starts.
+            if (!windowsVrEnabled && app.gamenative.xrgame.XrGameOfficialSteam.sharesXrScreen(appId)) {
+                app.gamenative.xrgame.XrGameOfficialSteam.xrScreen =
+                    app.gamenative.xrgame.XrGameOfficialSteam.XrScreen(quadScale, quadDistance, curvedScreen)
+            }
         }
     }
 
@@ -597,6 +745,38 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             1f,
             -1f,
         )
+    }
+
+    /**
+     * DebugBus `vr_pen`: a pen stroke on the page from ([x1], [y1]) to ([x2], [y2]) in [ms], page
+     * pixels, made of the same events as the ray and its trigger (a tap when the points are equal),
+     * posted at the ray's poll interval from a thread of its own. DebugBus answers on the main
+     * thread, so the stroke must not wait for it. Logs the uptime of the press and the lift, to
+     * line the stroke up with a capture. False without a page.
+     */
+    internal fun debugPen(x1: Float, y1: Float, x2: Float, y2: Float, ms: Long): Boolean {
+        val view = overlayRoot ?: return false
+        thread(name = "XrDebugPen") {
+            val down = android.os.SystemClock.uptimeMillis()
+            fun send(action: Int, x: Float, y: Float) {
+                val time = android.os.SystemClock.uptimeMillis()
+                view.post {
+                    val event = pointerEvent(down, time, action, x, y)
+                    try { view.dispatchTouchEvent(event) } finally { event.recycle() }
+                }
+            }
+            Timber.i("Immersive: vr_pen down at %d ms (%.0f,%.0f)", down, x1, y1)
+            send(android.view.MotionEvent.ACTION_DOWN, x1, y1)
+            val steps = (ms / POLL_INTERVAL_MS).toInt().coerceAtLeast(1)
+            for (step in 1..steps) {
+                Thread.sleep(ms / steps)
+                val t = step.toFloat() / steps
+                send(android.view.MotionEvent.ACTION_MOVE, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
+            }
+            send(android.view.MotionEvent.ACTION_UP, x2, y2)
+            Timber.i("Immersive: vr_pen up at %d ms (%.0f,%.0f)", android.os.SystemClock.uptimeMillis(), x2, y2)
+        }
+        return true
     }
 
     /**
@@ -661,6 +841,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (hosted != null) return
         val newAppId = intent.getStringExtra(EXTRA_APP_ID) ?: return
         val runningAppId = currentAppId
         if (runningAppId == null || newAppId == runningAppId) return
@@ -669,6 +850,12 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        hosted?.let {
+            it.onResume()
+            startHostedSessionWhenFree()
+            hideLauncherPanel()
+            return
+        }
         PluviaApp.isImmersiveActivityResumed = true
         PluviaApp.isActivityInForeground = true
         if (SteamService.keepAlive && PluviaApp.hasValidSuspendPolicyState() && PluviaApp.xEnvironment != null) {
@@ -683,14 +870,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     /**
-     * On a headset the launcher (MainActivity) stays visible as a 2D panel next to the immersive
-     * session. Move its task to the back while the session runs; finishing it would shut the game
-     * down (MainActivity.onDestroy). Its onPause sees isImmersiveActivityResumed and leaves the
-     * game running.
+     * On a headset the launcher ([launcherActivity]) stays visible as a 2D panel in front of the
+     * immersive session. Move its task to the back while the session runs; finishing MainActivity
+     * would shut the game down (MainActivity.onDestroy). Its onPause sees isImmersiveActivityResumed
+     * and leaves the game running.
      */
     private fun hideLauncherPanel() {
         if (!app.gamenative.BuildConfig.XRGAME || !app.gamenative.MainActivity.isHeadset(this)) return
-        val launcher = app.gamenative.MainActivity.current?.get() ?: return
+        val launcher = launcherActivity() ?: return
         if (launcher.isFinishing || launcher.isDestroyed || launcher.taskId == taskId) return
         if (launcher.moveTaskToBack(true)) {
             launcherHidden = true
@@ -702,7 +889,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     private fun restoreLauncherPanel() {
         if (!launcherHidden) return
         launcherHidden = false
-        val launcher = app.gamenative.MainActivity.current?.get() ?: return
+        val launcher = launcherActivity() ?: return
         if (launcher.isFinishing || launcher.isDestroyed) return
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
         // A task that went away meanwhile throws from taskInfo/moveToFront.
@@ -714,6 +901,12 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     override fun onPause() {
+        hosted?.let {
+            it.onPause()
+            if (isFinishing) stopXrSession()
+            super.onPause()
+            return
+        }
         PluviaApp.isImmersiveActivityResumed = false
         PluviaApp.isActivityInForeground = false
         Timber.i(
@@ -722,6 +915,8 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             isChangingConfigurations,
         )
         if (isFinishing && !isChangingConfigurations) {
+            // A hosted client below waits for this session to end before it starts its own.
+            stopXrSession()
             PluviaApp.shutdownEnvironment()
         } else if (SteamService.keepAlive && PluviaApp.hasValidSuspendPolicyState() &&
             PluviaApp.xEnvironment != null && !PluviaApp.isNeverSuspendMode()
@@ -788,7 +983,31 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         if (unmapped > 0) Timber.w("Immersive: %d XR keyboard characters are outside the guest key map", unmapped)
     }
 
+    /**
+     * A hosted client gives the headset up while another page (a game's session) is in front, and
+     * its renderer stops: the client's frames are acknowledged without being copied or drawn.
+     */
+    override fun onStop() {
+        if (hosted != null) {
+            stopXrSession()
+            applyFlatPresentationGate(false)
+            // The game's page took the headset; a panel still being chosen waits for this page.
+            launchPanel?.takeIf { it.isLaunching }?.dismiss()
+        }
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        hosted?.let {
+            gamepadHandler.removeCallbacksAndMessages(null)
+            if (xrKeyboardOpen) XrNative.nativeSetXrKeyboardVisible(false)
+            launchPanel?.abandon()
+            if (isFinishing) restoreLauncherPanel()
+            stopXrSession()
+            it.release()
+            super.onDestroy()
+            return
+        }
         gamepadHandler.removeCallbacksAndMessages(null)
         if (xrKeyboardOpen) XrNative.nativeSetXrKeyboardVisible(false)
         cachedWinHandler?.setRumbleDeviceOverride(0, -1)
@@ -801,14 +1020,43 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         super.onDestroy()
     }
 
+    /**
+     * Starts the hosted session once no other session (a game's, closing) is alive. Called from
+     * onResume, where the lifecycle still reads STARTED; onStop ends the session again.
+     */
+    private fun startHostedSessionWhenFree() {
+        if (xrSessionHandle != 0L || !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) return
+        if (liveSessions.get() > 0) {
+            gamepadHandler.postDelayed({ startHostedSessionWhenFree() }, HOSTED_SESSION_RETRY_MS)
+            return
+        }
+        startXrSessionIfNeeded()
+    }
+
     private fun startXrSessionIfNeeded() {
         if (xrSessionHandle != 0L) return
+        // The runtime takes one session at a time. Steam's page stays resumed behind the 2D launch
+        // panel, and its onStop comes only after the game's page has resumed: end its session here,
+        // or the game's fails to initialise (xrInitializeLoaderKHR) and never shows a frame.
+        if (hosted == null) hostedSessionOwner?.get()?.takeIf { it !== this && it.xrSessionHandle != 0L }?.let {
+            Timber.i("Immersive: ending the hosted session before the game's")
+            it.stopXrSession()
+        }
         // Mirror GameNativeXR's model: the XR surface follows the container's screen size
         // (min width 1280), and the refresh rate is a per-container choice (default 72).
         var quadW = 1280
         var quadH = 720
         var refreshRate = 72f
         var sessionContainer: Container? = null
+        hosted?.let { client ->
+            // A UI, not a game: the lower refresh rate saves power, and nothing is reconstructed.
+            client.screenSize?.let { quadW = it.width; quadH = it.height }
+            hostedSessionSize = android.util.Size(quadW, quadH)
+            refreshRate = HOSTED_REFRESH_RATE
+            // A game in between may have resized the screen the two share.
+            loadHostedSettings(client)
+            applyFlatPresentationGate(true)
+        }
         currentAppId?.let { appId ->
             runCatching { app.gamenative.utils.ContainerUtils.getContainer(this, appId) }.getOrNull()?.let { container ->
                 sessionContainer = container
@@ -835,18 +1083,26 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 Timber.i("Immersive: big screen layer %dx%d for the %dx%d Wine screen (%s, effective width %s)",
                     swapchainW, swapchainH, quadW, quadH, tier.key, range)
             }
-            XrNative.nativeCreate(this, swapchainW, swapchainH, refreshRate)
+            XrNative.nativeCreate(this, swapchainW, swapchainH, refreshRate).also { if (it != 0L) liveSessions.incrementAndGet() }
         } catch (t: Throwable) {
             Timber.w(t, "Native OpenXR module unavailable — immersive rendering/controller mapping disabled")
             return
         }
 
         applyQuadTransform()
+        // The XR keyboard's pinyin dictionary, unpacked once per install.
+        lifecycleScope.launch(Dispatchers.IO) { XrPinyinDictionary.prepare(applicationContext) }
         windowsVrRuntimeService?.attachSession(xrSessionHandle)
         XrNative.nativeSetPassthroughEnabled(xrSessionHandle, passthroughEnabled)
         XrNative.nativeSetCurvedScreen(xrSessionHandle, curvedScreen)
 
-        startControllerPollingLoop()
+        val client = hosted
+        if (client != null) {
+            hostedSessionOwner = java.lang.ref.WeakReference(this)
+            startHostedPollingLoop(client)
+        } else {
+            startControllerPollingLoop()
+        }
         startFrameCaptureLoop()
     }
 
@@ -881,6 +1137,87 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         return if (reconstructs && !windowsVr) settings.eyeBuffer else null
     }
 
+    /**
+     * The hosted client's controllers: the rays point, tap and drag-scroll (see [handlePointerMode]); A and B
+     * are Enter and Escape; the right stick scrolls; both sticks open the XR keyboard; Start held
+     * opens the client's menu. No Wine gamepad is fed.
+     */
+    private fun startHostedPollingLoop(client: XrHostedClient) {
+        pollingActive.set(true)
+        pollingThread = thread(name = "XrHostedPoll") {
+            val buttons = IntArray(1)
+            val axes = FloatArray(6)
+            val handPoses = FloatArray(12)
+            val flags = BooleanArray(3)
+            var lastButtons = 0
+            var nextScrollAt = 0L
+            val keys = listOf(XrGamepadBridge.BUTTON_A to android.view.KeyEvent.KEYCODE_ENTER,
+                XrGamepadBridge.BUTTON_B to android.view.KeyEvent.KEYCODE_ESCAPE)
+            while (pollingActive.get()) {
+                val menuChord = XrNative.nativePollSnapshot(xrSessionHandle, buttons, axes, handPoses, flags)
+                XrNative.nativeDrainXrKeyboard()?.let { typed ->
+                    if (typed.contains(KEYBOARD_CLOSED)) {
+                        xrKeyboardOpen = false
+                        Timber.i("Immersive: XR keyboard closed")
+                    }
+                    runOnUiThread { typeIntoHosted(client, typed) }
+                }
+                val sticksMask = (1 shl XrGamepadBridge.BUTTON_L3) or (1 shl XrGamepadBridge.BUTTON_R3)
+                val bothSticks = (buttons[0] and sticksMask) == sticksMask
+                if (bothSticks && !xrBothSticksHeld) runOnUiThread { if (xrKeyboardOpen) hideXrKeyboard() else showXrKeyboard() }
+                xrBothSticksHeld = bothSticks
+                // The launch panel takes the rays and A/B while it is open (xr_launch_panel.cpp).
+                val panelOpen = launchPanel?.isOpen == true
+                // The open keyboard takes A/B, the sticks and a ray on it; a ray off it still points
+                // at the page, so the page's keyboard icon and its other text fields stay in reach.
+                val keyboardPointed = xrKeyboardOpen && pointerGrabHand == null && XrNative.nativeXrKeyboardPointed()
+                if (keyboardPointed && !hostedRayOnKeyboard) releasePointerTouches()
+                hostedRayOnKeyboard = keyboardPointed
+                if (!panelOpen && keyboardPointed) {
+                    // Coming off the keyboard with the trigger or grip held is no fresh press on the page.
+                    lastLeftActionPressed = axes[4] > POINTER_GRAB_RELEASE_THRESHOLD
+                    lastRightActionPressed = axes[5] > POINTER_GRAB_RELEASE_THRESHOLD
+                    lastLeftGripPressed = (buttons[0] and (1 shl XrGamepadBridge.BUTTON_LB)) != 0
+                    lastRightGripPressed = (buttons[0] and (1 shl XrGamepadBridge.BUTTON_RB)) != 0
+                } else if (!panelOpen) {
+                    handlePointerMode(buttons[0], axes, handPoses, flags[0])
+                }
+                if (!xrKeyboardOpen && !panelOpen) {
+                    for ((button, key) in keys) {
+                        val mask = 1 shl button
+                        if ((buttons[0] xor lastButtons) and mask != 0) client.key(key, buttons[0] and mask != 0)
+                    }
+                    val now = android.os.SystemClock.uptimeMillis()
+                    val (x, y) = axes[2] to axes[3]
+                    val horizontal = kotlin.math.abs(x) > kotlin.math.abs(y)
+                    val deflection = if (horizontal) x else y
+                    val magnitude = kotlin.math.abs(deflection)
+                    if (magnitude > HOSTED_SCROLL_DEADZONE && now >= nextScrollAt) {
+                        client.scroll(if (deflection > 0) 1 else -1, horizontal)
+                        // Faster at full deflection, as a wheel spun harder.
+                        val strength = ((magnitude - HOSTED_SCROLL_DEADZONE) / (1f - HOSTED_SCROLL_DEADZONE)).coerceIn(0f, 1f)
+                        nextScrollAt = now + (HOSTED_SCROLL_MAX_INTERVAL_MS -
+                            (HOSTED_SCROLL_MAX_INTERVAL_MS - HOSTED_SCROLL_MIN_INTERVAL_MS) * strength).toLong()
+                    }
+                    if (magnitude <= HOSTED_SCROLL_DEADZONE) nextScrollAt = 0L
+                }
+                lastButtons = buttons[0]
+                if (menuChord && !panelOpen) runOnUiThread { client.toggleMenu() }
+                try {
+                    Thread.sleep(POLL_INTERVAL_MS)
+                } catch (e: InterruptedException) {
+                    break
+                }
+            }
+        }
+    }
+
+    /** XR keyboard text into the hosted client, Backspace and Enter included (see [XrHostedClient.type]). UI thread. */
+    private fun typeIntoHosted(client: XrHostedClient, typed: String) {
+        val text = typed.filter { it != KEYBOARD_CLOSED }
+        if (text.isNotEmpty()) client.type(text)
+    }
+
     private fun startControllerPollingLoop() {
         pollingActive.set(true)
         pollingThread = thread(name = "XrGamepadPoll") {
@@ -912,12 +1249,13 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                     if (flags[1]) {
                         xrPointerModeActive = !xrPointerModeActive
                         Timber.i("Immersive: XR pointer mode %s", if (xrPointerModeActive) "enabled" else "disabled")
-                        lastLeftActionPressed = (axes[4] > POINTER_GRAB_PRESS_THRESHOLD) ||
-                            ((buttons[0] and (1 shl XrGamepadBridge.BUTTON_LB)) != 0)
-                        lastRightActionPressed = (axes[5] > POINTER_GRAB_PRESS_THRESHOLD) ||
-                            ((buttons[0] and (1 shl XrGamepadBridge.BUTTON_RB)) != 0)
+                        lastLeftActionPressed = axes[4] > POINTER_GRAB_PRESS_THRESHOLD
+                        lastRightActionPressed = axes[5] > POINTER_GRAB_PRESS_THRESHOLD
+                        lastLeftGripPressed = (buttons[0] and (1 shl XrGamepadBridge.BUTTON_LB)) != 0
+                        lastRightGripPressed = (buttons[0] and (1 shl XrGamepadBridge.BUTTON_RB)) != 0
                         if (!xrPointerModeActive) {
                             pointerGrabHand = null
+                            pointerGrabByGrip = false
                             pointerCursorLeftValid = false
                             pointerCursorRightValid = false
                             releasePointerTouches()
@@ -990,18 +1328,23 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
     /**
      * Direct manipulation of the quad via a hand's aim-pose ray, active only while
-     * [xrPointerModeActive]. Grip or trigger both grab and click. Grab a corner (within
-     * [POINTER_CORNER_RADIUS_METERS]) to resize, the top/bottom edge (within
-     * [POINTER_BAR_RADIUS_METERS]) to reposition. Deltas are relative to grab start, not
-     * incremental, so repeated rounding cannot drift.
+     * [xrPointerModeActive] (always on a hosted page). The trigger clicks and drags the content;
+     * with the handles shown it also grabs a corner (within [POINTER_CORNER_RADIUS_METERS]) to
+     * resize or the top/bottom edge (within [POINTER_BAR_RADIUS_METERS]) to reposition. The grip
+     * grabs the screen anywhere on it and carries it while held. Deltas are relative to grab
+     * start, not incremental, so repeated rounding cannot drift.
      */
     private fun handlePointerMode(buttons: Int, axes: FloatArray, handPoses: FloatArray, posesValid: Boolean) {
         val leftGripPressed = (buttons and (1 shl XrGamepadBridge.BUTTON_LB)) != 0
         val rightGripPressed = (buttons and (1 shl XrGamepadBridge.BUTTON_RB)) != 0
-        val leftTriggerPressed = axes[4] > (if (lastLeftActionPressed) POINTER_GRAB_RELEASE_THRESHOLD else POINTER_GRAB_PRESS_THRESHOLD)
-        val rightTriggerPressed = axes[5] > (if (lastRightActionPressed) POINTER_GRAB_RELEASE_THRESHOLD else POINTER_GRAB_PRESS_THRESHOLD)
-        val leftActionPressed = leftGripPressed || leftTriggerPressed
-        val rightActionPressed = rightGripPressed || rightTriggerPressed
+        val leftGripPressedNow = leftGripPressed && !lastLeftGripPressed
+        val rightGripPressedNow = rightGripPressed && !lastRightGripPressed
+        val leftGripReleasedNow = !leftGripPressed && lastLeftGripPressed
+        val rightGripReleasedNow = !rightGripPressed && lastRightGripPressed
+        lastLeftGripPressed = leftGripPressed
+        lastRightGripPressed = rightGripPressed
+        val leftActionPressed = axes[4] > (if (lastLeftActionPressed) POINTER_GRAB_RELEASE_THRESHOLD else POINTER_GRAB_PRESS_THRESHOLD)
+        val rightActionPressed = axes[5] > (if (lastRightActionPressed) POINTER_GRAB_RELEASE_THRESHOLD else POINTER_GRAB_PRESS_THRESHOLD)
         val leftReleasedNow = !leftActionPressed && lastLeftActionPressed
         val rightReleasedNow = !rightActionPressed && lastRightActionPressed
         val leftPressedNow = leftActionPressed && !lastLeftActionPressed
@@ -1025,6 +1368,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             pointerCursorRightValid = false
             if (leftReleasedNow) dispatchPointerTouch(0, android.view.MotionEvent.ACTION_UP, null)
             if (rightReleasedNow) dispatchPointerTouch(1, android.view.MotionEvent.ACTION_UP, null)
+            if (pointerGrabByGrip && (leftGripReleasedNow || rightGripReleasedNow)) endPointerGrab()
             return
         }
 
@@ -1041,8 +1385,10 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             pointerCursorRightY = rightHit[1]
         }
 
-        handHandAction(0, leftPressedNow, leftReleasedNow, leftActionPressed, leftHit, handPoses)
-        handHandAction(1, rightPressedNow, rightReleasedNow, rightActionPressed, rightHit, handPoses)
+        handHandAction(0, leftPressedNow, leftReleasedNow, leftActionPressed, leftGripPressedNow, leftGripReleasedNow,
+            leftHit, handPoses)
+        handHandAction(1, rightPressedNow, rightReleasedNow, rightActionPressed, rightGripPressedNow, rightGripReleasedNow,
+            rightHit, handPoses)
     }
 
     /** One hand's share of handlePointerMode — a fresh press either starts a grab (if aimed at a
@@ -1055,18 +1401,17 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         pressedNow: Boolean,
         releasedNow: Boolean,
         held: Boolean,
+        gripPressedNow: Boolean,
+        gripReleasedNow: Boolean,
         hit: FloatArray?,
         handPoses: FloatArray,
     ) {
         if (pointerGrabHand == hand) {
-            if (releasedNow) {
-                pointerGrabHand = null
-                currentAppId?.let { persistImmersiveSettings(it) }
-            } else {
-                updateActiveGrab(handPoses)
-            }
+            if (if (pointerGrabByGrip) gripReleasedNow else releasedNow) endPointerGrab() else updateActiveGrab(handPoses)
             return
         }
+        // The grip carries the screen; a trigger press already under way keeps its drag.
+        if (gripPressedNow && pointerGrabHand == null && !held && tryStartGripGrab(hand, hit, handPoses)) return
         when {
             pressedNow -> {
                 pointerHoverHand = hand
@@ -1166,6 +1511,15 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         val localX = hit[0]
         val localY = hit[1]
 
+        hosted?.let { client ->
+            runOnUiThread {
+                val uiView = overlayRoot ?: return@runOnUiThread
+                if (uiView.width <= 0 || uiView.height <= 0) return@runOnUiThread
+                val (px, py) = toPixel(localX, localY, halfWidth, halfHeight, uiView.width, uiView.height)
+                if (px in 0f..uiView.width.toFloat() && py in 0f..uiView.height.toFloat()) client.hover(px, py)
+            }
+            return
+        }
         runOnUiThread {
             val touchpad = PluviaApp.touchpadView ?: return@runOnUiThread
             val uiView = overlayRoot ?: findViewById<android.view.View>(android.R.id.content)
@@ -1402,8 +1756,24 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             return false
         }
 
+        beginPointerGrab(hand, hit, handPoses, resize = nearCorner, byGrip = false)
+        return true
+    }
+
+    /** The grip on the screen (or just past its edge) grabs it to move it, wherever it points. */
+    private fun tryStartGripGrab(hand: Int, hit: FloatArray?, handPoses: FloatArray): Boolean {
+        if (hit == null) return false
+        val halfWidth = (ImmersiveControls.BASE_WIDTH_METERS * quadScale) / 2f + POINTER_GRIP_MARGIN_METERS
+        val halfHeight = (ImmersiveControls.BASE_HEIGHT_METERS * quadScale) / 2f + POINTER_GRIP_MARGIN_METERS
+        if (kotlin.math.abs(hit[0]) > halfWidth || kotlin.math.abs(hit[1]) > halfHeight) return false
+        beginPointerGrab(hand, hit, handPoses, resize = false, byGrip = true)
+        return true
+    }
+
+    private fun beginPointerGrab(hand: Int, hit: FloatArray, handPoses: FloatArray, resize: Boolean, byGrip: Boolean) {
         pointerGrabHand = hand
-        pointerGrabIsResize = nearCorner
+        pointerGrabIsResize = resize
+        pointerGrabByGrip = byGrip
         pointerGrabStartHandPos[0] = hit[0]
         pointerGrabStartHandPos[1] = hit[1]
         pointerGrabStartHandPos[2] = handPoses[hand * 6 + 2]
@@ -1411,8 +1781,13 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         pointerGrabStartHorizontal = quadHorizontal
         pointerGrabStartVertical = quadVertical
         pointerGrabStartScale = quadScale
-        Timber.i("Immersive: pointer grab started hand=%d resize=%b", hand, nearCorner)
-        return true
+        Timber.i("Immersive: pointer grab started hand=%d resize=%b grip=%b", hand, resize, byGrip)
+    }
+
+    private fun endPointerGrab() {
+        pointerGrabHand = null
+        pointerGrabByGrip = false
+        currentAppId?.let { persistImmersiveSettings(it) } ?: hosted?.let { persistHostedSettings(it) }
     }
 
     private fun updateActiveGrab(handPoses: FloatArray) {
@@ -1597,7 +1972,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
      * loop rather than once at session start, since the game's XServerView/renderer isn't created
      * yet at that point for a typical launch. */
     private fun setupDirectRenderBridgeIfSupported() {
-        val actualRenderer = PluviaApp.xServerView?.renderer
+        val actualRenderer = frameView?.renderer
         val glRenderer = actualRenderer as? GLRenderer
 
         if (glRenderer != null && glRenderer.isEffectsRequireCompositor()) {
@@ -1688,13 +2063,13 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
         if (bridge != null) {
             directGLBridge = null
             (renderer as? GLRenderer)?.setXrFrameBridge(null)
-            PluviaApp.xServerView?.queueEvent { bridge.release() }
+            frameView?.queueEvent { bridge.release() }
         }
         directRenderActive = false
     }
 
     private fun applyFlatPresentationGate(enabled: Boolean) {
-        val xServerView = PluviaApp.xServerView
+        val xServerView = frameView
         val renderer = xServerView?.renderer
         xServerView?.getxServer()?.setFlatPresentationEnabled(enabled)
         (renderer as? GLRenderer)?.setFlatPresentationEnabled(enabled)
@@ -1724,14 +2099,14 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
 
         setupDirectRenderBridgeIfSupported()
 
-        val surfaceView = PluviaApp.xServerView as? SurfaceView
+        val surfaceView = frameView as? SurfaceView
         val width = surfaceView?.width ?: 0
         val height = surfaceView?.height ?: 0
 
         val glBridge = directGLBridge
         if (glBridge != null) {
             if (width > 0 && height > 0) {
-                PluviaApp.xServerView?.queueEvent { glBridge.ensureAllocated(width, height) }
+                frameView?.queueEvent { glBridge.ensureAllocated(width, height) }
             }
             if (directRenderActive) {
                 handler.postDelayed({ scheduleNextCapture() }, CAPTURE_RETRY_DELAY_MS)
@@ -1856,7 +2231,12 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
                 return@runOnUiThread
             }
 
-            val surfaceView = PluviaApp.xServerView as? SurfaceView
+            if (hosted != null && !hostedOverlayChanged(width, height)) {
+                scheduleNextOverlayRefresh()
+                return@runOnUiThread
+            }
+
+            val surfaceView = frameView as? SurfaceView
             val previousAlpha = surfaceView?.alpha ?: 1f
 
             try {
@@ -1896,6 +2276,23 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             }
             scheduleNextOverlayRefresh()
         }
+    }
+
+    /** Whether the hosted page or a cursor (to [HOSTED_CURSOR_STEP_PX]) changed since the last drawing. UI thread. */
+    private fun hostedOverlayChanged(width: Int, height: Int): Boolean {
+        val halfWidth = (ImmersiveControls.BASE_WIDTH_METERS * quadScale) / 2f
+        val halfHeight = (ImmersiveControls.BASE_HEIGHT_METERS * quadScale) / 2f
+        fun cell(valid: Boolean, x: Float, y: Float): Long {
+            if (!valid || halfWidth <= 0f) return 0xFFFFL
+            val (px, py) = toPixel(x, y, halfWidth, halfHeight, width, height)
+            return (((px / HOSTED_CURSOR_STEP_PX).toLong() and 0xFFF) shl 12) or ((py / HOSTED_CURSOR_STEP_PX).toLong() and 0xFFF)
+        }
+        val key = (cell(pointerCursorLeftValid, pointerCursorLeftX, pointerCursorLeftY) shl 24) or
+            cell(pointerCursorRightValid, pointerCursorRightX, pointerCursorRightY) xor
+            (if (pointerGrabHand != null) 1L shl 62 else 0L)
+        val changed = hosted?.consumeContentChanged() == true || key != hostedCursorKey
+        hostedCursorKey = key
+        return changed
     }
 
     /**
@@ -1938,6 +2335,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
      * that drives the player-1 pad (see [XrGamepadBridge]).
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        hosted?.let { return it.dispatchKey(event) || super.dispatchKeyEvent(event) }
         val gamepad = physicalGamepad(event.device) ?: return super.dispatchKeyEvent(event)
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_THUMBL || event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_THUMBR) {
             val down = event.action == android.view.KeyEvent.ACTION_DOWN
@@ -2017,6 +2415,7 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
     }
 
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
+        if (hosted != null) return super.dispatchGenericMotionEvent(ev)
         val gamepad = physicalGamepad(ev.device) ?: return super.dispatchGenericMotionEvent(ev)
         if (xrKeyboardOpen) {
             keyboardMotion(ev)
@@ -2062,7 +2461,9 @@ class ImmersiveXrActivity : androidx.activity.ComponentActivity() {
             XrNative.nativeRequestStop(xrSessionHandle)
             XrNative.nativeJoinAndDestroy(xrSessionHandle)
             xrSessionHandle = 0L
+            liveSessions.decrementAndGet()
         }
+        if (hostedSessionOwner?.get() === this) hostedSessionOwner = null
     }
 }
 

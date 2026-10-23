@@ -66,6 +66,98 @@ object XrGameOfficialSteam {
     fun requireLaunchOwner(appId: Int) {
         check(!active || isOfficialGame(appId)) { "Launch this game from Official Steam, or switch to Custom Steam on the launch page." }
     }
+
+    /**
+     * How the home page's Steam entry shows Steam on a headset: as a 2D window or on the XR big
+     * screen. Its ordinary games follow it; there is no per-game display choice in Official Steam.
+     */
+    enum class Display(val key: String) { FLAT("2d"), XR("xr") }
+    var display: Display
+        get() = if (!available) Display.FLAT
+            else Display.entries.firstOrNull { it.key == preferences().getString("display", null) } ?: Display.FLAT
+        set(value) { if (available) preferences().edit().putString("display", value.key).apply() }
+
+    /** The display mode of an official launch: VR games always in a VR session, others as the entry. */
+    fun launchMode(vrGame: Boolean, headset: Boolean, entry: Display = display): XrGameLaunchMode.Mode = XrGameLaunchMode.fallback(
+        if (vrGame || headset && entry == Display.XR) XrGameLaunchMode.Mode.XR else XrGameLaunchMode.Mode.FLAT,
+        vrGame,
+        headset,
+    )
+
+    /**
+     * The XR big screen's size, distance and curve, shared by Steam's page and the ordinary games
+     * it starts: the home page, the launch panel and resizing in either session all change it.
+     * Resolution is not shared: Steam's page is light and games are heavy, so each keeps its own.
+     */
+    data class XrScreen(val scale: Float, val distance: Float, val curved: Boolean)
+
+    /** Steam's XR page settings; [xrScreen] lives under the keys that page reads. */
+    const val XR_SETTINGS = "steam-xr"
+    private fun xrPreferences() = appContext.getSharedPreferences(XR_SETTINGS, Context.MODE_PRIVATE)
+    private const val SCALE = app.gamenative.ui.screen.xr.SbsTheaterSettings.SCALE
+    private const val DISTANCE = app.gamenative.ui.screen.xr.SbsTheaterSettings.DISTANCE
+    private const val CURVED = app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_CURVED_SCREEN
+    private const val PASSTHROUGH = app.gamenative.ui.screen.xr.ImmersiveXrActivity.EXTRA_PASSTHROUGH_ENABLED
+
+    var xrScreen: XrScreen
+        get() = xrPreferences().let {
+            val preset = app.gamenative.ui.screen.xr.XrScreenPresets.DEFAULT
+            XrScreen(it.getFloat(SCALE, preset.scale), it.getFloat(DISTANCE, preset.distanceMeters), it.getBoolean(CURVED, false))
+        }
+        set(value) {
+            xrPreferences().edit().putFloat(SCALE, value.scale).putFloat(DISTANCE, value.distance)
+                .putBoolean(CURVED, value.curved).apply()
+        }
+
+    /** Passthrough (VST) behind Steam's own big screen, as its page loads it when its session starts. */
+    var xrPassthrough: Boolean
+        get() = xrPreferences().getBoolean(PASSTHROUGH, false)
+        set(value) {
+            xrPreferences().edit().putBoolean(PASSTHROUGH, value).apply()
+        }
+
+    /**
+     * Writes the display mode of an official launch into [appId]'s container before the launch
+     * panel or the game reads it, and for an ordinary game on the XR entry the shared [xrScreen].
+     * A game counts as VR when Steam marks it VR-only or its container already runs it in VR. IO thread.
+     */
+    fun applyDisplay(context: Context, appId: String) {
+        val headset = app.gamenative.MainActivity.isHeadset(context)
+        val data = app.gamenative.utils.ContainerUtils.toContainerData(
+            app.gamenative.utils.ContainerUtils.getOrCreateContainer(context, appId))
+        val gameId = app.gamenative.utils.ContainerUtils.extractGameIdFromContainerId(appId)
+        val vrGame = data.windowsVrEnabled || onlyVr(gameId)
+        val mode = launchMode(vrGame, headset)
+        var next = XrGameLaunchMode.apply(data, mode, vrGame)
+        val screen = xrScreen.takeIf { mode == XrGameLaunchMode.Mode.XR && !vrGame }
+        if (screen != null) next = next.copy(
+            xrScreenPreset = app.gamenative.ui.screen.xr.XrScreenPresets.match(screen.scale, screen.distance)?.key ?: "",
+            xrCurvedScreen = screen.curved,
+        )
+        if (next != data) app.gamenative.utils.ContainerUtils.applyToContainer(context, appId, next)
+        // A screen resized by hand matches no preset, which the container data cannot carry.
+        if (screen != null) app.gamenative.utils.ContainerUtils.getContainer(context, appId).run {
+            if (getExtra(SCALE, "") != screen.scale.toString() || getExtra(DISTANCE, "") != screen.distance.toString()) {
+                putExtra(SCALE, screen.scale.toString())
+                putExtra(DISTANCE, screen.distance.toString())
+                saveData()
+            }
+        }
+        timber.log.Timber.i("Official launch of %s: %s (vr=%b, entry=%s)", appId, mode.key, vrGame, display.key)
+    }
+
+    /** Whether [appId] (a container id) is the official game shown on the XR entry's big screen. */
+    fun sharesXrScreen(appId: String): Boolean = display == Display.XR &&
+        isOfficialGame(app.gamenative.utils.ContainerUtils.extractGameIdFromContainerId(appId))
+
+    /** The page an official game returns to: the Steam window of the entry's display. */
+    fun homeActivity(headset: Boolean): String =
+        if (headset && display == Display.XR) "app.gamenative.xrgame.steam.SteamXrActivity"
+        else "app.gamenative.xrgame.steam.LinuxSteamActivity"
+
+    /** Whether Steam marks [appId] as playable only in VR (appinfo `common/onlyvrsupport`). */
+    fun onlyVr(appId: Int): Boolean = available && runCatching { library.onlyVr(appId) }.getOrDefault(false)
+
     interface Library {
         fun accountId64(): Long?
         fun cachedApp(appId: Int): app.gamenative.data.SteamApp?
@@ -74,6 +166,7 @@ object XrGameOfficialSteam {
         fun directory(appId: Int): String?
         fun customInstallChanged(appId: Int)
         fun customInstallRemoved(appId: Int)
+        fun onlyVr(appId: Int): Boolean
     }
     interface Launcher {
         fun prepare(context: Context, container: Container, game: File, drive: Char, appId: Int,

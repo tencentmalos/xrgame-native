@@ -21,6 +21,7 @@
 #include "xr_capture.h"
 #include "xr_perf_hud.h"
 #include "xr_keyboard.h"
+#include "xr_launch_panel.h"
 #include "xr_windows_projection.h"
 #include "xr_windows_transport.h"
 
@@ -217,6 +218,8 @@ private:
                        const XrCompositionLayerQuad *screen = nullptr, float screenRadius = 0.0f);
     // The XR keyboard while Kotlin requests it; under `screen` on the 2D big screen.
     bool submitKeyboard(XrCompositionLayerQuad *quad, XrTime displayTime, const XrCompositionLayerQuad *screen);
+    // A game's launch panel over the 2D big screen while Kotlin shows one.
+    bool submitLaunchPanel(XrCompositionLayerQuad *quad, const XrCompositionLayerQuad &screen);
     // The projection presenter of the active backend.
     bool renderWindowsProjection(XrCompositionLayerProjection *layer);
     bool renderQuadImage(uint32_t imageIndex);
@@ -258,6 +261,7 @@ private:
     std::unique_ptr<vulkan::Compositor> vulkan_;
     std::unique_ptr<PerfHud> perfHud_;
     std::unique_ptr<XrKeyboard> keyboard_;
+    std::unique_ptr<XrLaunchPanel> launchPanel_;
     // Stills and recordings for the scrcpy capture SDK (debug builds with the SDK only).
     std::unique_ptr<capture::XrCapture> capture_;
     uint32_t captureEyeWidth_ = 0;

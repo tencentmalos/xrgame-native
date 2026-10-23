@@ -43,6 +43,13 @@
             android:screenOrientation="landscape" android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.SteamPSP.Fullscreen"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <!-- Official Big Picture on the XR big screen (an immersive session, like the game page). -->
+        <activity android:name="app.gamenative.xrgame.steam.SteamXrActivity" android:exported="false"
+            android:screenOrientation="landscape" android:resizeableActivity="false"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation|uiMode|colorMode"
+            android:theme="@style/Theme.Pluvia">
+            <meta-data android:name="pvr.app.type" android:value="vr" />
+        </activity>
         <activity android:name="app.gamenative.xrgame.steam.OfficialSteamGameActivity" android:exported="false"
             android:launchMode="singleTop" android:screenOrientation="landscape"
             android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.Pluvia"

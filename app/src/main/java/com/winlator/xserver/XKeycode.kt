@@ -103,4 +103,7 @@ enum class XKeycode(val id: Byte) {
     KEY_INSERT(118),
     KEY_DEL(119),
     KEY_MAX(KEY_DEL.id),
+    // First of the spare keycodes (through Keyboard.LAST_UNICODE_KEYCODE) that typed text outside
+    // the US keys is remapped onto, one Unicode keysym each (Keyboard.unicodeKeycode).
+    KEY_UNICODE(120),
 }

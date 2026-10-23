@@ -19,6 +19,10 @@ add_library(xrimmersive SHARED
     xr_capture.cpp
     xr_perf_hud.cpp
     xr_keyboard.cpp
+    xr_launch_panel.cpp
+    xr_imgui_fonts.cpp
+    xr_imgui_style.cpp
+    xr_pinyin.cpp
     xr_frame_generation.cpp
     jni_bridge.cpp
     sbs_jni.cpp
@@ -58,6 +62,21 @@ target_link_libraries(xrimmersive PRIVATE
 if(TARGET spatial::foundation_capture)
     target_link_libraries(xrimmersive PRIVATE spatial::foundation_capture)
     target_compile_definitions(xrimmersive PRIVATE XRGAME_CAPTURE=1)
+endif()
+
+# Pinyin for the XR keyboard: AOSP PinyinIME's engine (libgooglepinyin, Apache-2.0) from
+# app/src/main/cpp/extras/pinyinime. Without it the keyboard stays Latin.
+set(XRGAME_PINYIN_DIR "${CMAKE_CURRENT_LIST_DIR}/../extras/pinyinime/jni" CACHE PATH "AOSP PinyinIME engine")
+if(EXISTS "${XRGAME_PINYIN_DIR}/share/pinyinime.cpp")
+    file(GLOB XRGAME_PINYIN_SOURCES "${XRGAME_PINYIN_DIR}/share/*.cpp")
+    add_library(xrgame_pinyin STATIC ${XRGAME_PINYIN_SOURCES})
+    target_include_directories(xrgame_pinyin PUBLIC "${XRGAME_PINYIN_DIR}/include")
+    # Upstream code from 2009; its warnings are not ours to fix here.
+    target_compile_options(xrgame_pinyin PRIVATE -w)
+    target_link_libraries(xrimmersive PRIVATE xrgame_pinyin)
+    target_compile_definitions(xrimmersive PRIVATE XRGAME_PINYIN=1)
+else()
+    message(WARNING "No PinyinIME engine at ${XRGAME_PINYIN_DIR}: the XR keyboard has no pinyin")
 endif()
 
 target_compile_definitions(xrimmersive PRIVATE

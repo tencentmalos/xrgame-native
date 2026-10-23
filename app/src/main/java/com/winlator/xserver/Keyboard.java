@@ -15,12 +15,21 @@ public class Keyboard {
     public static final short KEYS_COUNT = 248;
     public static final short MAX_KEYCODE = 255;
     public static final short MIN_KEYCODE = 8;
+    /** Last spare keycode for typed text (from XKeycode.KEY_UNICODE); GetKeyboardMapping answers keycodes 8-131 only. */
+    public static final short LAST_UNICODE_KEYCODE = 131;
     public final int[] keysyms = new int[KEYS_COUNT];
     private final Bitmask modifiersMask = new Bitmask();
     private final XKeycode[] keycodeMap = createKeycodeMap();
     private final ArraySet<Byte> pressedKeys = new ArraySet<>();
     private final ArrayList<OnKeyboardListener> onKeyboardListeners = new ArrayList<>();
     private final XServer xServer;
+    // The spare keycodes for typed text, least recently used first.
+    private final ArrayList<Byte> unicodeKeycodes = new ArrayList<>();
+    {
+        for (int keycode = XKeycode.KEY_UNICODE.getId(); keycode <= LAST_UNICODE_KEYCODE; keycode++) {
+            unicodeKeycodes.add((byte)keycode);
+        }
+    }
 
     public interface OnKeyboardListener {
         void onKeyPress(byte keycode, int keysym);
@@ -39,14 +48,34 @@ public class Keyboard {
     public ArraySet<Byte> getPressedKeys() { return pressedKeys; }
 
     public void setKeysyms(byte keycode, int minKeysym, int majKeysym) {
-        int index = keycode - 8;
+        // Keycodes are unsigned: the spare ones go past 127.
+        int index = (keycode & 0xff) - MIN_KEYCODE;
         keysyms[index*KEYSYMS_PER_KEYCODE+0] = minKeysym;
         keysyms[index*KEYSYMS_PER_KEYCODE+1] = majKeysym;
     }
 
     public boolean hasKeysym(byte keycode, int keysym) {
-        int index = keycode - 8;
+        int index = (keycode & 0xff) - MIN_KEYCODE;
         return keysyms[index*KEYSYMS_PER_KEYCODE+0] == keysym || keysyms[index*KEYSYMS_PER_KEYCODE+1] == keysym;
+    }
+
+    /**
+     * The spare keycode to type [keysym] on: the one already mapped to it, else the least recently
+     * used one, which the key press remaps (InputDeviceManager.onKeyPress). Wine turns the key into
+     * its character only when the window translates the message, by the map at that time, so a
+     * keycode takes a new character as late as possible: 12 distinct new characters can wait.
+     */
+    public byte unicodeKeycode(int keysym) {
+        int pick = 0;
+        for (int i = 0; i < unicodeKeycodes.size(); i++) {
+            if (hasKeysym(unicodeKeycodes.get(i), keysym)) {
+                pick = i;
+                break;
+            }
+        }
+        byte keycode = unicodeKeycodes.remove(pick);
+        unicodeKeycodes.add(keycode);
+        return keycode;
     }
 
     public void setKeyPress(byte keycode, int keysym) {

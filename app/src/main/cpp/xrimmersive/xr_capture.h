@@ -53,8 +53,9 @@ bool StillTarget(std::string *token, std::string *path);
 void StillDone(const std::string &token, uint32_t width, uint32_t height, const std::string &error);
 }  // namespace panel
 
-// The images a submitted layer can show (Foundation capture::Source).
-enum class Source : uint32_t { Screen = 0, Projection = 1, Hud = 2, Keyboard = 3 };
+// The images a submitted layer can show (Foundation capture::Source). The big screen session
+// renders no environment scene, so the launch panel takes Foundation's Environment slot.
+enum class Source : uint32_t { Screen = 0, Projection = 1, Hud = 2, Keyboard = 3, LaunchPanel = 4 };
 
 // The immersive session as a producer (Foundation XrLayerCapture.h for the call order).
 class XrCapture {

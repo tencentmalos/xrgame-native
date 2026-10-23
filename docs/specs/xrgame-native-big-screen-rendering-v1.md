@@ -257,3 +257,175 @@ L1 的验收：A8xx 设备上，webhelper 跑在 Zink 上，没有 Xlib IO 错�
 - **与 DroidDeck 的关系。** 做法与 DroidDeck 的“Chromium → ANGLE → Zink → Turnip”一致，但不需要 gamescope、Xwayland、render node 伪装和 Wayland 合成器。呈现走的是游戏已在用的 X server、DRI3/Present 和宿主 AHB 链。
 - **未完成。** 鼠标指针在 GPU 模式下不可见；启动游戏、电源菜单退出、长时间运行、A7xx 上的 v5、Swan/XR 都未测。GPU 模式仍默认关闭。
 
+
+## 13. Steam XR 模式（2026-10-20，按用户要求）
+
+用户要求：进入 Steam 前在 Swan 上选择 2D 或 XR；Steam 客户端本身也能跑在 XR 大屏里；进 Steam 后不再为每个游戏保留 2D/SBS/XR 选项，普通游戏跟随入口；Alyx 这类 VR 专有游戏要能正确启动；SBS 暂时不需要；注意功耗。
+
+### 13.1 决定
+
+- **入口**：首页（LaunchActivity）顶部加「2D / XR」选择，只在头显上显示，存进官方模式的偏好（`XrGameOfficialSteam`）。它只决定官方 Steam；「其他」入口（Custom 库）保留原来的每游戏设置。
+- **游戏显示方式**（只在官方模式）：
+  - VR 专有游戏一律走 Windows VR（OpenXR 立体），与入口无关。判定依据是官方客户端 `appcache/appinfo.vdf` 中该应用的 `common/onlyvrsupport = 1`（Alyx 546560、The Lab 450390 为 1；Hades II、麻将没有这个键），容器里已标为 VR 的游戏也算。
+  - 普通游戏：XR 入口走 2D 大屏（XR），2D 入口走 2D。
+  - 启动面板隐藏「显示模式」「游戏类型」两行，改为显示最终方式；头显上不再选到 SBS。非头显设备上 VR 游戏仍按原规则回退 SBS。
+- **Steam 客户端进 XR**：落实 §6 的 X1，但先不做 X3（同一会话切换来源）。
+  - `ImmersiveXrActivity` 改为可继承，加「托管客户端」接口（画面来源、输入、键盘文本、生命周期）；picoXr 新增 `SteamXrActivity` 子类，托管客户端 X server 的渲染视图、`SteamImeSession` 和启动页。Wine 游戏路径不变。
+  - 输入：射线是鼠标（手写笔语义，悬停移动光标），右摇杆滚轮，A/B 对应 Enter/Esc（与 `LinuxSteamActivity` 一致），双摇杆按下开关 XR 键盘，文本经 X 键盘送进客户端。
+  - 从 Steam 启动游戏：`SteamXrActivity` 停止时释放自己的 XR 会话，游戏用自己的 `ImmersiveXrActivity` 会话；游戏退出后回到 `SteamXrActivity`，重新建会话。退出游戏后的返回目标按入口选择（2D 回 `LinuxSteamActivity`）。
+- **功耗**：Steam 会话请求 72 Hz、不超分、不开注视点；游戏运行期间 Steam 会话不存在；叠加层（光标、菜单）只在光标移动或界面重绘时重画，静止时按空闲间隔检查。
+
+### 13.2 XR 大屏对 Steam 还缺的（实施前清单）
+
+| 项 | 现状 | 处理 |
+|---|---|---|
+| 画面来源 | 只能取 `PluviaApp.xServerView`（Wine） | 托管客户端提供渲染视图，GL/Vulkan 两种直通桥照用 |
+| 尺寸/刷新率/合成设置 | 取自 Wine 容器 | Steam 用客户端屏幕尺寸、72 Hz、Vulkan 合成、无超分 |
+| 位置/缩放/曲面/透视 | 存在游戏容器 | 单独存一份 Steam 的设置 |
+| 指针 | 触摸手势（点按、拖动滚动、长按） | 手写笔直接映射鼠标，悬停移动，右摇杆滚动 |
+| 手柄按钮 | 进 Wine 虚拟手柄 | 映射为 Big Picture 导航键 |
+| XR 键盘 | 文本进 Wine X server | 文本进客户端 X server |
+| 快捷菜单 | 由 `XServerScreen` 提供 | 长按 Start 打开 Steam 自己的小菜单：切到 2D、键盘、重置位置、透视、返回首页 |
+| 游戏交接 | `LinuxSteamActivity` 在前台时处理 | `SteamXrActivity` 前台时同样处理；停止时释放会话 |
+| 退出/清理 | 结束时 `shutdownEnvironment()`、`exitSteamApp` | Steam 模式不碰 Wine 环境，不关官方 Steam 会话 |
+| 截取 | 已支持 `xr`/`canvas` | 照用，作为验证证据 |
+
+### 13.3 阶段
+
+- **S-1**：入口选择、游戏方式跟随入口、VR 专有游戏识别、启动面板隐藏两行。
+- **S-2**：`SteamXrActivity` 显示客户端、输入、键盘、菜单、功耗措施。
+- **S-3**：游戏交接与返回；Swan 验证 2D/XR 两个入口各一款普通游戏和 Alyx。
+
+### 13.4 实施（2026-10-20，kb8，未上机验证）
+
+- S-1：
+  - `XrGameOfficialSteam` 增加 `display`（2D/XR）、`launchMode`、`applyDisplay`、`homeActivity` 和 `onlyVr`。
+  - picoXr 新增 `SteamAppInfo`，读 `appinfo.vdf` v28/v29，按文件修改时间缓存。
+  - `PluviaMain.launchHandedOverApp` 在显示面板前写入显示方式；启动面板加 `followsEntry` 参数，隐藏两行；退出游戏、取消面板时都按入口返回。
+  - 首页右上角加「Steam 显示方式：2D 窗口 / XR 大屏」，只在头显上显示；切换时关掉另一种显示方式的 Steam 页面。
+- S-2：
+  - main 新增 `XrHostedClient` 接口，`ImmersiveXrActivity` 改为 `open`，托管模式下：
+    - 画面来源换成托管客户端的渲染视图；
+    - 设置存在 `steam-xr` 偏好；
+    - 会话 72 Hz；
+    - 用单独的轮询线程，不需要 `WinHandler`；
+    - 不碰 Wine 环境；
+    - 叠加层只在客户端页面重绘或光标移动至少 2 像素时重画。
+  - picoXr 新增 `SteamXrActivity`、`SteamXrClient`，长按 Start 打开菜单：切到 2D、键盘、重置位置、调整大屏位置和大小、透视、返回首页、关闭。
+- S-3：
+  - `SteamXrActivity` 在 `onStop` 释放会话；回到前台时，如果进程里还有别的会话（游戏的，正在关闭），每 100 ms 检查一次，等它结束再建。
+  - 游戏页面结束（`onPause` 且正在结束）时立即释放会话，不等 `onDestroy`。
+- 首页面板（2026-10-20 用户反馈：进 XR 大屏后首页挡在前面）：Pico 把 `SteamXrActivity` 放进单独的任务，首页所在任务虽被标为不可见，它的 2D 面板仍留在前面。现在和游戏一样处理：`SteamXrActivity` 每次回到前台都把首页任务移到后面（`ImmersiveXrActivity.launcherActivity()`，游戏为 MainActivity，Steam XR 为 `LaunchActivity.current`），页面结束时再移回前面。菜单的「返回首页」「切到 2D」从首页自己的 Activity 启动目标页面，2D 的 Steam 页面落在首页任务里、在首页之上，首页移回前面时不会盖住它。「切到 2D」会把显示方式存成 2D，首页回到前台时重读显示方式（和尺寸、分辨率、透视一样），不再显示旧的选择。
+- 单元测试：`XrGameOfficialDisplayTest` 3 项、`SteamAppInfoTest` 3 项，加上原有的 `XrGameLaunchModeTest` 7 项，全部通过。包 kb8 `7db8ae88…`，审计 0 errors。
+
+### 13.5 大屏设置分工与游戏期间的 Steam 图层（2026-10-20，kb14，未上机验证）
+
+用户先问 2D 游戏能否与 Steam 共用一个 OpenXR 会话，评估后决定不共用：
+
+- **会话**：游戏用自己的会话和新图层呈现，与 Steam 的实现互不耦合。Pico 一次只允许一个会话，所以游戏会话起来前先结束 Steam 的会话（kb13）。
+- **游戏期间的 Steam**：Steam 的图层隐藏，渲染器也停下。`SteamXrActivity.onStop` 关掉 Steam X server 的平面呈现：客户端的 Present 直接回 SKIP 和 idle，不拷贝也不合成，但记下每个窗口最后一帧。回到前台时重新打开呈现，并按记下的帧补画，Steam 空闲时也不会黑屏。
+- **设置分工**（用户：Steam 开销小、游戏开销大，适用场景不同，但大屏尺寸可以共用）：
+  - **共用**：大屏尺寸（65/80/100/120″ 预设或手动调出的自定义尺寸）、距离和弧形，存在 `steam-xr` 偏好（`XrGameOfficialSteam.xrScreen`），四处都能改：
+    - 首页选 XR 时显示的选项行；
+    - 游戏启动面板的尺寸行（从 Steam XR 进入时注明"与 Steam 大屏共用"）；
+    - Steam 页面里拖动调整；
+    - 游戏会话里调整。
+  - 官方 XR 入口的普通游戏，在 `applyDisplay` 时把共用尺寸写进游戏容器。Steam 页面每次建会话前都重新读取共用尺寸。
+  - **分开**：分辨率。Steam 自己的分辨率在首页选；游戏分辨率仍是每个游戏自己的，在启动面板里选。可选 1280×720、1600×900、1920×1080，默认 1920×1080（2026-10-20 用户要求；没存过或存的值不在三档里时也用它）（kb35 曾改为按单眼尺寸折算，用户决定回到固定三档，见下方「首页两排选项」）。客户端 X server 运行期间尺寸固定：在首页进 XR 时，如果正在运行的客户端尺寸与所选不同，就先停掉再重启。托管页面发现客户端屏幕尺寸变了（客户端重启后），会按新尺寸重建会话。
+- Steam 菜单的「重置位置」只把大屏移回原位，不再把尺寸改回 80″。
+- **首页两排选项**（2026-10-20 用户要求）：显示方式仍在标题行；选 XR 时下面两排，标签同宽、左对齐。首页固定显示英文（`LaunchActivity.attachBaseContext` 套英文 locale，其他页面不变）。
+  - 每排左边是单选胶囊，右边缘是一个开关（文字加开关，整块是一个点按目标），和单选区分开、两个开关上下对齐。第一排：大屏尺寸（65/80/100/120″）和弧形。
+  - 第二排：Steam 分辨率，固定 1280×720、1600×900、1920×1080（默认 1920×1080），和透视（VST）。透视是 Steam 大屏自己的（`XrGameOfficialSteam.xrPassthrough`，Steam 页面会话开始时读同一个设置）；游戏的透视仍在各自的启动面板里。kb35 曾按单眼尺寸和屏幕折算（80″ 为 1280×720、1392×782、1824×1026、2240×1260），用户看过后决定回到固定三档。
+  - 说明文字一行的右边缘是状态层开关（2026-10-20 用户要求，默认可见），和上面两个开关排成一列。它就是游戏启动面板里的「状态层（所有游戏）」：同一个 `PrefManager.xrgameStatusLayer`，Steam 大屏和所有游戏的 XR 会话共用，会话里每次刷新叠加层时读取，所以在首页改了，回到 Steam XR 就生效。
+- 单元测试：`SteamClientDisplayTest` 新增 XR 分辨率一项，连同 `SteamAppInfoTest`、`XrGameOfficialDisplayTest`、`XrGameLaunchModeTest` 共 16 项，全部通过。包 kb14 `be773606…`，审计 0 errors，未装机。
+
+### 13.6 启动面板画在大屏上；XR 键盘的拼音输入（2026-10-20，kb15，未上机验证）
+
+用户要求：
+
+- 大屏模式下，游戏的启动面板直接用 ImGui 图层、按大屏大小画在大屏位置，不再切回 Android 的 2D Activity；
+- XR 大屏支持输入法，参照 Foundation 的 ImGui 输入法（可以用独立图层）。
+
+调查结论：Foundation 只有文本编辑模型（`TextEditSession`）和输入框对话框（`drawImeDialog`），没有拼音引擎、候选栏，也没有把系统输入法接进 ImGui；它自己的规格也写明，Pico 没有 OpenXR 文本输入扩展，系统输入法窗口合成不进 XR 会话。用户选择移植 AOSP 拼音引擎。
+
+**启动面板**：
+
+- Steam XR 页面收到 Steam 交来的游戏后不再启动 `OfficialSteamGameActivity`，由 `ImmersiveXrActivity.launchHostedGame` 交给 `XrLaunchPanel`（Kotlin）。它在 IO 线程执行 `applyDisplay` 并读取容器，把面板交给原生图层显示。
+- 面板各行从 2D 面板里抽出来，成为共用的 `XrGameLaunchOptions`（行的标签、选项、选中项、说明、选择后的效果，以及保存）。2D 面板（Compose）和 XR 面板都只负责画这些行，逻辑只有一份。
+- 原生 `xr_launch_panel.cpp`：
+  - 自己的 ImGui 上下文，画布 1600×900；每帧取大屏 quad 的位姿和尺寸，提交顺序紧跟大屏，盖在它上面，状态层和键盘仍在最上面；
+  - 射线加扳机点选，右摇杆滚动，A 开始，B 取消；
+  - 模型由 Kotlin 以制表符分隔的文本传入，选择结果以事件行传回（`nativeSetLaunchPanel` / `nativeDrainLaunchPanel`）；
+  - 截图借用 Foundation capture 闲置的 Environment 槽位（大屏会话没有环境场景），所以 SDK 的 `xr` 截图能截到面板。
+  - 每行是自己的 ImGui ID 作用域（`PushID(section * 1000 + index)`）。2026-10-20 用户报射线指到选项时 ImGui 提示 ID 冲突：几行都有同样的选项（关/开），药丸按钮的 ID 只由序号和文字组成，不同行的同名选项 ID 相同；原来只有下拉框按行压了 ID。ImGui 只在指着的控件上检查重复，面板在发现时记一行 `ImGui ID conflict on the pointed item`（日志标签 `xrimmersive_launch`）。
+- 点开始后保存选项，然后像库里启动一样调用 `preLaunchApp`：
+  - 它的加载文字显示在面板上；
+  - 它弹出的消息在面板上显示，确定后取消这次启动（Steam 不再等待）；
+  - 只发了 Snackbar 的失败，在 1.5 s 内没有后续时显示通用失败提示；
+  - 成功后由页面自己的 `MainViewModel.launchApp` 拉起游戏的沉浸式页面，Steam 页面停止时面板随之关闭。
+- 面板打开期间，Steam 页面的轮询线程不把射线和 A/B 送给 Steam。
+
+**拼音输入**：
+
+- 引擎用 AOSP `platform/packages/inputmethods/PinyinIME` `49aebad1` 的 `jni/`（libgooglepinyin）和自带词库 `dict_pinyin.dat`（1 MB，Apache-2.0）。在 64 位上有两处要改：
+  - 词库里的计数是 `uint32`，原代码直接读进 `size_t` 成员，高 4 字节保留原值；
+  - `userdict.cpp` 包含平台才有的 `cutils/log.h`。
+  - 两处修改是本地克隆上的两个提交，要先 fork 到 tencentmalos 才能作为子仓库进来（`app/src/main/cpp/extras/pinyinime`）。在那之前，构建脚本从仓库外复制源码。
+- 词库打成资源 `assets/pinyin/dict_pinyin.dat`（APK 审计按 SHA-256 登记）。每次安装后由 `XrPinyinDictionary` 解包到 `files/pinyin/` 一次，用户词库也在那里，用来学习选过的词。
+- 候选栏画在 XR 键盘面板的顶部，和键盘同一个图层（截图槽位每种只有一个）：
+  - 第一行：中/EN 切换、组字框（组字时显示带下划线的拼音，否则显示已输入的文字）、关闭；
+  - 第二行：候选，翻页按钮 ◀ ▶；
+  - 字体改用系统的 Noto Sans CJK（mmap，ImGui 1.92 按需生成字形）。
+- 中文模式下：
+  - 小写字母进入组字；
+  - 空格选第一个候选（整句）；
+  - 回车把字母原样上屏；
+  - 退格先撤销上一次选词，再删字母；
+  - 逗号、句号、问号、叹号、冒号、分号换成全角标点。
+- 设备语言为中文时，键盘默认中文模式。
+- 送达 Steam：XR 键盘的文字、退格和回车都排进同一个 `SteamImeSession` 队列。ASCII 按按键输入；中文写进客户端剪贴板再按 Ctrl+V（与 2D 页面的输入法同一路径），先后顺序不会乱。
+- **中文送进游戏**（2026-10-20，在本会话里接着做）：
+  - X server 原来就有一条现成路径：按键前，如果键位上没有要发的 keysym，就先改映射、发 `MappingNotify`（Winlator 用它处理 Android 软键盘的非美式字符）。
+  - winex11 收到 `MappingNotify` 会重新读键盘映射，给任何有 keysym 的键位分配一个备用虚拟键码；`X11DRV_ToUnicodeEx` 把 `0x01000100`–`0x0100FFFF` 的 keysym 直接转成 Unicode 字符（proton-wine `dlls/winex11.drv/keyboard.c`）。窗口于是收到 `WM_KEYDOWN` 和 `WM_CHAR`。
+  - 因此 `IMEInputReceiver.typeCharacter` 遇到美式键位上没有的字符，改走 `typeUnicode`：keysym 为 `0x01000000 | 码点`（Latin-1 直接用码点），只支持基本平面。XR 键盘和 2D 输入法两条路都受益。
+  - 键位用留出的 120–131 号（`XKeycode.KEY_UNICODE` 到 `Keyboard.LAST_UNICODE_KEYCODE`），轮流使用（`Keyboard.unicodeKeycode`）：
+    - Wine 不是收到按键时定字符，而是窗口 `TranslateMessage` 时按**当时**的映射重查键位。kb22 只用 120 一个键位，「你好」两个字都被解成了「好」（见验证记录）。
+    - 已映射到这个字的键位直接复用（不再改映射、不发 `MappingNotify`），否则取最久没用的键位。所以最多 12 个不同的新字可以同时等待翻译；一次拼音上屏远少于这个数。
+    - winex11 按键位顺序给有 keysym 的键位分配备用虚拟键码，各不相同；键位一旦有了 keysym 就不再清空，分配结果稳定。
+  - 上限 131 号是因为 X server 的 `GetKeyboardMapping` 回复每个键位只写一个字、索引按键位算，实际只覆盖到 131 号键位（这是原有的问题，没改）。
+  - 走 `winhandler.exe` 不行：官方启动链里没有这个进程，它的 `KEYBOARD_EVENT` 也只带一个字节的虚拟键码。
+  - 测试入口：DebugBus `guest_exec <程序>`。它借用游戏的 `explorer.exe` 进程：环境取自它的 `/proc/<pid>/environ`（同一个前缀、wineserver 和 esync 设置），去掉只属于那个进程的 `WINESERVERSOCKET`、`WINEPRELOADRESERVE`、`WINELOADERNOEXEC`（带着它们 wine 直接退出 1）；命令为 `wine explorer /desktop=<游戏的桌面> <程序>`，因为新进程默认落在另一个桌面，要另起 explorer 而失败（`nodrv_CreateWindow`）。前置的 `名=值` 覆盖环境（比如 `WINEDEBUG=key`，即 `+key`；用来核对 Wine 收到的字符：Wine 自带字体没有汉字，notepad 里看不见）；输出写到 `files/guest-exec.log`（管道没人读，话多的程序会卡住），退出码记在 logcat（`DebugBus`，I 级）。
+- **界面样式**（用户要求参考 shadPS4，加图标、调样式）：shadPS4 没有图标字体，它合并 Noto Sans Symbols2 用 Unicode 符号当图标，用 ImDrawList 画手柄键位标签和按键形状；各面板自己设颜色。我们照这个做：
+  - 字体：文字用 PICOSansSC，后备合并 Android 的 `NotoSansSymbols-Regular-Subsetted.ttf`（TrueType，覆盖 ⌫ ⏎ ⇧ ⇪ ⌨ ✕ ✓ ▶ ◀ ⚙ ⚠ ▸ ▾ ␣ Ⓐ 等）。
+  - `xr_imgui_style.{h,cpp}`：
+    - 启动面板用 shadPS4 卡片对话框的配色（深灰卡片、蓝色渐变标题栏、白色高光线、灰色次要文字、蓝色悬停和选中）；
+    - 键盘用 shadPS4 输入法键盘的配色（底色 18、按键 35、功能键 60、回车特殊蓝 (30,90,170)、输入框 (22,37,60)）；
+    - 手柄键位画成彩色圆形字母标签（A 绿、B 红、X 蓝、Y 黄）；
+    - 焦点为淡白覆盖加 2 px 白色描边。
+  - 启动面板：
+    - 标题栏是"▶ 启动选项"、游戏名，显示方式放在右侧的胶囊里；
+    - 选项为胶囊形，选中项打勾、蓝底，行间有分隔线；
+    - 选项超过 3 个时用下拉框（用户要求，规则与 2D 面板相同）；
+    - 底栏的取消、开始按钮带 B/A 键位标签和 ✕/▶ 图标；
+    - 消息页带 ⚠ 图标；
+    - 出现时淡入。
+  - 键盘：
+    - 模式键为"⌨ 中/EN"；输入框带光标，组字时文字加下划线；
+    - 候选栏第一个为特殊蓝；
+    - 退格、回车、Shift、空格用 ⌫ ⏎ ⇧/⇪ ␣ 图标；
+    - 底部提示改为"键位标签 + 图标"，不依赖语言。
+- **键盘位置**（用户要求：放低、倾斜，往下看刚好看到，方便操作）：像桌上的键盘，放在视线前下方，面板朝眼睛后仰（上沿远离、法线指向眼睛），宽 0.62 m、视线方向 0.75 m 远（约 45° 宽），中心在平视下方 32°。打开时按头的朝向放一次，之后固定在房间里，不跟头走；关掉再开，或 recenter（LOCAL 空间变化，和状态层一样）时重新放。
+  - 2D 大屏时键盘跟着主面板，不跟头（用户要求）：打开时用眼睛相对大屏的位置算出键盘在大屏水平坐标系里的位置（水平居中在大屏正下方），之后每帧按大屏当前的位置和水平朝向摆放，转头不动，用侧握键挪大屏时一起走。大屏自己的俯仰不带进来。
+  - 2D 大屏时还要让大屏下沿留在键盘上方：按眼睛看大屏下沿的俯角，加上键盘半高的视角，再加 2°，取它和 32° 中较大的一个，最多 45°。80″ 预设（高约 1.0 m、1.5 m 远）中心与眼睛同高时，下沿在下方约 18°，算出来约 31°，键盘仍为 32°。
+  - 原来大屏时键盘竖直挂在大屏正下方、和大屏一样远（约 1.5 m），并跟着大屏移动；VR 时竖直放在头前 1.1 m、下方 0.32 m。
+- **用手柄挪大屏**（用户反馈 OpenXR 手柄拖不动 Steam 大屏）：原来只有在菜单里打开"缩放/移动控制点"后，抓四角（半径 6 cm）或上下边中间的小条（16×12 cm）才行，1.5 m 外很难点中。现在侧握键在大屏上任意位置（含边外 5 cm）按住就抓起，手移动、前后推拉都跟着走，松开保存（与原来的移动逻辑相同）。扳机只负责点击和拖内容，侧握键不再算点击。游戏大屏要在指针模式下（双击摇杆）才生效，Steam 大屏一直生效。控制点和抓角缩放仍在菜单开关后面。
+- **用扳机拖动 Steam 页面内容**（用户要求，与 2D Steam 页的修复相同）：Steam 大屏原来把射线当鼠标，扳机一按就按下左键，拖动时 Chromium 只会选中或拖动项目，不滚动。现在 2D 页的手势类提成共用的 `SteamTouchPointer`，射线的笔事件也走它：轻点是点击；拖动超过阈值（两倍 touch slop）后按起始方向发滚轮，内容跟着射线走：每格对应的拖动距离 = 屏幕高度 × 170/1080（1080p 下实测 Steam 的库和商店每格滚轮滚 170 像素；首页按行吸附），拖过半格就发，页面与射线的误差在半格以内；Steam 的平滑滚动保持开（`webhelper-instant-scroll` 文件可改为即时滚动，只作诊断）；按住不动 400 ms 才按下左键（滑块、拖放）。右摇杆滚动照旧。
+- **Steam 大屏上的键盘图标**（用户要求，与 2D Steam 页相同）：页面右边缘、30% 高度处有键盘图标，射线点它打开或关上 XR 键盘（`SteamXrActivity.toggleKeyboard`）。原来键盘开着时射线和扳机全交给键盘，页面收不到，图标只能开不能关；现在原生键盘每帧报告射线是否在它上面（`XrKeyboardPointed`），不在键盘上的射线照常交给页面（也能点 Steam 的其他输入框），A/B 和摇杆仍只给键盘。射线从页面移到键盘时先松开页面上的按下；从键盘移回页面时，还按着的扳机或侧握键不算新的按下。
+- 包：kb15 `25e67ad0…` 没打进词库（`assets.srcDir(任务)` 不会让 AGP 建立任务依赖），作废；kb16 `5dc7fd74…` 改用 variant API 的 `addGeneratedSourceDirectory`，词库在包里，审计按 SHA-256 核对通过。
+- 上机后补的三处修正（kb17、kb18）：
+  - 新流程的进程可能从没跑过 MainActivity，`ImmersiveXrActivity.onCreate` 补做 `ControllerManager.init` 和 `ContainerUtils.setContainerDefaults`；
+  - Android 12+ 的 Noto Sans CJK 是 CFF2 可变字体，stb_truetype 不支持，改为优先用 Pico 的 `PICOSansSC-Regular.ttf`（TrueType），并先检查字体表；这个字体没有 Ⓐ Ⓑ ◀ ▶，提示改用普通字符；
+  - 引擎的 `im_add_letter` 是空函数，改为每个字母对整段拼音调 `im_search`。
+- kb18 `8eadb026…` 在 Swan 上通过：大屏面板、开始、游戏出帧、退出回到 Steam XR（不黑屏）、面板取消、拼音"你好"上屏送进 Steam。射线交互和 Alyx 还没测，见[记录](../validation/swan-official-steam-20261019.md)。
+- kb25 `7b5ee3ed…` 在 Swan 上通过：XR 键盘的"你好"送进 Hades II 的 Wine（notepad 依次收到 `WM_CHAR` U+4F60、U+597D）；shadPS4 样式和下拉框见记录里的 kb20、kb21 截图。kb22 的单键位实现会把"你好"变成"好好"，kb23、kb24 的上限常量溢出，都已作废。
+- kb26 `6f83dabc…`：X server 的 `GraphicsContext` 不再持有创建时的 drawable。Mesa X11 WSI 每个交换链漏一个 GC，原来每个漏掉的 GC 把约 8 MB 窗口内容钉在 Java 堆里，Steam XR 开着游戏约 18 分钟就 OOM；修复后同样场景 15 分钟堆平稳。见记录。

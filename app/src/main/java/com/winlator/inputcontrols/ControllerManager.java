@@ -95,6 +95,11 @@ public class ControllerManager {
 
 
 
+    /** Whether {@link #init} ran in this process; pages other than MainActivity may come first. */
+    public boolean isInitialized() {
+        return inputManager != null;
+    }
+
     /**
      * Scans for all physically connected game controllers and updates the internal list.
      */

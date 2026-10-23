@@ -60,12 +60,30 @@ class IMEInputReceiver(
             xServer.injectKeyRelease(keyCode)
         }
 
-        /** Types [char] as the US key that produces it; false when none does. */
+        /**
+         * Types [char] as the US key that produces it, else as its Unicode keysym ([typeUnicode]);
+         * false for what neither carries (control characters, surrogate pairs).
+         */
         fun typeCharacter(xServer: XServer, char: Char): Boolean {
-            val keyDispatch = charToKeyDispatch(char) ?: return false
+            val keyDispatch = charToKeyDispatch(char) ?: return typeUnicode(xServer, char)
             val metaState = if (keyDispatch.requiresShift) KeyEvent.META_SHIFT_ON else 0
             xServer.keyboard.onVirtualKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, keyDispatch.keyCode, 0, metaState))
             xServer.keyboard.onVirtualKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_UP, keyDispatch.keyCode, 0, metaState))
+            return true
+        }
+
+        /**
+         * Types a character no US key has (Chinese, say) on a spare keycode remapped to its keysym:
+         * the X server sends MappingNotify first, Wine rereads the map and gives the key a spare
+         * virtual key, and winex11's ToUnicodeEx turns a Unicode keysym (0x01000100-0x0100FFFF)
+         * into the character, so the window gets WM_KEYDOWN and WM_CHAR. Basic plane only.
+         * Successive characters take different keycodes (Keyboard.unicodeKeycode).
+         */
+        fun typeUnicode(xServer: XServer, char: Char): Boolean {
+            if (char.code < 0xA0 || char.isSurrogate()) return false
+            // Latin-1 keysyms are the code points themselves; the rest are 0x01000000 + code point.
+            val keysym = if (char.code <= 0xFF) char.code else 0x01000000 or char.code
+            xServer.injectUnicodeKey(keysym)
             return true
         }
 

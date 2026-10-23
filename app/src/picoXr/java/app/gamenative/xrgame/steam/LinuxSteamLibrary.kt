@@ -182,6 +182,7 @@ interface SteamLibraryDatabaseEntryPoint { fun database(): PluviaDatabase }
 class LinuxSteamLibraryBridge(private val context: Context) : XrGameOfficialSteam.Library {
     private val db get() = dagger.hilt.android.EntryPointAccessors.fromApplication(context, SteamLibraryDatabaseEntryPoint::class.java).database()
     override fun accountId64(): Long? = SteamOfficialAccount.read(LinuxSteamRuntime(context).client)
+    override fun onlyVr(appId: Int): Boolean = SteamAppInfo.onlyVr(LinuxSteamRuntime(context).client, appId)
     override fun cachedApp(appId: Int) = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { db.steamAppDao().findApp(appId) }
     override fun cachedInstall(appId: Int) = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { db.appInfoDao().getInstalledApp(appId) }
     override fun customInstallRemoved(appId: Int) {

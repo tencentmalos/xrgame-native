@@ -52,6 +52,10 @@
     <string name="xrgame_launch_summary_xr_vr">XR · VR 头显</string>
     <string name="xrgame_launch_refresh">刷新率</string>
     <string name="xrgame_launch_custom">自定义</string>
+    <string name="xrgame_launch_xr_footer">射线指向选项按扳机选择 · 右摇杆滚动</string>
+    <string name="xrgame_launch_xr_starting">正在启动游戏…</string>
+    <string name="xrgame_launch_xr_failed">游戏没能启动</string>
+    <string name="xrgame_launch_screen_shared">与 Steam 大屏共用尺寸和弧形，分辨率是这个游戏自己的</string>
     <string name="xrgame_launch_off">关</string>
     <string name="xrgame_launch_on">开</string>
     <string name="xrgame_launch_resolution">游戏分辨率</string>
