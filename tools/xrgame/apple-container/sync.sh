@@ -21,7 +21,7 @@ rsync -a --delete --no-owner --no-group \
     --exclude=build/ --exclude=target/ --exclude=.gradle/ --exclude=.cxx/ --exclude=.kotlin/ \
     --exclude=.DS_Store --exclude=__pycache__/ --exclude=.cache/ \
     --exclude=/local.properties --exclude=/keystore --exclude=/app/keystores/ \
-    --exclude='/references/*/' --exclude='/foundation/references/' \
+    --exclude='/references/*/' --exclude='/foundation/reference/' --exclude='/foundation/references/' \
     /project/ "$repo/"
 for dependency in references/JavaSteam references/opencomposite references/Vulkan-Headers references/fmt; do
     [[ -f /project/$dependency/.git ]] || { echo "Missing pinned submodule: $dependency" >&2; exit 1; }
@@ -53,5 +53,6 @@ mkdir -p "$repo/build/apple-container-provenance"
 git -C /project rev-parse HEAD > "$repo/build/apple-container-provenance/host-head.txt"
 git -C /project status --short > "$repo/build/apple-container-provenance/host-status.txt"
 git -C /project submodule status > "$repo/build/apple-container-provenance/host-submodules.txt"
+git -C /project/foundation submodule status third_party/pinyinime >> "$repo/build/apple-container-provenance/host-submodules.txt"
 # Files copied from Mac may carry executable modes; all builds happen on Linux ext4.
 printf 'Snapshot ready: %s\n' "$repo"

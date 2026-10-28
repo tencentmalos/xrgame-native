@@ -43,7 +43,7 @@ checkout() {
 checkout proton-wine https://github.com/tencentmalos/proton-wine.git 5d0d333e7beef02fbb455cc3163b4e8e25615458
 checkout ntsync-android https://github.com/tencentmalos/ntsync-android.git 7ce6435e5979b1cb5341aa4b299f31e8937fe121
 checkout FEX https://github.com/tencentmalos/FEX.git 3f1f30a060b633980ed8e7674eb8d8997457edad
-checkout mesa-turnip https://github.com/tencentmalos/mesa-mirror.git d15b7c019c8daa17e80051258077d9b2d5146a2b
+checkout mesa-turnip https://github.com/tencentmalos/mesa-mirror.git 55186f1f0e739a507876bb3733cf00e1734c78f1
 checkout dxvk https://github.com/tencentmalos/dxvk.git a6764047e587178283fcde4073ae6e1410af594f
 checkout vkd3d-proton https://github.com/tencentmalos/vkd3d-proton.git 212991fc2c266bc0d59f4c4ce8f80f7126508d71
 git -C "$base/src/FEX" submodule update --init --depth 1 External/vixl External/fmt \

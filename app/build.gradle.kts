@@ -16,6 +16,13 @@ plugins {
     alias(libs.plugins.room)
 }
 
+// Packaging and runtime validation must use the same OpenComposite pin.
+val xrGameOpenCompositePin = groovy.json.JsonSlurper().parseText(
+    providers.fileContents(rootProject.layout.projectDirectory.file("tools/xrgame/opencomposite-pin.json")).asText.get(),
+) as Map<*, *>
+val xrGameOpenCompositeSha256 = xrGameOpenCompositePin["sha256"] as String
+check(xrGameOpenCompositeSha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid OpenComposite SHA-256 pin" }
+
 val keystorePropertiesFile = rootProject.file("app/keystores/keystore.properties")
 val keystoreProperties: Properties? = if (keystorePropertiesFile.exists()) {
     Properties().apply {
@@ -88,6 +95,7 @@ android {
         buildConfigField("boolean", "MODERN_XR", "false")
         // XRGame Native (picoXr) behavior switch; see app.gamenative.xrgame.
         buildConfigField("boolean", "XRGAME", "false")
+        buildConfigField("String", "XRGAME_OPENCOMPOSITE_SHA256", "\"$xrGameOpenCompositeSha256\"")
 
         versionCode = 23
         versionName = "1.2.1"

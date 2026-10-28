@@ -16,6 +16,14 @@ usage() {
 }
 case "$command" in setup|build|gradle|sync|shell|status|stop) ;; -h|--help) usage; exit 0 ;; *) usage >&2; exit 2 ;; esac
 [[ $(uname -s) == Darwin ]] || { echo 'Run this entry point on macOS.' >&2; exit 1; }
+case "$command" in
+    setup)
+        python3 "$root/tools/xrgame/check-apk-inputs.py" --init-submodules --sources-only
+        ;;
+    build|gradle|sync)
+        python3 "$root/tools/xrgame/check-apk-inputs.py"
+        ;;
+esac
 command -v container >/dev/null || { echo 'Install Apple Container first: brew install container' >&2; exit 1; }
 mkdir -p "$state/logs" "$state/artifacts"
 if [[ "$command" == status ]]; then

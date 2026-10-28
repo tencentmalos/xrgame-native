@@ -6,6 +6,20 @@
 
 ## 日常入口
 
+首次从 `malos/main` 克隆后，需要有私有 Foundation 的读取权限，并先初始化固定的源码依赖：
+
+```sh
+python3 tools/xrgame/check-apk-inputs.py --init-submodules --sources-only
+```
+
+`setup` 也执行这一检查。它只初始化 APK 所需的 10 个直接/嵌套子仓，不会递归拉取
+Foundation 的研究参考仓库。`build`、`sync` 和 `gradle` 在启动容器前检查暂存运行时的完整性、
+SHA、默认组件版本以及 Linux Steam 脚本/兼容库是否来自当前源码。
+
+**2026-10-28：干净克隆的源码依赖已从远端恢复验证；完整 APK 和新 Mac 的实编由用户在另一台机器验证。**
+`setup` 只准备 APK 工具链，不会自动构建所有嵌入运行时。下面的暂存目录仍须先通过各自源码配方生成，
+不能把 `setup` 成功当作“所有运行时已就绪”。参见[此次依赖审计](../validation/clean-clone-dependencies-20261028.md)。
+
 在仓库根目录执行：
 
 ```sh
@@ -87,15 +101,31 @@ APK 必须包含 `assets/pinyin/dict_pinyin.dat`。不要运行无范围的 `--r
 同步采用受保护的 `rsync --delete`，只处理标记过的 Linux 镜像目录；Linux 编译输出被排除并保留。
 同一环境的操作有锁，避免同步覆盖正在编译的源文件。
 
-构建仍需要 Mac 端已有的以下经过校验的运行时暂存件，首次初始化不会擅自替换版本：
+构建需要 Mac 端以下经过校验的运行时暂存件；按用户 2026-10-28 的要求，可以源码构建的组件不另存二进制依赖仓库：
 
 - `build/xrgame-runtime/bundle`：Proton、FEX、DXVK、VKD3D、Turnip、imagefs、Steam client。
 - `build/xrgame-runtime/pulseaudio` 与 `build/xrgame-runtime/opencomposite`。
-- `feature/linux_steam_support` 另需 `build/xrgame-linux-steam`：源码构建的 PRoot、会话探针、客户端兼容库和 ARM64 glibc userspace；不包含 Valve 二进制。
+- 主干也需要 `build/xrgame-linux-steam`：源码构建的 PRoot、会话探针、客户端兼容库和 ARM64 glibc userspace；不包含 Valve 二进制。
 - 可选 `build/xrgame-gfxr`：仅存在时同步；缺失时不会复用上一轮遗留的录制载荷。
 
-本机当前没有 staged GFXReconstruct 载荷。这不影响基础 APK 构建，但不能据此声明此 APK
-具备完整 API 录制功能。要使用录制，先按 API replay 文档准备并校验 `build/xrgame-gfxr`。
+基础 APK 不要求 GFXReconstruct 载荷或私有 scrcpy capture SDK；不能因此声明其具备这些录制功能。
+要使用录制，按 API replay 文档准备并校验 `build/xrgame-gfxr`，或显式提供 `XRGAME_CAPTURE_SDK`。
+SDK 源码不得复制进本公开仓库。
+
+源码构建入口如下；这些是组件配方，不是已经验证过的一键干净构建流程：
+
+| 暂存件 | 源码入口及准备要求 |
+| --- | --- |
+| 游戏运行时 bundle | `tools/xrgame/README.md` 的全量 Linux 构建；`prepare-runtime-bundle.py --catalog ... --packages ...` 暂存。catalog 必须满足 `XrGameRuntimeVersions.java` 的当前版本。历史 `runtime-20260926-preview1` 不能直接当作当前主干的完整默认包。 |
+| PulseAudio | `tools/xrgame/build-pulseaudio.sh`，使用 `prepare-linux.sh` 提供的 Linux NDK，输出复制到 `build/xrgame-runtime/pulseaudio`。 |
+| OpenComposite | `tools/xrgame/build-opencomposite-clangcl.sh`；需要 pin 中的 OpenOVR 源码、Vulkan import definition 和 xwin SDK/CRT/ATL。路径可用 `XRGAME_OC_SOURCE_ARCHIVE`、`XRGAME_VULKAN_DEF`、`XRGAME_XWIN` 覆盖，当前 `setup` 不自动准备它们。 |
+| Linux Steam | `build-linux-steam-proot.sh`、`linux-steam/build-rootfs.sh`（独立 Ubuntu ARM64 容器）、`build-wine-client.py`、`build-gpu.sh`，最后运行 `linux-steam/stage.py --help` 指定各输出。stage 会从当前源码重新编译兼容库、会话探针并复制启动脚本；还需初始化配方使用的 `references/DroidDeck` 等子仓。 |
+
+OpenComposite 的已验证 DLL SHA 不是跨工具链可复现承诺。自行重建后的不同字节必须记录源码和构建证据，
+更新 `tools/xrgame/opencomposite-pin.json` 与 `apk-sources.json` 中的对应 SHA；运行时校验值由 Gradle
+从 pin 生成，不再维护第三处手写 SHA。不要关闭校验来接受来源不明的 DLL。
+Linux Steam 的 Wine 适配器仍以历史 xrg3 的 `ntdll.so` ABI 为基础；它与当前 Proton 包的生成顺序
+见 `build-wine-client.py`、`package-proton-validation.py --release linux-steam2`。这条历史基础包构建链尚未完成干净环境实编验证。
 
 `setup` 复制现有 `~/.android/debug.keystore` 到私有本地目录，权限 600，然后用于容器 debug 签名；
 不生成另一把密钥，不使用仓库根部的 PKCS#12 `keystore`，不复制 release 签名配置。
