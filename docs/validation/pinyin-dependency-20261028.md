@@ -71,10 +71,14 @@ Apple Container 的同步脚本会复制嵌套依赖，源端缺少它时立即�
 - 独立 CMake fixture 缺少嵌套子仓时明确失败。APK 审计使用仅含拼音规则的
   ZIP fixture：正常词库通过，缺失/损坏均失败。这不是完整 APK 的审计结果。
 - 修改的 shell 脚本通过 `bash -n`；`git diff --check` 通过。
+- 从 GitHub 干净克隆主仓的集成提交，再仅初始化 `foundation` 与
+  `third_party/pinyinime`：分别取回 `addcb9bf` 和 `97886655`，词库 SHA 一致。
+  没有借用旧机器的源码目录，也没有初始化 Foundation 的研究参考仓。
 
 构建检查的中间失败：首次 native 配置缺少新 worktree 的 `lsfg-vk-android/thirdparty/dxbc`，
 按已有 gitlink 初始化后通过；本地检查脚本最初假定了 Gradle 资源输出目录和英文错误文本，
-改用 AGP 实际输出目录与错误标识后通过。失败日志保留在上述隔离目录。
+改用 AGP 实际输出目录与错误标识后通过。中间失败可见本次工具输出；缺失/损坏词库的
+预期失败日志保留在上述隔离目录。
 
 未在本次操作中生成或安装完整 APK，未运行 Mac 的 Apple Container 或重新操作头显。
 过去的 Swan 中文输入证据仍见[原记录](swan-official-steam-20261019.md)。
