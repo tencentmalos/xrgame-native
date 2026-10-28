@@ -370,7 +370,7 @@ L1 的验收：A8xx 设备上，webhelper 跑在 Zink 上，没有 Xlib IO 错�
 - 引擎用 AOSP `platform/packages/inputmethods/PinyinIME` `49aebad1` 的 `jni/`（libgooglepinyin）和自带词库 `dict_pinyin.dat`（1 MB，Apache-2.0）。在 64 位上有两处要改：
   - 词库里的计数是 `uint32`，原代码直接读进 `size_t` 成员，高 4 字节保留原值；
   - `userdict.cpp` 包含平台才有的 `cutils/log.h`。
-  - 两处修改是本地克隆上的两个提交，要先 fork 到 tencentmalos 才能作为子仓库进来（`app/src/main/cpp/extras/pinyinime`）。在那之前，构建脚本从仓库外复制源码。
+  - 两处修改原来只在本地克隆中。2026-10-28 已发布为 `tencentmalos/PinyinIME` `97886655`，按用户要求作为 Foundation 的 `third_party/pinyinime` 子仓；SteamPSP 链接 Foundation 的 `spatial::foundation_pinyin`，不再从仓库外复制源码。见[依赖补全记录](../validation/pinyin-dependency-20261028.md)。
 - 词库打成资源 `assets/pinyin/dict_pinyin.dat`（APK 审计按 SHA-256 登记）。每次安装后由 `XrPinyinDictionary` 解包到 `files/pinyin/` 一次，用户词库也在那里，用来学习选过的词。
 - 候选栏画在 XR 键盘面板的顶部，和键盘同一个图层（截图槽位每种只有一个）：
   - 第一行：中/EN 切换、组字框（组字时显示带下划线的拼音，否则显示已输入的文字）、关闭；

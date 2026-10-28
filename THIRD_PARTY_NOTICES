@@ -22,7 +22,7 @@ native library and asset, including exact hashes for official dependencies.
 | OpenComposite | [Owned recipe fork](https://github.com/tencentmalos/opencomposite/tree/7fd3276ac0ffda518a7f5a9157620f292e2032e6), OpenOVR `a27e7e6a64bdcd1eff6b7fba1ea2ea34bcf1273d` + recorded patches; picoXr source build pinned in `tools/xrgame/opencomposite-pin.json` | GPL-3.0-only |
 | OpenVR 2.15.6 SDK header (OpenComposite ABI patch) | Valve `0924064316de3effbcd1acf1e309182a2deb1c05`; `references/opencomposite/vendor/openvr-2.15.6` | BSD-3-Clause; unmodified header and license |
 | OpenXR loader | Khronos official Android AAR 1.1.61 | Apache-2.0 OR MIT |
-| Pinyin engine and dictionary (XR keyboard) | AOSP [PinyinIME](https://android.googlesource.com/platform/packages/inputmethods/PinyinIME) `49aebad1c1cfbbcaa9288ffed5161e79e57c3679` (`jni/` engine and `res/raw/dict_pinyin.dat`) plus 64-bit dictionary reads and an NDK build fix; built from `app/src/main/cpp/extras/pinyinime` | Apache-2.0 |
+| Pinyin engine and dictionary (XR keyboard) | [tencentmalos/PinyinIME](https://github.com/tencentmalos/PinyinIME) `97886655ccef86d02dc2a46841026a86dbfee553`, pinned as `foundation/third_party/pinyinime`: AOSP [PinyinIME](https://android.googlesource.com/platform/packages/inputmethods/PinyinIME) `49aebad1c1cfbbcaa9288ffed5161e79e57c3679` (`jni/` engine and `res/raw/dict_pinyin.dat`) plus the original 64-bit dictionary-read and NDK-header fixes. Upstream `NOTICE` retained. | Apache-2.0 |
 | AndroidX native helpers | DataStore 1.1.2, graphics-path 1.0.1 | Apache-2.0 |
 | libarchive Android JNI | me.zhanghai.android.libarchive 1.1.6 | Apache-2.0 wrapper; libarchive BSD-2-Clause |
 | zstd-jni | 1.5.7-5 | BSD-2-Clause wrapper; Zstandard BSD-3-Clause |

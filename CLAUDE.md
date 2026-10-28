@@ -29,7 +29,7 @@
     - Steam 里的普通游戏跟随入口（XR 入口为 2D 大屏）；VR 专有游戏按 `appinfo.vdf` 的 `onlyvrsupport` 识别，一律进 VR。
     - 游戏用自己的会话和图层，游戏期间 Steam 的图层隐藏、渲染停下。大屏尺寸和弧形与游戏共用，分辨率各自设置（Steam 的在首页选）。
     - 游戏的启动面板直接画在大屏上（ImGui，`xr_launch_panel.cpp`；选项逻辑与 2D 面板共用 `XrGameLaunchOptions`），准备和启动都不经过 2D 页面。
-    - XR 键盘有拼音输入：AOSP PinyinIME 引擎加词库，候选栏在键盘顶部，中文经 `SteamImeSession` 粘贴进 Steam。引擎目前从仓库外复制（两处 64 位/NDK 修复是本地提交），要先 fork 到 tencentmalos 才能作为子仓库提交。
+    - XR 键盘有拼音输入：AOSP PinyinIME 引擎加词库，候选栏在键盘顶部，中文经 `SteamImeSession` 粘贴进 Steam。2026-10-28 起，`tencentmalos/PinyinIME` `97886655`（原有 64 位/NDK 修复）固定为 Foundation 的 `third_party/pinyinime` 子仓。先初始化 `foundation`，再执行 `git -C foundation submodule update --init third_party/pinyinime`，不初始化 Foundation 的研究参考仓。缺少引擎/词库时原生配置、词库打包和 APK 审计会失败。见 `docs/validation/pinyin-dependency-20261028.md`。
     - 中文送进 Wine 游戏（kb25 通过）：X server 把字符的 Unicode keysym 映射到备用键位 120–131 再按键，winex11 转成 `WM_CHAR`。Wine 在窗口 `TranslateMessage` 时才按当时的映射查键位，所以键位要轮流用、同一个字复用（`Keyboard.unicodeKeycode`）。测试入口 DebugBus `guest_exec [名=值] <程序>` 在游戏的 Wine 桌面里起程序（如 `WINEDEBUG=key notepad`）。
     - Steam XR 下 Java 堆 OOM 崩溃（kb22 上约 18 分钟后崩溃）：Mesa X11 WSI 每重建一次交换链就漏一个 GC，而我们 X server 的 `GraphicsContext` 强引用着创建时的 drawable，每个漏掉的 GC 都把一块约 8 MB 的窗口内容留在堆里（hprof 里 28 块）。kb26 让 GC 不再持有 drawable：同样场景 15 分钟堆稳定在约 86 MB（kb25 每分钟涨 16 MB）。
     - Swan kb18 已验证：面板、开始、出帧、退出回到 Steam XR、取消、"你好"上屏。射线交互和 Alyx 未测。

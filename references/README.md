@@ -27,6 +27,12 @@ Independently versioned source checkouts used for comparison, porting and pinned
 
 The authoritative revision of each checkout is the gitlink recorded by this repository, not the tip of the tracked branch. Do not run `git submodule update --remote` as an incidental setup step.
 
+The XR keyboard also requires Foundation's nested `third_party/pinyinime` submodule:
+[`tencentmalos/PinyinIME`](https://github.com/tencentmalos/PinyinIME) at `97886655ccef86d02dc2a46841026a86dbfee553`,
+with AOSP's decoder/dictionary and the original 64-bit/NDK fixes (Apache-2.0).
+After initializing `foundation`, run `git -C foundation submodule update --init third_party/pinyinime`.
+Do not recursively initialize Foundation's study repositories. See [the integration record](../docs/validation/pinyin-dependency-20261028.md).
+
 For XRGame's embedded Proton 11 default, FEX maintenance starts from the same `tencentmalos/FEX` commit used by shadPS4: `3f1f30a060b633980ed8e7674eb8d8997457edad`. The published maintenance branch is `feature/malos/xrgame-arm64ec`; its gitlink remains at that shared baseline. Runtime-specific FEX patches are recorded in `tools/xrgame/patches`. Keep AI-authored changes in the owned fork, not upstream FEX.
 
 | Path | Maintenance repository | Tracked branch | Pinned at | Purpose | License |

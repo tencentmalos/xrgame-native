@@ -69,7 +69,19 @@ Ubuntu apt 包版本记录在本地 `logs/ubuntu-packages.tsv`，不是仓库快
 | Mac `~/Library/Developer/SteamPSP/linux` → `/work` | 下载缓存、签名暂存、日志、APK 导出 |
 
 同步保留 Git 元数据及当前 pin；只复制 APK 构建需要的 JavaSteam、OpenComposite、Foundation
-以及 Vulkan-Headers、fmt 和 app 原生子仓工作树，不初始化 Foundation 的 study references，也不自动更新子仓。
+以及 Vulkan-Headers、fmt 和 app 原生子仓工作树，包括 Foundation 的 PinyinIME 嵌套子仓；不初始化 Foundation 的 study references，也不自动更新子仓。
+
+XR 拼音输入不再依赖旧 Windows/WSL 上的手工副本。新克隆或更新主仓后，在 Mac 源码目录执行：
+
+```sh
+git submodule update --init foundation
+git -C foundation submodule update --init third_party/pinyinime
+```
+
+PinyinIME 由 `tencentmalos/PinyinIME` 的固定 gitlink 提供，引擎、两处 64 位/NDK 修复和
+词库都在里面。同步会复制该嵌套子仓及 Git 元数据；缺失时明确报错。构建会校验词库 SHA-256，
+APK 必须包含 `assets/pinyin/dict_pinyin.dat`。不要运行无范围的 `--recursive` 或 `--remote`。
+
 构建产物、`.gradle`、Rust target、Mac `local.properties` 和 release 密钥不进入源码同步。
 容器单独生成 `local.properties`，不会改 Mac 的 SDK 配置。
 同步采用受保护的 `rsync --delete`，只处理标记过的 Linux 镜像目录；Linux 编译输出被排除并保留。

@@ -68,6 +68,11 @@ info['foundation'] = revision(foundation) | {
                 if path.is_file()},
 }
 info['references'] = {name: revision(repo/'references'/name) for name in ['Vulkan-Headers', 'fmt']}
+# The decoder and data are a nested Foundation dependency, not an untracked source copy.
+pinyin = foundation/'third_party/pinyinime'
+info['pinyin'] = revision(pinyin) | {
+    'dictionarySha256': hashlib.sha256((pinyin/'res/raw/dict_pinyin.dat').read_bytes()).hexdigest(),
+}
 # The private capture SDK (debug builds): its revision when the build host records one, and its sources.
 capture = os.environ.get('XRGAME_CAPTURE_SDK')
 if capture and (out/'arm64-v8a/libxrgame_debugbus.so').exists():

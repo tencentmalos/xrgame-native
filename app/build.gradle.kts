@@ -850,22 +850,28 @@ abstract class LinuxSteamAssetsTask : DefaultTask() {
 /**
  * The XR keyboard's pinyin dictionary from AOSP PinyinIME (its engine is built with
  * app/src/main/cpp/xrimmersive) as assets/pinyin/dict_pinyin.dat, which XrPinyinDictionary unpacks.
- * Without the PinyinIME checkout the keyboard stays Latin and nothing is packaged.
+ * Both source and dictionary come from Foundation's pinned third_party/pinyinime submodule.
+ * A missing or changed dictionary fails the build instead of silently dropping Chinese input.
  */
 abstract class PinyinDictionaryTask : DefaultTask() {
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
-    abstract val dictionary: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val dictionary: RegularFileProperty
     @get:OutputDirectory abstract val assets: DirectoryProperty
     @TaskAction fun stage() {
+        val source = dictionary.get().asFile
+        val sha = MessageDigest.getInstance("SHA-256").digest(source.readBytes()).joinToString("") { "%02x".format(it) }
+        check(sha == "6bf0bbde4e3134cce38d08524a9f4dc1af40435243c8e36b38eb68d1e14462b2") {
+            "PinyinIME dictionary checksum mismatch; restore Foundation's pinned third_party/pinyinime submodule"
+        }
         val out = assets.get().asFile
         out.deleteRecursively()
-        dictionary.files.firstOrNull { it.isFile }?.copyTo(out.resolve("pinyin/dict_pinyin.dat"), overwrite = true)
+        source.copyTo(out.resolve("pinyin/dict_pinyin.dat"), overwrite = true)
     }
 }
 
 androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi" to "picoXr")) { variant ->
     val task = tasks.register<PinyinDictionaryTask>("stagePinyin${variant.name.replaceFirstChar { it.uppercase() }}") {
-        dictionary.from(file("src/main/cpp/extras/pinyinime/res/raw/dict_pinyin.dat"))
+        dictionary.set(rootProject.layout.projectDirectory.file("foundation/third_party/pinyinime/res/raw/dict_pinyin.dat"))
         assets.set(layout.buildDirectory.dir("generated/pinyin/${variant.name}/assets"))
     }
     variant.sources.assets?.addGeneratedSourceDirectory(task, PinyinDictionaryTask::assets)
@@ -901,7 +907,8 @@ androidComponents.onVariants(androidComponents.selector().withFlavor("androidApi
         listOf("basic/underlying/core", "basic/underlying/math", "basic/platform", "basic/allocator/public",
             "basic/async/container/public", "basic/modules/implements/log", "modules/log", "modules/property",
             "modules/utils/include", "modules/foveation", "modules/fsr1", "modules/upscale", "modules/xr",
-            "third_party/openxr/openxr_header/openxr_pico").forEach {
+            "third_party/openxr/openxr_header/openxr_pico", "modules/pinyin",
+            "third_party/pinyinime/jni", "third_party/pinyinime/res/raw").forEach {
             nativeSources.from(rootProject.fileTree("foundation/$it"))
         }
         inputs.property("foundationRevision", providers.provider {

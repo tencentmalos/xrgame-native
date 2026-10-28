@@ -6,6 +6,11 @@ exec 9>"$XRGAME_DEV_ROOT/.operation.lock"
 flock -n 9 || { echo 'A Linux build/setup is still active.' >&2; exit 1; }
 repo=$XRGAME_DEV_ROOT/project
 [[ -d /project/.git ]] || { echo 'A standalone Git checkout is required (not a linked worktree).' >&2; exit 1; }
+[[ -f /project/foundation/third_party/pinyinime/jni/share/pinyinime.cpp &&
+   -f /project/foundation/third_party/pinyinime/res/raw/dict_pinyin.dat ]] || {
+    echo 'Initialize pinyin on the host: git submodule update --init foundation; git -C foundation submodule update --init third_party/pinyinime' >&2
+    exit 1
+}
 if [[ ! -e "$repo" ]]; then
     mkdir -p "$repo"
     touch "$XRGAME_DEV_ROOT/.managed-project"

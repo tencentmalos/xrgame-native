@@ -1,6 +1,7 @@
 {
   "version": 1,
   "required": [
+    "assets/pinyin/dict_pinyin.dat",
     "assets/xrgame/manifest.json",
     "lib/arm64-v8a/libwinlator.so",
     "lib/arm64-v8a/libwinlator_11.so",
@@ -858,7 +859,7 @@
       "pattern": "assets/pinyin/dict_pinyin.dat",
       "kind": "official-dependency",
       "license": "Apache-2.0",
-      "source": "AOSP platform/packages/inputmethods/PinyinIME 49aebad1c1cfbbcaa9288ffed5161e79e57c3679 res/raw/dict_pinyin.dat (XR keyboard pinyin)",
+      "source": "tencentmalos/PinyinIME 97886655ccef86d02dc2a46841026a86dbfee553 via foundation/third_party/pinyinime; AOSP 49aebad1c1cfbbcaa9288ffed5161e79e57c3679 res/raw/dict_pinyin.dat",
       "sha256": "6bf0bbde4e3134cce38d08524a9f4dc1af40435243c8e36b38eb68d1e14462b2"
     },
     {
